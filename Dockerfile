@@ -1,4 +1,4 @@
-# Production Dockerfile for Zoe Backend & Multi-Tenant Bot Orchestrator
+# Production Dockerfile optimized for Railway cloud containers
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -12,12 +12,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Install PyTorch CPU first to prevent RAM exhaustion and build timeout
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install AI & Core Engine dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install Backend dependencies
 COPY saas-dashboard/backend/requirements.txt saas-backend-requirements.txt
 RUN pip install --no-cache-dir -r saas-backend-requirements.txt
 
+# Copy codebase
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY config/ ./config/

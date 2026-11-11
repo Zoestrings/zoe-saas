@@ -218,7 +218,7 @@ def load_project_config(project_id: str) -> Dict[str, Any]:
 
 
 def load_project_secrets(project_id: str) -> Dict[str, Any]:
-    """Load project secrets from config/secrets/{project_id}.secrets.yaml if present."""
+    """Load project secrets from config/secrets/{project_id}.secrets.yaml or environment variables."""
     clean_id = project_id[:-5] if project_id.endswith(".yaml") else project_id
     filename = f"{clean_id}.secrets.yaml"
 
@@ -227,11 +227,28 @@ def load_project_secrets(project_id: str) -> Dict[str, Any]:
         _get_project_root() / "config" / "secrets" / filename,
     ]
 
+    data = {}
     for p in paths_to_try:
         if p.exists():
             with open(p, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-            return data if data is not None else {}
+                loaded = yaml.safe_load(f)
+                if loaded is not None:
+                    data.update(loaded)
+            break
 
-    return {}
+    # Environment variable fallbacks for production cloud deployments (Railway/Docker)
+    import os
+    env_token_key = f"{clean_id.upper()}_BOT_TOKEN"
+    bot_token = os.getenv(env_token_key) or os.getenv("TELEGRAM_BOT_TOKEN")
+    if bot_token and not data.get("bot_token"):
+        data["bot_token"] = bot_token
+
+    groq_key = os.getenv("GROQ_API_KEY")
+    if groq_key and not data.get("groq_api_key"):
+        data["groq_api_key"] = groq_key
+
+    if not data.get("hmac_key"):
+        data["hmac_key"] = os.getenv(f"{clean_id.upper()}_HMAC_KEY", f"zoe_{clean_id}_hmac_secret_key_32_characters_minimum")
+
+    return data
 

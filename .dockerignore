@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.env
+.git/
+node_modules/
+.next/
+*.log
+data/tmp/
+saas-dashboard/frontend/.next/
+saas-dashboard/frontend/node_modules/
+

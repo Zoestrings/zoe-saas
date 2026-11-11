@@ -1,0 +1,70 @@
+modules:
+  community_manager: true
+  crypto_intelligence: true
+  community_intelligence: true
+  wallet_intelligence: false
+  alerts_monitoring: false
+  caller_reputation: false
+
+project:
+  id: "live_test"
+  name: "Zoe Live Verification"
+  description: "Live Verification configuration for Zoe Intelligence Engine"
+  version: "0.1.0"
+  created_at: "2026-11-05 00:00:00"
+  active: 1
+  token_address: "EmgFnDhxoDBCyFPoSoo2ejrsJRHNt1ovaaB3gCNDnRvf"
+
+token_address: "EmgFnDhxoDBCyFPoSoo2ejrsJRHNt1ovaaB3gCNDnRvf"
+
+telegram:
+  environment: "live_verification"
+  group_id: "-5214407126"
+  live_send_responses_enabled: true
+  live_send_moderator_notifications_enabled: false
+  poll_timeout_seconds: 10
+  poll_interval_seconds: 0.05
+
+display_name: "Zoe"
+
+personality:
+  name: "Zoe"
+  system_prompt: ""
+  tone: "witty, highly competent, confident, loyal"
+  language: "en"
+
+participation:
+  mode: "selective"
+  respond_to_casual: true
+  cooldown_seconds: 0
+  rate_limit_seconds: 0.0
+  max_daily_messages: 800
+  rate_limit_per_minute: 10
+
+knowledge:
+  db_path: "data/official_knowledge/official_knowledge.db"
+  index_path: "data/indexes/live_test/index.faiss"
+  chunk_size: 512
+  chunk_overlap: 64
+  embedding_model: "all-MiniLM-L6-v2"
+  top_k: 2
+  similarity_threshold: 0.75
+
+memory:
+  db_path: "data/community_memory/community_memory.db"
+  short_term_window: 20
+  long_term_retention_days: 90
+  summary_interval_hours: 6
+
+safety:
+  enabled: true
+  content_filter: true
+  max_token_length: 1024
+
+escalation:
+  acknowledgement_deadline_minutes:
+    critical: 5
+    high: 30
+    normal: 1440
+  moderator_group_id: ""
+

@@ -1,0 +1,10 @@
+.env
+config/secrets/*.secrets.yaml
+data/
+.venv/
+.venv-spike/
+__pycache__/
+*.pyc
+.pytest_cache/
+docs/HARDWARE_SPIKE.md
+

@@ -1,0 +1,349 @@
+"""Multi-Tenant Bot Orchestrator running multiple independent Telegram bots from a single Python process."""
+
+import argparse
+import asyncio
+from contextlib import AsyncExitStack
+import json
+from pathlib import Path
+import signal
+import sqlite3
+import sys
+from typing import Any, Dict, List, Optional
+
+from zoe.db.connections import (
+    open_community_memory_db,
+    open_official_knowledge_db,
+    open_operational_db,
+)
+from zoe.inbox.inbox_service import ensure_project_registered, init_polling_state
+from zoe.knowledge.model import prewarm_model
+from zoe.llm.factory import get_llm_client
+from zoe.outbox.service import drain_outbox
+from zoe.settings import load_project_config, load_project_secrets, validate_config
+from zoe.telegram.adapter import PTBTelegramAdapter
+from zoe.telegram.polling_loop import PollingLoop
+from zoe.utils.logging import get_logger, set_current_project
+from zoe.worker.claim import claim_next_inbox_row
+from zoe.worker.pipeline import process_message
+
+logger = get_logger("zoe.orchestrator")
+
+
+class BotInstance:
+    """Encapsulates runtime state for a single tenant bot."""
+
+    def __init__(
+        self,
+        project_id: str,
+        config: Dict[str, Any],
+        secrets: Dict[str, Any],
+        db_conns: Dict[str, sqlite3.Connection],
+        adapter: Any,
+        llm_client: Any,
+        model: Any,
+    ) -> None:
+        self.project_id = project_id
+        self.config = config
+        self.secrets = secrets
+        self.db_conns = db_conns
+        self.adapter = adapter
+        self.llm_client = llm_client
+        self.model = model
+        self.group_id = str(config.get("telegram", {}).get("group_id", ""))
+        self.hmac_key = str(secrets.get("hmac_key", "default_hmac_key_32_characters_minimum"))
+        self.poll_interval = float(config.get("telegram", {}).get("poll_interval_seconds", 0.1))
+
+        self.polling_loop = PollingLoop(
+            project_id=self.project_id,
+            adapter=self.adapter,
+            db_conn=self.db_conns["operational"],
+            configured_group_id=self.group_id,
+            hmac_key=self.hmac_key,
+            poll_timeout=2,
+            allow_gap_recovery=True,
+        )
+        self.polling_loop.init_state()
+
+    async def step(self) -> int:
+        """Run one polling, processing, and delivery cycle for this bot."""
+        conn_op = self.db_conns["operational"]
+
+        # 1. Poll updates
+        persist_res = await self.polling_loop.step()
+        if persist_res.inserted_count > 0:
+            logger.info("Received %d new update(s) from Telegram.", persist_res.inserted_count)
+
+        # 2. Process pending inbox items
+        processed_count = 0
+        while True:
+            claim = claim_next_inbox_row(conn_op, project_id=self.project_id, worker_id=f"orch_{self.project_id}")
+            if not claim:
+                break
+
+            text_preview = claim.get("text", "")[:40]
+            logger.info("Processing inbox msg %d: '%s'...", claim["id"], text_preview)
+
+            res = await asyncio.to_thread(
+                process_message,
+                inbox_row=claim,
+                db_conns=None,
+                llm_client=self.llm_client,
+                model=self.model,
+                simulated=False,
+            )
+            processed_count += 1
+            logger.info(
+                "Inbox msg %d processed: decision=%s, reason=%s, responded=%s",
+                claim["id"],
+                res.decision.decision,
+                res.decision.reason,
+                res.responded,
+            )
+
+        # 3. Drain outbox
+        delivered = await drain_outbox(
+            conn=conn_op,
+            project_id=self.project_id,
+            adapter=self.adapter,
+            worker_id=f"drain_{self.project_id}",
+        )
+        if delivered > 0:
+            logger.info("Successfully delivered %d live response(s) to Telegram!", delivered)
+
+        return persist_res.inserted_count + processed_count + delivered
+
+
+async def run_bot_worker(bot: BotInstance, shutdown_event: asyncio.Event) -> None:
+    """Supervised worker loop with fault isolation and backoff restart."""
+    set_current_project(bot.project_id)
+    logger.info("Bot worker started for project '%s' (group %s).", bot.project_id, bot.group_id)
+
+    # Register Telegram bot command menu on startup
+    try:
+        from zoe.conversation.prompt_builder import get_project_display_name
+        from zoe.telegram.bot import init_bot
+        bot_display = get_project_display_name(bot.project_id) or "Zoe"
+        await init_bot(bot.adapter, bot_name=bot_display)
+    except Exception as cmd_exc:
+        logger.warning("Could not register bot command menu on startup for '%s': %s", bot.project_id, cmd_exc)
+
+    backoff_delay = 1.0
+    max_backoff = 30.0
+
+    while not shutdown_event.is_set():
+        activity = 0
+        try:
+            set_current_project(bot.project_id)
+            activity = await bot.step()
+            backoff_delay = 1.0  # Reset on successful iteration
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            set_current_project(bot.project_id)
+            logger.error(
+                "Unhandled error in bot '%s': %s. Retrying with backoff in %.1fs...",
+                bot.project_id,
+                str(exc),
+                backoff_delay,
+                exc_info=True,
+            )
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=backoff_delay)
+                break
+            except asyncio.TimeoutError:
+                pass
+            backoff_delay = min(backoff_delay * 2.0, max_backoff)
+
+        # Responsive polling delay: if work was processed/delivered, loop immediately (0.01s)
+        next_wait = 0.01 if activity > 0 else bot.poll_interval
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=next_wait)
+            break
+        except asyncio.TimeoutError:
+            pass
+
+    logger.info("Bot worker stopped cleanly for project '%s'.", bot.project_id)
+
+
+def discover_projects(config_dir: str = "config/projects") -> List[str]:
+    """Scan directory for valid project configuration files."""
+    path = Path(config_dir)
+    if not path.exists():
+        return []
+    projects = []
+    for file in sorted(path.glob("*.yaml")):
+        project_id = file.stem
+        projects.append(project_id)
+    return projects
+
+
+async def start_orchestrator(
+    config_dir: str = "config/projects",
+    project_filter: Optional[List[str]] = None,
+    shared_model: Optional[Any] = None,
+    mock_adapters: Optional[Dict[str, Any]] = None,
+    mock_llms: Optional[Dict[str, Any]] = None,
+    run_once: bool = False,
+) -> None:
+    """Initialize and coordinate all active multi-tenant bots."""
+    set_current_project("orchestrator")
+    logger.info("Starting Zoe Multi-Tenant Bot Orchestrator...")
+
+    # 1. Discover all project configs
+    all_projects = discover_projects(config_dir)
+    if project_filter:
+        all_projects = [p for p in all_projects if p in project_filter]
+
+    if not all_projects:
+        logger.warning("No projects found to orchestrate in '%s'.", config_dir)
+        return
+
+    logger.info("Discovered %d project configuration(s): %s", len(all_projects), all_projects)
+
+    # 2. Singleton Embedding Model (Shared RAM foot-print)
+    model = shared_model
+    if model is None:
+        logger.info("Pre-warming shared singleton embedding model...")
+        model = prewarm_model()
+        logger.info("Shared embedding model ready in RAM.")
+
+    # 3. Setup shutdown coordinator
+    shutdown_event = asyncio.Event()
+
+    def handle_signal():
+        set_current_project("orchestrator")
+        logger.info("Shutdown signal received. Initiating graceful shutdown for all bots...")
+        shutdown_event.set()
+
+    # Wire signal handlers if supported (non-Windows / main thread)
+    loop = asyncio.get_running_loop()
+    try:
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, handle_signal)
+    except (NotImplementedError, AttributeError):
+        pass
+
+    async with AsyncExitStack() as stack:
+        bot_instances: List[BotInstance] = []
+
+        for p_id in all_projects:
+            set_current_project(p_id)
+            try:
+                cfg = load_project_config(p_id)
+                sec = load_project_secrets(p_id)
+                validate_config(cfg, sec)
+            except Exception as e:
+                logger.warning("Skipping project '%s' due to invalid config/secrets: %s", p_id, str(e))
+                continue
+
+            if not cfg.get("project", {}).get("active", 1):
+                logger.info("Project '%s' is marked inactive in config; skipping.", p_id)
+                continue
+
+            # DB Connections with WAL mode & busy timeout
+            conn_op = open_operational_db("data/operational/operational.db")
+            conn_kb = open_official_knowledge_db(
+                cfg.get("knowledge", {}).get("db_path", "data/official_knowledge/official_knowledge.db")
+            )
+            conn_mem = open_community_memory_db(
+                cfg.get("memory", {}).get("db_path", "data/community_memory/community_memory.db")
+            )
+
+            stack.callback(conn_op.close)
+            stack.callback(conn_kb.close)
+            stack.callback(conn_mem.close)
+
+            ensure_project_registered(
+                conn_op,
+                project_id=p_id,
+                name=cfg.get("project", {}).get("name", p_id),
+                telegram_group_id=str(cfg.get("telegram", {}).get("group_id", "")),
+                config_json=json.dumps(cfg),
+            )
+            init_polling_state(conn_op, p_id)
+
+            db_conns = {
+                "operational": conn_op,
+                "knowledge": conn_kb,
+                "memory": conn_mem,
+            }
+
+            # Adapter selection
+            if mock_adapters and p_id in mock_adapters:
+                adapter = mock_adapters[p_id]
+            else:
+                token = sec.get("bot_token")
+                if not token:
+                    logger.warning("Project '%s' missing bot_token; skipping live polling.", p_id)
+                    continue
+                adapter = PTBTelegramAdapter(bot_token=token, request_timeout=30.0)
+
+            # LLM Client selection
+            if mock_llms and p_id in mock_llms:
+                llm = mock_llms[p_id]
+            else:
+                llm = get_llm_client(p_id)
+
+            instance = BotInstance(
+                project_id=p_id,
+                config=cfg,
+                secrets=sec,
+                db_conns=db_conns,
+                adapter=adapter,
+                llm_client=llm,
+                model=model,
+            )
+            bot_instances.append(instance)
+
+        if not bot_instances:
+            set_current_project("orchestrator")
+            logger.warning("No runnable bot instances initialized.")
+            return
+
+        set_current_project("orchestrator")
+        logger.info("Successfully initialized %d bot instance(s). Spawning workers...", len(bot_instances))
+
+        if run_once:
+            # Single iteration across all bots
+            for bot in bot_instances:
+                set_current_project(bot.project_id)
+                await bot.step()
+            return
+
+        # Spawn concurrent supervised tasks
+        tasks = [
+            asyncio.create_task(run_bot_worker(bot, shutdown_event))
+            for bot in bot_instances
+        ]
+
+        try:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            handle_signal()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        set_current_project("orchestrator")
+        logger.info("All bot workers terminated. Clean shutdown complete.")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Multi-Tenant Bot Orchestrator")
+    parser.add_argument("--projects", nargs="*", help="Specific project IDs to run")
+    parser.add_argument("--once", action="store_true", help="Run a single step for all bots and exit")
+    args = parser.parse_args()
+
+    try:
+        asyncio.run(
+            start_orchestrator(
+                project_filter=args.projects,
+                run_once=args.once,
+            )
+        )
+    except KeyboardInterrupt:
+        print("\nOrchestrator stopped by operator.")
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
+

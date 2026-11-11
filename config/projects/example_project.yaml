@@ -1,0 +1,56 @@
+project:
+  id: "example_project"
+  name: "Zoe Example Project"
+  description: "Reference configuration for Zoe Intelligence Engine"
+  version: "0.1.0"
+  created_at: "2026-11-05 00:00:00"
+  active: 1
+
+telegram:
+  environment: "pilot"
+  group_id: "-1001234567890"
+  live_send_responses_enabled: false
+  live_send_moderator_notifications_enabled: false
+  poll_timeout_seconds: 30
+  poll_interval_seconds: 1
+
+personality:
+  name: "Zoe"
+  system_prompt: "You are Zoe, an intelligent community assistant."
+  tone: "helpful, concise, professional"
+  language: "en"
+
+participation:
+  mode: "selective"
+  cooldown_seconds: 60
+  max_daily_messages: 800
+  rate_limit_per_minute: 10
+
+knowledge:
+  db_path: "data/official_knowledge/official_knowledge.db"
+  index_path: "data/indexes/knowledge.index"
+  chunk_size: 512
+  chunk_overlap: 64
+  embedding_model: "all-MiniLM-L6-v2"
+  top_k: 5
+  similarity_threshold: 0.75
+
+memory:
+  db_path: "data/community_memory/community_memory.db"
+  short_term_window: 20
+  long_term_retention_days: 90
+  summary_interval_hours: 6
+
+safety:
+  enabled: true
+  content_filter: true
+  max_token_length: 1024
+
+escalation:
+  acknowledgement_deadline_minutes:
+    critical: 5
+    high: 30
+    normal: 1440
+  moderator_group_id: "-1009876543210"
+
+  

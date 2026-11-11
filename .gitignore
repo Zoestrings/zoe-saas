@@ -1,4 +1,6 @@
 .env
+*.env
+saas-dashboard/backend/.env
 config/secrets/*.secrets.yaml
 data/
 .venv/
@@ -7,4 +9,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 docs/HARDWARE_SPIKE.md
-
+*.db
+*.sqlite
+*.sqlite3
+saas-dashboard/frontend/.next/
+saas-dashboard/frontend/node_modules/

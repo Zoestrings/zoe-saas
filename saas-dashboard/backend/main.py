@@ -92,8 +92,11 @@ def get_fernet() -> Fernet:
     """Retrieve or initialize Fernet cipher using ENCRYPTION_KEY."""
     key = os.getenv("ENCRYPTION_KEY", "").strip()
     if not key or key == "your-fernet-encryption-key":
-        # Fallback to a deterministic test key if not set to prevent runtime crashes during initial run
-        key = "FFnI6YFpfF2Sg4RDerZeOhiHvrdst7xy_Bl2QWkC5rA="
+        # Fallback to a dynamically generated session key if not configured in environment
+        from cryptography.fernet import Fernet
+        dyn_key = Fernet.generate_key()
+        os.environ["ENCRYPTION_KEY"] = dyn_key.decode("utf-8")
+        return Fernet(dyn_key)
     if isinstance(key, str):
         key = key.encode("utf-8")
     return Fernet(key)

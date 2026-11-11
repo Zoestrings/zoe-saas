@@ -96,10 +96,26 @@ def open_operational_db(path: Union[str, Path]) -> sqlite3.Connection:
 def open_official_knowledge_db(path: Union[str, Path]) -> sqlite3.Connection:
     _ensure_parent_dir(path)
     conn = sqlite3.connect(str(path))
-    return _configure_connection(conn)
+    conn = _configure_connection(conn)
+    try:
+        schema_path = Path(__file__).resolve().parent / "schema_knowledge.sql"
+        if schema_path.exists():
+            with open(schema_path, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+    except Exception:
+        pass
+    return conn
 
 
 def open_community_memory_db(path: Union[str, Path]) -> sqlite3.Connection:
     _ensure_parent_dir(path)
     conn = sqlite3.connect(str(path))
-    return _configure_connection(conn)
+    conn = _configure_connection(conn)
+    try:
+        schema_path = Path(__file__).resolve().parent / "schema_community_memory.sql"
+        if schema_path.exists():
+            with open(schema_path, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+    except Exception:
+        pass
+    return conn

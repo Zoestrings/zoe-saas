@@ -74,6 +74,14 @@ def open_operational_db(path: Union[str, Path]) -> sqlite3.Connection:
     _ensure_parent_dir(path)
     conn = sqlite3.connect(str(path))
     conn = _configure_connection(conn)
+    # Ensure operational schema exists on fresh environments (Docker/Cloud)
+    try:
+        schema_path = Path(__file__).resolve().parent / "schema_operational.sql"
+        if schema_path.exists():
+            with open(schema_path, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+    except Exception:
+        pass
     try:
         cur = conn.execute("PRAGMA table_info(outbox_messages)")
         cols = [r[1] for r in cur.fetchall()]

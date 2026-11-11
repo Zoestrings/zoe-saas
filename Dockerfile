@@ -23,11 +23,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY saas-dashboard/backend/requirements.txt saas-backend-requirements.txt
 RUN pip install --no-cache-dir -r saas-backend-requirements.txt
 
+# Create runtime directories needed by the SQLite databases and FAISS indexes
+RUN mkdir -p /app/data/operational /app/data/official_knowledge /app/data/community_memory /app/data/indexes /app/data/tmp
+
 # Copy codebase
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY config/ ./config/
-COPY data/ ./data/
 COPY saas-dashboard/backend/ ./saas-dashboard/backend/
 
 EXPOSE 8000

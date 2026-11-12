@@ -94,3 +94,41 @@ def test_web_search_forced_off_for_project_question():
 
     # Web search should NOT have been invoked for a project_question
     assert len(called_web_search) == 0, f"Web search was called unexpectedly: {called_web_search}"
+
+
+def test_links_command():
+    """Verify that /links command returns the official social links with inline buttons."""
+    conn_op = open_operational_db(":memory:")
+    conn_kb = open_official_knowledge_db(":memory:")
+    conn_mem = open_community_memory_db(":memory:")
+    conns = {"operational": conn_op, "knowledge": conn_kb, "community_memory": conn_mem}
+
+    ensure_project_registered(conn_op, "onelove", name="One Love", telegram_group_id="-10012345")
+    cur = conn_op.execute(
+        """
+        INSERT INTO inbox_messages (
+            project_id, telegram_update_id, group_id, telegram_message_id,
+            pseudonymous_user_id, text, reply_to_message_id, is_forward,
+            message_timestamp, state, state_changed_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', datetime('now'), datetime('now'))
+        """,
+        ("onelove", 2, "-10012345", 1000, "user_123", "/links", None, 0, "2026-11-12 10:00:00"),
+    )
+    inbox_id = cur.lastrowid
+    conn_op.commit()
+
+    res = process_message(
+        inbox_row=inbox_id,
+        db_conns=conns,
+    )
+
+    cur_out = conn_op.execute("SELECT text, inline_keyboard_json FROM outbox_messages WHERE project_id = 'onelove'")
+    row = cur_out.fetchone()
+    assert row is not None
+    out_text, out_keyboard = row[0], row[1]
+    assert "https://x.com/thecaptrobbie?s=11" in out_text
+    assert "https://t.me/ONELOVECoinCrew" in out_text
+    assert "https://www.tiktok.com/@captain.robbie" in out_text
+    assert "https://x.com/thecaptrobbie?s=11" in out_keyboard
+    assert "https://t.me/ONELOVECoinCrew" in out_keyboard
+    assert "https://www.tiktok.com/@captain.robbie" in out_keyboard

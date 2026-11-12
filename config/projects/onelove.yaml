@@ -17,6 +17,12 @@ project:
 
 token_address: "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon"
 
+links:
+  website: "https://www.onelovesailingcoin.com"
+  twitter: "https://x.com/thecaptrobbie?s=11"
+  telegram: "https://t.me/ONELOVECoinCrew"
+  tiktok: "https://www.tiktok.com/@captain.robbie"
+
 telegram:
   environment: "live_verification"
   group_id: "-5214407126"
@@ -60,6 +66,14 @@ safety:
   enabled: true
   content_filter: true
   max_token_length: 1024
+  url_allowlist:
+    - "onelovesailingcoin.com"
+    - "x.com"
+    - "twitter.com"
+    - "t.me"
+    - "tiktok.com"
+    - "dexscreener.com"
+    - "solscan.io"
 
 escalation:
   acknowledgement_deadline_minutes:

@@ -341,6 +341,7 @@ def get_token_intel_sync(
 def generate_ca_inline_keyboard(
     ca: str,
     intel: Optional[Dict[str, Any]] = None,
+    project_id: Optional[str] = None,
 ) -> List[List[Dict[str, str]]]:
     """Generate sleek inline keyboard buttons matching and exceeding Coral.
     
@@ -349,6 +350,7 @@ def generate_ca_inline_keyboard(
     - 🔍 Solscan / Etherscan block explorer verification
     - ⚡ Buy on Jupiter / Uniswap instant swap
     - 🌐 Website / Community links when available
+    - 🐦 Social channels (Twitter, Telegram, TikTok)
     """
     clean_ca = ca.strip()
     chain = "solana"
@@ -407,6 +409,14 @@ def generate_ca_inline_keyboard(
     websites = info.get("websites") if isinstance(info, dict) else []
     if websites and isinstance(websites, list) and websites[0].get("url"):
         keyboard[1].append({"text": "🌐 Website", "url": websites[0]["url"]})
+
+    # Optional social links (Twitter, Telegram, TikTok)
+    if project_id == "onelove" or clean_ca == "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon":
+        keyboard.append([
+            {"text": "🐦 Twitter", "url": "https://x.com/thecaptrobbie?s=11"},
+            {"text": "✈️ Telegram", "url": "https://t.me/ONELOVECoinCrew"},
+            {"text": "🎵 TikTok", "url": "https://www.tiktok.com/@captain.robbie"},
+        ])
 
     return keyboard
 

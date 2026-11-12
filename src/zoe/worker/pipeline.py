@@ -507,7 +507,7 @@ def process_message(
                     from zoe.tools.crypto_intel import generate_ca_inline_keyboard, get_token_intel_sync
                     intel = get_token_intel_sync(token_address=token_addr, project_id=norm_msg.project_id)
                     generated_text = f"Here is the official contract address for {proj_title}:\n{token_addr}"
-                    inline_keyboard = generate_ca_inline_keyboard(token_addr, intel)
+                    inline_keyboard = generate_ca_inline_keyboard(token_addr, intel, project_id=norm_msg.project_id)
                 else:
                     generated_text = f"No contract address is configured for {proj_title}."
                 intent = "command_ca"
@@ -526,7 +526,7 @@ def process_message(
                 intel = get_token_intel_sync(token_address=token_addr, project_id=norm_msg.project_id)
                 generated_text = format_token_intel_response(intel)
                 if token_addr:
-                    inline_keyboard = generate_ca_inline_keyboard(token_addr, intel)
+                    inline_keyboard = generate_ca_inline_keyboard(token_addr, intel, project_id=norm_msg.project_id)
                 intent = "command_price"
 
             elif cmd in ("credits", "balance"):
@@ -539,6 +539,40 @@ def process_message(
                 generated_text = f"Your community membership includes full access to {bot_display_name}. Top-ups are not required at this time."
                 intent = "command_add_credits"
 
+            elif cmd in ("links", "socials", "social"):
+                proj_title = get_project_name(norm_msg.project_id)
+                links_cfg = {}
+                try:
+                    from zoe.settings import load_project_config
+                    p_cfg = load_project_config(norm_msg.project_id)
+                    links_cfg = p_cfg.get("links", {})
+                except Exception:
+                    pass
+
+                website_url = links_cfg.get("website", "https://www.onelovesailingcoin.com")
+                twitter_url = links_cfg.get("twitter", "https://x.com/thecaptrobbie?s=11")
+                telegram_url = links_cfg.get("telegram", "https://t.me/ONELOVECoinCrew")
+                tiktok_url = links_cfg.get("tiktok", "https://www.tiktok.com/@captain.robbie")
+
+                generated_text = (
+                    f"Official Links & Socials for {proj_title}:\n\n"
+                    f"🌐 Website: {website_url}\n"
+                    f"🐦 Twitter / X: {twitter_url}\n"
+                    f"✈️ Telegram: {telegram_url}\n"
+                    f"🎵 TikTok: {tiktok_url}"
+                )
+                inline_keyboard = [
+                    [
+                        {"text": "🌐 Website", "url": website_url},
+                        {"text": "🐦 Twitter / X", "url": twitter_url},
+                    ],
+                    [
+                        {"text": "✈️ Telegram", "url": telegram_url},
+                        {"text": "🎵 TikTok", "url": tiktok_url},
+                    ],
+                ]
+                intent = "command_links"
+
             elif cmd == "help":
                 bot_display_name = get_project_display_name(norm_msg.project_id)
                 generated_text = (
@@ -547,6 +581,7 @@ def process_message(
                     "/ca — Show this community's contract address\n"
                     "/setca — Admins: save this community's contract address\n"
                     "/price — Get live token price, market cap & liquidity\n"
+                    "/links — Official website, Twitter, Telegram & TikTok\n"
                     "/help — Show all commands"
                 )
                 intent = "command_help"
@@ -853,7 +888,7 @@ def process_message(
                 intel = get_token_intel_sync(token_address=token_addr, project_id=norm_msg.project_id)
                 generated_text = format_token_intel_response(intel)
                 if token_addr:
-                    inline_keyboard = generate_ca_inline_keyboard(token_addr, intel)
+                    inline_keyboard = generate_ca_inline_keyboard(token_addr, intel, project_id=norm_msg.project_id)
         elif generated_text is None and (intent == "knowledge" or (intent != "general" and classification.category in ("direct_question", "project_discussion", "project_question"))):
             is_project_question = (intent == "knowledge" or classification.category in ("direct_question", "project_discussion", "project_question"))
             # Step 2: RAG Retrieval (top_k=3 for high-precision document recall)
@@ -978,10 +1013,10 @@ def process_message(
         # Sanitize chat formatting: remove unnecessary characters, markdown artifacts, non-standard unicode
         if generated_text:
             generated_text = clean_unnecessary_characters(generated_text)
-            if cmd != "help":
+            if cmd not in ("help", "links", "socials", "social"):
                 # Strict Leash: Never leak command menus in conversational responses
                 generated_text = re.sub(
-                    r"(?im)^\s*(?:[-•*]\s*)?/(?:ask|ca|setca|price|help|credits|add_credits)\b.*$\n?",
+                    r"(?im)^\s*(?:[-•*]\s*)?/(?:ask|ca|setca|price|help|credits|add_credits|links|socials|social)\b.*$\n?",
                     "",
                     generated_text,
                 )
@@ -989,6 +1024,13 @@ def process_message(
 
         # Step 5: Validate safety (Fail-Closed)
         safety_config: Dict[str, Any] = {}
+        try:
+            from zoe.settings import load_project_config
+            p_cfg_obj = load_project_config(norm_msg.project_id)
+            if p_cfg_obj and "safety" in p_cfg_obj and "url_allowlist" in p_cfg_obj["safety"]:
+                safety_config["url_allowlist"] = list(p_cfg_obj["safety"]["url_allowlist"])
+        except Exception:
+            pass
         if web_results:
             # Whitelist domains from web search results so citations remain safe
             try:

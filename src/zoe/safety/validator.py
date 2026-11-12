@@ -36,6 +36,8 @@ DEFAULT_APPROVED_DOMAINS = {
     "twitter.com",
     "x.com",
     "github.com",
+    "onelovesailingcoin.com",
+    "tiktok.com",
     "hummingbird.org",
     "solscan.io",
     "etherscan.io",

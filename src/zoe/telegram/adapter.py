@@ -79,6 +79,7 @@ class PTBTelegramAdapter:
             BotCommand("ca", "Show this community's contract address"),
             BotCommand("setca", "Admins: save this community's contract address"),
             BotCommand("price", "Get live token price, market cap & liquidity"),
+            BotCommand("links", "Official website, Twitter, Telegram & TikTok"),
             BotCommand("help", "Show all commands"),
         ]
         try:

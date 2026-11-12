@@ -176,30 +176,35 @@ def ensure_knowledge_indexes(model: Optional[Any] = None) -> None:
     ]
     for project_id, doc_path in project_docs:
         index_file = Path(f"data/indexes/{project_id}/index.faiss")
+        needs_ingestion = False
         if not index_file.exists() or index_file.stat().st_size == 0:
-            if doc_path.exists():
+            needs_ingestion = True
+        elif doc_path.exists() and doc_path.stat().st_mtime > index_file.stat().st_mtime:
+            needs_ingestion = True
+
+        if needs_ingestion and doc_path.exists():
+            logger.info(
+                "Auto-Ingestion: Ingesting %s for project '%s'...",
+                doc_path,
+                project_id,
+            )
+            try:
+                res = ingest_document(filepath=doc_path, project_id=project_id, model=model)
                 logger.info(
-                    "Auto-Ingestion: FAISS index missing for '%s'. Ingesting %s...",
+                    "Auto-Ingestion: Finished '%s' (%d chunks indexed).",
                     project_id,
-                    doc_path,
+                    res.chunk_count,
                 )
-                try:
-                    res = ingest_document(filepath=doc_path, project_id=project_id, model=model)
-                    logger.info(
-                        "Auto-Ingestion: Finished '%s' (%d chunks indexed).",
-                        project_id,
-                        res.chunk_count,
-                    )
-                except Exception as exc:
-                    logger.error("Auto-Ingestion: Failed to ingest %s for '%s': %s", doc_path, project_id, exc)
-            else:
-                logger.warning(
-                    "Auto-Ingestion: Knowledge doc %s not found for '%s'. Skipping.",
-                    doc_path,
-                    project_id,
-                )
+            except Exception as exc:
+                logger.error("Auto-Ingestion: Failed to ingest %s for '%s': %s", doc_path, project_id, exc)
+        elif not doc_path.exists() and not index_file.exists():
+            logger.warning(
+                "Auto-Ingestion: Knowledge doc %s not found for '%s'. Skipping.",
+                doc_path,
+                project_id,
+            )
         else:
-            logger.info("Knowledge index exists for project '%s' (%d bytes).", project_id, index_file.stat().st_size)
+            logger.info("Knowledge index exists and is up to date for project '%s' (%d bytes).", project_id, index_file.stat().st_size)
 
 
 def discover_projects(config_dir: str = "config/projects") -> List[str]:

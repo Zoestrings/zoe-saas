@@ -350,8 +350,8 @@ def get_recent_group_messages(
             if target_group_id and str(target_group_id).strip():
                 cur = conn_op.execute(
                     """
-                    SELECT id, text, pseudonymous_user_id, group_id, timestamp FROM (
-                        SELECT id, text, pseudonymous_user_id, group_id, timestamp
+                    SELECT id, text, pseudonymous_user_id, group_id, message_timestamp FROM (
+                        SELECT id, text, pseudonymous_user_id, group_id, message_timestamp
                         FROM inbox_messages
                         WHERE project_id = ?
                           AND (group_id = ? OR group_id LIKE '-%')
@@ -365,8 +365,8 @@ def get_recent_group_messages(
             else:
                 cur = conn_op.execute(
                     """
-                    SELECT id, text, pseudonymous_user_id, group_id, timestamp FROM (
-                        SELECT id, text, pseudonymous_user_id, group_id, timestamp
+                    SELECT id, text, pseudonymous_user_id, group_id, message_timestamp FROM (
+                        SELECT id, text, pseudonymous_user_id, group_id, message_timestamp
                         FROM inbox_messages
                         WHERE project_id = ?
                           AND group_id LIKE '-%'

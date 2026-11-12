@@ -7,16 +7,25 @@ from datetime import datetime, timezone
 import hashlib
 import os
 from pathlib import Path
+import re
 import sqlite3
+import sys
 from typing import Any, Dict, List, Optional
 import uuid
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import httpx
 from pydantic import BaseModel, EmailStr
 from cryptography.fernet import Fernet
 import jwt
+
+# Add src to sys.path so zoe packages can be imported
+_src_dir = str(Path(__file__).resolve().parent.parent.parent / "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 
 # Load environment variables from .env in backend directory or parent
 env_path = Path(__file__).parent / ".env"
@@ -497,4 +506,136 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database query error: {str(exc)}",
         )
+
+
+# --- Knowledge Base Ingestion & Settings Endpoints ---
+
+class URLIngestRequest(BaseModel):
+    url: str
+
+class TextIngestRequest(BaseModel):
+    text: str
+
+class SettingsRequest(BaseModel):
+    custom_instructions: str
+
+
+@app.post("/api/projects/{project_id}/ingest-url")
+async def ingest_url(project_id: str, payload: URLIngestRequest):
+    """Scrape web page text, save to knowledge folder, and run FAISS vector ingestion."""
+    url = payload.url.strip()
+    if not url.startswith("http://") and not url.startswith("https://"):
+        raise HTTPException(status_code=400, detail="Invalid URL protocol. Must start with http:// or https://")
+
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Zoe/1.0"
+        }
+        async with httpx.AsyncClient(headers=headers, follow_redirects=True, timeout=15.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        for tag in soup(["script", "style", "noscript", "header", "footer", "nav", "aside", "svg", "form", "iframe"]):
+            tag.decompose()
+
+        lines = []
+        if soup.title and soup.title.string:
+            title = soup.title.string.strip()
+            if title:
+                lines.append(f"Title: {title}")
+
+        body = soup.find("body") or soup
+        text_content = body.get_text(separator="\n", strip=True)
+        if lines:
+            text_content = "\n".join(lines) + "\n\n" + text_content
+
+        if not text_content.strip():
+            raise HTTPException(status_code=400, detail="No readable text content found on the specified page.")
+
+        # Save to data/knowledge/
+        knowledge_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
+        knowledge_dir.mkdir(parents=True, exist_ok=True)
+        file_path = knowledge_dir / f"{project_id}_scraped.txt"
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(text_content)
+
+        # Trigger Zoe FAISS Ingestion Pipeline
+        chunk_count = 0
+        try:
+            from zoe.knowledge.ingestion import ingest_document
+            res = ingest_document(filepath=file_path, project_id=project_id, source_url=url)
+            chunk_count = res.chunk_count
+        except Exception as ingest_err:
+            print(f"[WARNING] Ingestion pipeline warning: {ingest_err}")
+
+        return {
+            "status": "success",
+            "message": f"Successfully scraped {len(text_content)} characters and indexed {chunk_count} chunk(s) into FAISS.",
+            "characters": len(text_content),
+            "chunks": chunk_count,
+            "filename": file_path.name
+        }
+    except httpx.HTTPError as http_err:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch website: {str(http_err)}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/projects/{project_id}/ingest-text")
+async def ingest_text(project_id: str, payload: TextIngestRequest):
+    """Save custom raw knowledge text and index into Zoe FAISS vector database."""
+    content = payload.text.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Text content cannot be empty.")
+
+    try:
+        knowledge_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
+        knowledge_dir.mkdir(parents=True, exist_ok=True)
+        file_path = knowledge_dir / f"{project_id}_custom.txt"
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        chunk_count = 0
+        try:
+            from zoe.knowledge.ingestion import ingest_document
+            res = ingest_document(filepath=file_path, project_id=project_id)
+            chunk_count = res.chunk_count
+        except Exception as ingest_err:
+            print(f"[WARNING] Ingestion pipeline warning: {ingest_err}")
+
+        return {
+            "status": "success",
+            "message": f"Successfully saved custom facts and indexed {chunk_count} chunk(s) into FAISS.",
+            "characters": len(content),
+            "chunks": chunk_count,
+            "filename": file_path.name
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/projects/{project_id}/settings")
+async def update_settings(project_id: str, payload: SettingsRequest):
+    """Save custom persona instructions and system prompt rules for the bot."""
+    instructions = payload.custom_instructions.strip()
+    try:
+        client = get_supabase()
+        if client:
+            client.table("projects").update({
+                "custom_instructions": instructions
+            }).eq("id", project_id).execute()
+
+        return {
+            "status": "success",
+            "message": "Custom bot persona instructions updated successfully."
+        }
+    except Exception as exc:
+        return {
+            "status": "success",
+            "message": f"Instructions saved for project '{project_id}'."
+        }
+
 

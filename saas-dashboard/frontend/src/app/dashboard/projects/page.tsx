@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 import { 
   Bot, 
   Plus, 
@@ -11,7 +12,9 @@ import {
   Calendar,
   ExternalLink,
   Copy,
-  Check
+  Check,
+  BrainCircuit,
+  ArrowRight
 } from "lucide-react"
 import { 
   Table, 
@@ -313,30 +316,13 @@ export default function ProjectsPage() {
 
               <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                 <span>Group ID: <strong className="font-mono text-slate-700 font-medium">{fleet.group}</strong></span>
-                {fleet.socials && Object.keys(fleet.socials).length > 0 && (
-                  <div className="flex items-center gap-2">
-                    {fleet.socials.telegram && (
-                      <a 
-                        href={fleet.socials.telegram} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="text-slate-500 hover:text-slate-900 text-xs font-medium inline-flex items-center gap-0.5"
-                      >
-                        Telegram <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
-                    {fleet.socials.twitter && (
-                      <a 
-                        href={fleet.socials.twitter} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="text-slate-500 hover:text-slate-900 text-xs font-medium inline-flex items-center gap-0.5"
-                      >
-                        X <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
-                  </div>
-                )}
+                <Link
+                  href={`/projects/${fleet.id}`}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-medium transition-colors cursor-pointer"
+                >
+                  <BrainCircuit className="h-3 w-3" />
+                  Train & Scrape
+                </Link>
               </div>
             </Card>
           ))}

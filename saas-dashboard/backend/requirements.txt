@@ -6,4 +6,4 @@ cryptography
 pydantic
 pytest
 httpx
-
+beautifulsoup4

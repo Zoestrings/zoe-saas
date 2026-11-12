@@ -508,7 +508,7 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
         )
 
 
-# --- Knowledge Base Ingestion & Settings Endpoints ---
+# --- Knowledge Base Ingestion & Document Management Endpoints ---
 
 class URLIngestRequest(BaseModel):
     url: str
@@ -520,9 +520,106 @@ class SettingsRequest(BaseModel):
     custom_instructions: str
 
 
+def _get_project_knowledge_files(project_id: str, knowledge_dir: Path) -> List[Path]:
+    """Helper to match knowledge files belonging to a project."""
+    if not knowledge_dir.exists():
+        return []
+    
+    # Prefix variants (e.g., live_test maps to hummingbird_info.txt as well)
+    prefixes = [project_id.lower()]
+    if project_id.lower() in ("live_test", "hummingbird"):
+        prefixes.extend(["live_test", "hummingbird"])
+    elif project_id.lower() in ("onelove", "one_love"):
+        prefixes.extend(["onelove", "one_love"])
+
+    matched: List[Path] = []
+    for f in knowledge_dir.glob("*.txt"):
+        if f.name.endswith("_instructions.txt"):
+            continue
+        fname_lower = f.name.lower()
+        if any(fname_lower.startswith(p) for p in prefixes):
+            matched.append(f)
+    return sorted(matched, key=lambda x: x.stat().st_mtime, reverse=True)
+
+
+@app.get("/api/projects/{project_id}/documents")
+async def list_documents(project_id: str):
+    """Scan data/knowledge/ and return all knowledge documents belonging to this project."""
+    knowledge_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
+    files = _get_project_knowledge_files(project_id, knowledge_dir)
+    
+    docs = []
+    for f in files:
+        stat = f.stat()
+        try:
+            content = f.read_text(encoding="utf-8")
+            char_count = len(content)
+        except Exception:
+            char_count = stat.st_size
+
+        docs.append({
+            "filename": f.name,
+            "size_bytes": stat.st_size,
+            "char_count": char_count,
+            "updated_at": datetime.fromtimestamp(stat.st_mtime, timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "is_default": f.name in ("onelove_info.txt", "hummingbird_info.txt")
+        })
+
+    return {"project_id": project_id, "documents": docs, "total": len(docs)}
+
+
+@app.delete("/api/projects/{project_id}/documents/{filename}")
+async def delete_document(project_id: str, filename: str):
+    """Delete a document file from data/knowledge/ and immediately rebuild the project's FAISS index."""
+    # Prevent directory traversal
+    safe_filename = Path(filename).name
+    if not safe_filename.endswith(".txt"):
+        raise HTTPException(status_code=400, detail="Invalid filename. Only .txt knowledge files can be removed.")
+
+    knowledge_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
+    target_file = knowledge_dir / safe_filename
+
+    if not target_file.exists():
+        raise HTTPException(status_code=404, detail=f"Document '{safe_filename}' not found.")
+
+    # Remove file from disk
+    try:
+        target_file.unlink()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to delete file from disk: {exc}")
+
+    # Remove from official_knowledge.db and rebuild FAISS index
+    rebuild_error = None
+    try:
+        from zoe.db.connections import open_official_knowledge_db
+        from zoe.knowledge.ingestion import rebuild_faiss_index
+
+        db_path = Path(__file__).resolve().parent.parent.parent / "data" / "official_knowledge" / "official_knowledge.db"
+        if db_path.exists():
+            conn = open_official_knowledge_db(db_path)
+            try:
+                conn.execute(
+                    "DELETE FROM official_documents WHERE project_id = ? AND filename = ?",
+                    (project_id, safe_filename),
+                )
+                conn.commit()
+                index_dir = Path(__file__).resolve().parent.parent.parent / "data" / "indexes"
+                rebuild_faiss_index(project_id, conn, index_dir=index_dir)
+            finally:
+                conn.close()
+    except Exception as exc:
+        rebuild_error = str(exc)
+
+    return {
+        "status": "success",
+        "message": f"Document '{safe_filename}' deleted and FAISS index rebuilt.",
+        "rebuild_warning": rebuild_error
+    }
+
+
 @app.post("/api/projects/{project_id}/ingest-url")
 async def ingest_url(project_id: str, payload: URLIngestRequest):
-    """Scrape web page text, save to knowledge folder, and run FAISS vector ingestion."""
+    """Scrape web page text, save to knowledge folder, and immediately rebuild FAISS vector index."""
     url = payload.url.strip()
     if not url.startswith("http://") and not url.startswith("https://"):
         raise HTTPException(status_code=400, detail="Invalid URL protocol. Must start with http:// or https://")
@@ -553,19 +650,23 @@ async def ingest_url(project_id: str, payload: URLIngestRequest):
         if not text_content.strip():
             raise HTTPException(status_code=400, detail="No readable text content found on the specified page.")
 
-        # Save to data/knowledge/
+        # Save to data/knowledge/ with timestamp
         knowledge_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
         knowledge_dir.mkdir(parents=True, exist_ok=True)
-        file_path = knowledge_dir / f"{project_id}_scraped.txt"
+        timestamp_slug = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        filename = f"{project_id}_web_{timestamp_slug}.txt"
+        file_path = knowledge_dir / filename
 
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(text_content)
 
-        # Trigger Zoe FAISS Ingestion Pipeline
+        # Trigger Zoe FAISS Ingestion Pipeline immediately
         chunk_count = 0
         try:
             from zoe.knowledge.ingestion import ingest_document
-            res = ingest_document(filepath=file_path, project_id=project_id, source_url=url)
+            db_path = Path(__file__).resolve().parent.parent.parent / "data" / "official_knowledge" / "official_knowledge.db"
+            index_dir = Path(__file__).resolve().parent.parent.parent / "data" / "indexes"
+            res = ingest_document(filepath=file_path, project_id=project_id, db_path=db_path, index_dir=index_dir, source_url=url)
             chunk_count = res.chunk_count
         except Exception as ingest_err:
             print(f"[WARNING] Ingestion pipeline warning: {ingest_err}")
@@ -575,7 +676,7 @@ async def ingest_url(project_id: str, payload: URLIngestRequest):
             "message": f"Successfully scraped {len(text_content)} characters and indexed {chunk_count} chunk(s) into FAISS.",
             "characters": len(text_content),
             "chunks": chunk_count,
-            "filename": file_path.name
+            "filename": filename
         }
     except httpx.HTTPError as http_err:
         raise HTTPException(status_code=502, detail=f"Failed to fetch website: {str(http_err)}")
@@ -585,7 +686,7 @@ async def ingest_url(project_id: str, payload: URLIngestRequest):
 
 @app.post("/api/projects/{project_id}/ingest-text")
 async def ingest_text(project_id: str, payload: TextIngestRequest):
-    """Save custom raw knowledge text and index into Zoe FAISS vector database."""
+    """Save custom raw knowledge text and immediately rebuild Zoe FAISS vector database."""
     content = payload.text.strip()
     if not content:
         raise HTTPException(status_code=400, detail="Text content cannot be empty.")
@@ -593,7 +694,9 @@ async def ingest_text(project_id: str, payload: TextIngestRequest):
     try:
         knowledge_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
         knowledge_dir.mkdir(parents=True, exist_ok=True)
-        file_path = knowledge_dir / f"{project_id}_custom.txt"
+        timestamp_slug = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        filename = f"{project_id}_update_{timestamp_slug}.txt"
+        file_path = knowledge_dir / filename
 
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
@@ -601,41 +704,82 @@ async def ingest_text(project_id: str, payload: TextIngestRequest):
         chunk_count = 0
         try:
             from zoe.knowledge.ingestion import ingest_document
-            res = ingest_document(filepath=file_path, project_id=project_id)
+            db_path = Path(__file__).resolve().parent.parent.parent / "data" / "official_knowledge" / "official_knowledge.db"
+            index_dir = Path(__file__).resolve().parent.parent.parent / "data" / "indexes"
+            res = ingest_document(filepath=file_path, project_id=project_id, db_path=db_path, index_dir=index_dir)
             chunk_count = res.chunk_count
         except Exception as ingest_err:
             print(f"[WARNING] Ingestion pipeline warning: {ingest_err}")
 
         return {
             "status": "success",
-            "message": f"Successfully saved custom facts and indexed {chunk_count} chunk(s) into FAISS.",
+            "message": f"Successfully injected facts and indexed {chunk_count} chunk(s) into FAISS.",
             "characters": len(content),
             "chunks": chunk_count,
-            "filename": file_path.name
+            "filename": filename
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.get("/api/projects/{project_id}/settings")
+async def get_settings(project_id: str):
+    """Retrieve custom persona instructions and system rules for the bot."""
+    instructions = ""
+    # 1. Check local file on disk
+    inst_file = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge" / f"{project_id}_instructions.txt"
+    if inst_file.exists():
+        try:
+            instructions = inst_file.read_text(encoding="utf-8")
+        except Exception:
+            pass
+
+    # 2. Check Supabase if available
+    if not instructions:
+        try:
+            client = get_supabase()
+            if client:
+                res = client.table("projects").select("custom_instructions").eq("id", project_id).execute()
+                if res.data and len(res.data) > 0:
+                    instructions = res.data[0].get("custom_instructions") or ""
+        except Exception:
+            pass
+
+    return {
+        "project_id": project_id,
+        "custom_instructions": instructions
+    }
 
 
 @app.post("/api/projects/{project_id}/settings")
 async def update_settings(project_id: str, payload: SettingsRequest):
     """Save custom persona instructions and system prompt rules for the bot."""
     instructions = payload.custom_instructions.strip()
+    
+    # 1. Save to local file so pipeline picks it up immediately
+    try:
+        inst_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
+        inst_dir.mkdir(parents=True, exist_ok=True)
+        inst_file = inst_dir / f"{project_id}_instructions.txt"
+        with open(inst_file, "w", encoding="utf-8") as f:
+            f.write(instructions)
+    except Exception as exc:
+        print(f"[WARNING] Failed to write instructions file: {exc}")
+
+    # 2. Sync to Supabase
     try:
         client = get_supabase()
         if client:
             client.table("projects").update({
                 "custom_instructions": instructions
             }).eq("id", project_id).execute()
+    except Exception:
+        pass
 
-        return {
-            "status": "success",
-            "message": "Custom bot persona instructions updated successfully."
-        }
-    except Exception as exc:
-        return {
-            "status": "success",
-            "message": f"Instructions saved for project '{project_id}'."
-        }
+    return {
+        "status": "success",
+        "message": "Custom bot persona instructions updated successfully and active immediately."
+    }
+
 
 

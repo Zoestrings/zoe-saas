@@ -104,6 +104,18 @@ def get_project_system_prompt(
         f"you must reply: 'I only manage data for {proj_name}. I don't have specific info on that other token.' "
         f"Do not hallucinate data for other projects."
     )
+
+    # Dynamically inject custom persona instructions if configured via the SaaS dashboard
+    custom_inst_file = Path("data/knowledge") / f"{project_id}_instructions.txt"
+    if custom_inst_file.exists():
+        try:
+            with open(custom_inst_file, "r", encoding="utf-8") as f:
+                user_instructions = f.read().strip()
+            if user_instructions:
+                boundary_rule += f"\n\nCustom Project Instructions & Persona Rules:\n{user_instructions}"
+        except Exception:
+            pass
+
     return f"{base}{boundary_rule}"
 
 

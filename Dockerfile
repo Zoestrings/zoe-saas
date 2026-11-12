@@ -31,6 +31,7 @@ COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY config/ ./config/
 COPY docs/ ./docs/
+COPY data/knowledge/ ./data/knowledge/
 COPY saas-dashboard/backend/ ./saas-dashboard/backend/
 
 EXPOSE 8000

@@ -11,6 +11,7 @@ import sys
 from typing import Any, Dict, List, Optional
 
 from zoe.db.connections import (
+    ensure_databases_initialized,
     open_community_memory_db,
     open_official_knowledge_db,
     open_operational_db,
@@ -165,6 +166,42 @@ async def run_bot_worker(bot: BotInstance, shutdown_event: asyncio.Event) -> Non
     logger.info("Bot worker stopped cleanly for project '%s'.", bot.project_id)
 
 
+def ensure_knowledge_indexes(model: Optional[Any] = None) -> None:
+    """Auto-ingest project knowledge if FAISS index files do not exist."""
+    from zoe.knowledge.ingestion import ingest_document
+
+    project_docs = [
+        ("onelove", Path("data/knowledge/onelove_info.txt")),
+        ("live_test", Path("data/knowledge/hummingbird_info.txt")),
+    ]
+    for project_id, doc_path in project_docs:
+        index_file = Path(f"data/indexes/{project_id}/index.faiss")
+        if not index_file.exists() or index_file.stat().st_size == 0:
+            if doc_path.exists():
+                logger.info(
+                    "Auto-Ingestion: FAISS index missing for '%s'. Ingesting %s...",
+                    project_id,
+                    doc_path,
+                )
+                try:
+                    res = ingest_document(filepath=doc_path, project_id=project_id, model=model)
+                    logger.info(
+                        "Auto-Ingestion: Finished '%s' (%d chunks indexed).",
+                        project_id,
+                        res.chunk_count,
+                    )
+                except Exception as exc:
+                    logger.error("Auto-Ingestion: Failed to ingest %s for '%s': %s", doc_path, project_id, exc)
+            else:
+                logger.warning(
+                    "Auto-Ingestion: Knowledge doc %s not found for '%s'. Skipping.",
+                    doc_path,
+                    project_id,
+                )
+        else:
+            logger.info("Knowledge index exists for project '%s' (%d bytes).", project_id, index_file.stat().st_size)
+
+
 def discover_projects(config_dir: str = "config/projects") -> List[str]:
     """Scan directory for valid project configuration files."""
     path = Path(config_dir)
@@ -189,6 +226,9 @@ async def start_orchestrator(
     set_current_project("orchestrator")
     logger.info("Starting Zoe Multi-Tenant Bot Orchestrator...")
 
+    # 0. Auto-initialize SQLite databases and apply schemas if missing
+    ensure_databases_initialized("data")
+
     # 1. Discover all project configs
     all_projects = discover_projects(config_dir)
     if project_filter:
@@ -206,6 +246,9 @@ async def start_orchestrator(
         logger.info("Pre-warming shared singleton embedding model...")
         model = prewarm_model()
         logger.info("Shared embedding model ready in RAM.")
+
+    # 2b. Auto-Ingest Knowledge if FAISS indexes are missing on cold start
+    ensure_knowledge_indexes(model=model)
 
     # 3. Setup shutdown coordinator
     shutdown_event = asyncio.Event()

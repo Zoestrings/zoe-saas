@@ -119,3 +119,20 @@ def open_community_memory_db(path: Union[str, Path]) -> sqlite3.Connection:
     except Exception:
         pass
     return conn
+
+
+def ensure_databases_initialized(base_dir: Union[str, Path] = "data") -> None:
+    """Check and ensure that operational, knowledge, and community SQLite databases exist with schemas applied."""
+    base = Path(base_dir)
+    op_path = base / "operational" / "operational.db"
+    kb_path = base / "official_knowledge" / "official_knowledge.db"
+    mem_path = base / "community_memory" / "community_memory.db"
+
+    logger.info("Verifying and auto-initializing SQLite databases...")
+    conn1 = open_operational_db(op_path)
+    conn1.close()
+    conn2 = open_official_knowledge_db(kb_path)
+    conn2.close()
+    conn3 = open_community_memory_db(mem_path)
+    conn3.close()
+    logger.info("SQLite databases verified at operational.db, official_knowledge.db, and community_memory.db.")

@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 
 from zoe.db.connections import (
+    ensure_databases_initialized,
     open_operational_db,
     open_official_knowledge_db,
     open_community_memory_db,
@@ -24,6 +25,7 @@ def init_operational_db(conn, schema_path: Path) -> None:
 
 
 def main(project_id: str = "example_project") -> int:
+    ensure_databases_initialized("data")
     config = load_project_config(project_id)
     secrets = load_project_secrets(project_id)
     validate_config(config, secrets)

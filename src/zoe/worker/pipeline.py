@@ -872,8 +872,12 @@ def process_message(
             rag_failed = (not official_chunks) or (rag_score < 0.25)
 
             # Step 3: Web Search Fallback if RAG fails (score < 0.25)
+            # Force Web Search OFF for Project Facts:
+            # If the intent is a project_question / knowledge query, strictly use RAG.
+            # Never search the web for project facts (founders, contract, tokenomics) to prevent
+            # DuckDuckGo from returning unrelated tech billionaires or incorrect external entities.
             web_results: List[Dict[str, str]] = []
-            if rag_failed and not enforce_accuracy_guard:
+            if rag_failed and not enforce_accuracy_guard and not is_project_question:
                 logger.info(
                     "RAG retrieval below threshold 0.25 (score=%.3f) for query: '%s'. Executing DuckDuckGo web search fallback.",
                     rag_score,
@@ -885,6 +889,12 @@ def process_message(
                 except Exception as exc:
                     logger.warning("Web search fallback failed for '%s': %s", norm_msg.text, exc)
                     web_results = []
+            elif rag_failed and is_project_question:
+                logger.info(
+                    "Project question RAG retrieval below threshold 0.25 (score=%.3f) for '%s'. Web search fallback forced OFF for project facts.",
+                    rag_score,
+                    norm_msg.text,
+                )
 
             # Step 4: Generate response using LLM (injecting official docs or web results)
             use_guard = (

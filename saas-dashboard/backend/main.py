@@ -69,6 +69,19 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+@app.on_event("startup")
+def on_startup() -> None:
+    """Ensure runtime databases and schemas are initialized on cold start."""
+    try:
+        from zoe.db.connections import ensure_databases_initialized
+        data_dir = Path(__file__).resolve().parent.parent.parent / "data"
+        if not data_dir.exists():
+            data_dir = Path("data")
+        ensure_databases_initialized(data_dir)
+    except Exception:
+        pass
+
 # Configure CORS
 origins = [
     "http://localhost:3000",

@@ -2,7 +2,10 @@
 *.env
 saas-dashboard/backend/.env
 config/secrets/*.secrets.yaml
-data/
+data/*
+!data/knowledge/
+!data/knowledge/**
+data/tmp/
 .venv/
 .venv-spike/
 __pycache__/

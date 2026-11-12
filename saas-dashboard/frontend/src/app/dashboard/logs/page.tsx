@@ -2,153 +2,104 @@
 
 import { useState } from "react"
 import { 
-  MessageSquareCode, 
-  ShieldCheck, 
   Search, 
-  Filter, 
-  Activity, 
-  Terminal, 
-  Play, 
-  Pause, 
   RefreshCw,
-  CheckCircle2,
   Clock,
-  Zap,
-  Radio,
-  FileText
+  CheckCircle2,
+  Filter
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 
 interface LogItem {
   id: string
   timestamp: string
   project: string
-  intent: string
-  category: "rag" | "price" | "safety" | "system"
+  category: "Knowledge" | "Price" | "Safety" | "System"
   message: string
   latency: string
-  status: "success" | "guard" | "verified" | "neutral"
+  status: "Success" | "Active" | "Verified"
 }
 
 export default function DashboardLogsPage() {
   const [filter, setFilter] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState<string>("")
-  const [isStreaming, setIsStreaming] = useState<boolean>(true)
 
   const logs: LogItem[] = [
     {
       id: "log-1",
-      timestamp: "2026-11-12 11:46:54",
-      project: "onelove",
-      intent: "command_links",
-      category: "rag",
-      message: "Incoming /links command: generated inline buttons for Twitter, Telegram, TikTok & Website.",
+      timestamp: "11:46:54",
+      project: "One Love",
+      category: "Knowledge",
+      message: "Resolved /links command: generated official inline links for Twitter, Telegram, TikTok & Website.",
       latency: "14ms",
-      status: "verified"
+      status: "Verified"
     },
     {
       id: "log-2",
-      timestamp: "2026-11-12 11:46:53",
-      project: "onelove",
-      intent: "knowledge",
-      category: "rag",
-      message: "Query: 'Who is the founder of One Love?' -> FAISS vector recall hit: 'Captain Robert Olson (Robbie Olson)'.",
+      timestamp: "11:46:53",
+      project: "One Love",
+      category: "Knowledge",
+      message: "Query: 'Who is the founder of One Love?' -> Retrieved answer: 'Captain Robbie Olson' via FAISS index.",
       latency: "182ms",
-      status: "success"
+      status: "Success"
     },
     {
       id: "log-3",
-      timestamp: "2026-11-12 11:46:52",
-      project: "onelove",
-      intent: "auto_ingest",
-      category: "system",
-      message: "Auto-Ingestion complete: Rebuilt FAISS index at data/indexes/onelove/index.faiss (5 chunks indexed).",
-      latency: "840ms",
-      status: "success"
+      timestamp: "11:46:21",
+      project: "One Love",
+      category: "Price",
+      message: "Market inquiry on $ONELOVE -> DexScreener live price scan generated inline chart buttons.",
+      latency: "340ms",
+      status: "Success"
     },
     {
       id: "log-4",
-      timestamp: "2026-11-12 11:46:50",
-      project: "live_test",
-      intent: "auto_ingest",
-      category: "system",
-      message: "Auto-Ingestion complete: data/knowledge/hummingbird_info.txt indexed (2 chunks).",
-      latency: "410ms",
-      status: "success"
+      timestamp: "11:45:10",
+      project: "System",
+      category: "Safety",
+      message: "Outbound message passed URL allowlist filter (onelovesailingcoin.com & tiktok.com).",
+      latency: "2ms",
+      status: "Verified"
     },
     {
       id: "log-5",
-      timestamp: "2026-11-12 11:46:46",
-      project: "system",
-      intent: "bootstrap",
-      category: "system",
-      message: "SQLite database bootstrap: operational.db, official_knowledge.db, and community_memory.db schemas verified.",
-      latency: "25ms",
-      status: "success"
+      timestamp: "11:44:02",
+      project: "System",
+      category: "System",
+      message: "Multi-tenant polling update: processed update offset receipt in operational.db.",
+      latency: "8ms",
+      status: "Active"
     },
     {
       id: "log-6",
-      timestamp: "2026-11-12 11:46:40",
-      project: "onelove",
-      intent: "command_price",
-      category: "price",
-      message: "CA scanner query for F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon -> DexScreener Raydium pool synced.",
-      latency: "195ms",
-      status: "verified"
-    },
-    {
-      id: "log-7",
-      timestamp: "2026-11-12 11:46:35",
-      project: "onelove",
-      intent: "safety_check",
-      category: "safety",
-      message: "Safety filter evaluated: Whitelisted domains verified (onelovesailingcoin.com, tiktok.com, x.com, t.me). Zero prompt injections detected.",
-      latency: "8ms",
-      status: "verified"
-    },
-    {
-      id: "log-8",
-      timestamp: "2026-11-12 11:46:20",
-      project: "onelove",
-      intent: "accuracy_guard",
-      category: "rag",
-      message: "Forced Web Search OFF for Project Facts: Unindexed query intercepted by Fail-Closed Accuracy Guard.",
-      latency: "15ms",
-      status: "guard"
+      timestamp: "11:43:18",
+      project: "Hummingbird",
+      category: "System",
+      message: "Cross-chat awareness check completed for active Telegram discussion topic.",
+      latency: "24ms",
+      status: "Success"
     }
   ]
 
-  const filteredLogs = logs.filter((item) => {
-    if (filter !== "all" && item.category !== filter) return false
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase()
-      return (
-        item.message.toLowerCase().includes(q) ||
-        item.project.toLowerCase().includes(q) ||
-        item.intent.toLowerCase().includes(q)
-      )
-    }
-    return true
+  const filteredLogs = logs.filter((log) => {
+    const matchesFilter = filter === "all" || log.category.toLowerCase() === filter.toLowerCase()
+    const matchesSearch = 
+      log.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      log.project.toLowerCase().includes(searchQuery.toLowerCase())
+    return matchesFilter && matchesSearch
   })
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl lg:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
-              <Terminal className="h-7 w-7 text-cyan-400" />
-              Live Telemetry & Conversation Logs
-            </h1>
-            <Badge className="bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 text-[10px] font-mono">
-              Real-Time WebSocket
-            </Badge>
-          </div>
-          <p className="text-xs text-slate-400 mt-1">
-            Real-time audit stream of Telegram updates, FAISS vector retrievals, CA scans, and fail-closed safety validations.
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Activity Logs
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Real-time audit stream of agent queries, knowledge retrievals, and safety checks.
           </p>
         </div>
 
@@ -156,124 +107,87 @@ export default function DashboardLogsPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => setIsStreaming(!isStreaming)}
-            className="border-slate-800 bg-slate-900/60 hover:bg-slate-800 text-slate-300 text-xs gap-1.5 cursor-pointer"
+            onClick={() => {}}
+            className="border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs h-9"
           >
-            {isStreaming ? (
-              <>
-                <Pause className="h-3.5 w-3.5 text-amber-400" />
-                <span>Pause Stream</span>
-              </>
-            ) : (
-              <>
-                <Play className="h-3.5 w-3.5 text-emerald-400" />
-                <span>Resume Stream</span>
-              </>
-            )}
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Refresh
           </Button>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#090d16] p-4 rounded-2xl border border-slate-800/80">
-        {/* Category Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-          {[
-            { id: "all", label: "All Logs" },
-            { id: "rag", label: "Knowledge / RAG" },
-            { id: "price", label: "CA Scanners" },
-            { id: "safety", label: "Safety Shield" },
-            { id: "system", label: "Orchestrator Core" },
-          ].map((cat) => (
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Filter logs by keyword or project..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-white border border-slate-200 rounded-md pl-9 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {["all", "Knowledge", "Price", "Safety", "System"].map((cat) => (
             <button
-              key={cat.id}
-              onClick={() => setFilter(cat.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
-                filter === cat.id
-                  ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent"
+              key={cat}
+              onClick={() => setFilter(cat)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                filter === cat
+                  ? "bg-slate-900 text-white"
+                  : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
               }`}
             >
-              {cat.label}
+              {cat === "all" ? "All Logs" : cat}
             </button>
           ))}
         </div>
-
-        {/* Search input */}
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search log output..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
-          />
-        </div>
       </div>
 
-      {/* Terminal View Card */}
-      <div className="glass-card rounded-2xl border border-slate-800/90 shadow-2xl overflow-hidden">
-        {/* Terminal Header Bar */}
-        <div className="h-10 bg-slate-950/90 px-4 border-b border-slate-800/80 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-rose-500/80" />
-            <span className="h-2.5 w-2.5 rounded-full bg-amber-500/80" />
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/80" />
-            <span className="text-[11px] font-mono text-slate-500 ml-2">telemetry@zoe-orchestrator:~# live-tail</span>
-          </div>
-
-          <div className="flex items-center gap-3 text-[11px] font-mono text-slate-400">
-            <span className="flex items-center gap-1">
-              <Radio className="h-3 w-3 text-emerald-400 animate-pulse" />
-              Connected
-            </span>
-            <span className="text-slate-600">|</span>
-            <span>{filteredLogs.length} events logged</span>
-          </div>
-        </div>
-
-        {/* Log Entries Stream */}
-        <div className="p-4 divide-y divide-slate-850/50 max-h-[600px] overflow-y-auto font-mono text-xs">
+      {/* Clean Log Table */}
+      <Card className="enterprise-card border border-slate-200 shadow-sm bg-white overflow-hidden">
+        <div className="divide-y divide-slate-100">
           {filteredLogs.map((log) => (
-            <div key={log.id} className="py-3 px-2 hover:bg-slate-900/40 transition-colors rounded-lg flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex items-start md:items-center gap-3 flex-1 min-w-0">
-                <span className="text-[10px] text-slate-500 whitespace-nowrap">
+            <div key={log.id} className="p-4 hover:bg-slate-50/70 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-start sm:items-center gap-3">
+                <span className="font-mono text-slate-400 shrink-0 text-[11px] pt-0.5 sm:pt-0">
                   {log.timestamp}
                 </span>
 
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase ${
-                  log.category === "rag" ? "bg-cyan-950/60 text-cyan-300 border-cyan-800/60" :
-                  log.category === "price" ? "bg-indigo-950/60 text-indigo-300 border-indigo-800/60" :
-                  log.category === "safety" ? "bg-purple-950/60 text-purple-300 border-purple-800/60" :
-                  "bg-slate-900 text-slate-400 border-slate-800"
-                }`}>
+                <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
                   {log.project}
                 </span>
 
-                <span className="text-slate-300 text-xs font-sans truncate">
-                  {log.message}
+                <span className={`px-2 py-0.5 rounded text-[11px] font-medium shrink-0 ${
+                  log.category === "Knowledge" 
+                    ? "bg-blue-50 text-blue-700 border border-blue-200" 
+                    : log.category === "Safety"
+                    ? "bg-purple-50 text-purple-700 border border-purple-200"
+                    : log.category === "Price"
+                    ? "bg-amber-50 text-amber-700 border border-amber-200"
+                    : "bg-slate-100 text-slate-600 border border-slate-200"
+                }`}>
+                  {log.category}
                 </span>
+
+                <p className="text-slate-700 font-normal">
+                  {log.message}
+                </p>
               </div>
 
-              <div className="flex items-center gap-3 self-end md:self-auto flex-shrink-0">
-                <span className="text-[10px] text-slate-500">
-                  {log.latency}
-                </span>
-
-                <Badge className={`text-[9px] uppercase font-mono px-1.5 py-0 ${
-                  log.status === "verified" ? "bg-emerald-950/80 text-emerald-400 border border-emerald-800/60" :
-                  log.status === "guard" ? "bg-amber-950/80 text-amber-300 border border-amber-800/60" :
-                  log.status === "success" ? "bg-cyan-950/80 text-cyan-300 border border-cyan-800/60" :
-                  "bg-slate-900 text-slate-400 border border-slate-800"
-                }`}>
+              <div className="flex items-center gap-3 shrink-0 pl-12 sm:pl-0">
+                <span className="font-mono text-slate-400 text-[11px]">{log.latency}</span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   {log.status}
-                </Badge>
+                </span>
               </div>
             </div>
           ))}
         </div>
-      </div>
+      </Card>
     </div>
   )
 }

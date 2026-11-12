@@ -5,21 +5,13 @@ import {
   Bot, 
   Plus, 
   RefreshCw, 
-  Send, 
   ShieldCheck, 
   AlertCircle, 
   Loader2, 
-  Layers, 
   Calendar,
-  CheckCircle2,
   ExternalLink,
-  Lock,
   Copy,
-  Check,
-  TrendingUp,
-  Cpu,
-  Database,
-  Radio
+  Check
 } from "lucide-react"
 import { 
   Table, 
@@ -38,9 +30,8 @@ import {
   DialogTitle, 
   DialogTrigger 
 } from "@/components/ui/dialog"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { api, Project } from "@/lib/api"
@@ -104,22 +95,20 @@ export default function ProjectsPage() {
         telegram_group_id: groupId.trim() || undefined,
       })
 
-      // Reset form & close dialog
       setProjectName("")
       setBotToken("")
       setGroupId("")
       setIsDialogOpen(false)
 
-      // Refresh list
       await fetchProjects()
     } catch (err: any) {
-      setFormError(err.message || "Failed to register project in Supabase.")
+      setFormError(err.message || "Failed to register project.")
     } finally {
       setSubmitting(false)
     }
   }
 
-  const activeFleetNodes = [
+  const coreFleets = [
     {
       id: "onelove",
       name: "One Love AI",
@@ -129,7 +118,7 @@ export default function ProjectsPage() {
       ca: "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon",
       status: "Online",
       chunks: 5,
-      groupId: "-5214407126",
+      group: "-5214407126",
       socials: {
         twitter: "https://x.com/thecaptrobbie?s=11",
         telegram: "https://t.me/ONELOVECoinCrew",
@@ -145,7 +134,7 @@ export default function ProjectsPage() {
       ca: "0x1b44f3514812d835eb1bdb0acb33d3ff3351655c",
       status: "Online",
       chunks: 2,
-      groupId: "Verified Testnet",
+      group: "Verified Testnet",
       socials: {}
     }
   ]
@@ -164,21 +153,15 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-16">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+    <div className="space-y-8 max-w-7xl mx-auto pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl lg:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2.5">
-              <Bot className="h-7 w-7 text-cyan-400" />
-              Bot Fleets & Connected Projects
-            </h1>
-            <Badge className="bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 text-[10px] font-mono">
-              Multi-Tenant Isolated
-            </Badge>
-          </div>
-          <p className="text-xs text-slate-400 mt-1">
-            Manage your autonomous Telegram community agents, token contracts, and AES-256 encrypted credentials.
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Active Projects
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Manage your AI agents, Telegram group bindings, and secure credentials.
           </p>
         </div>
 
@@ -188,110 +171,95 @@ export default function ProjectsPage() {
             size="sm"
             onClick={fetchProjects}
             disabled={loading}
-            className="border-slate-800 bg-slate-900/60 hover:bg-slate-800 text-slate-300 text-xs cursor-pointer"
+            className="border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs h-9"
           >
-            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? "animate-spin text-cyan-400" : ""}`} />
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
 
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-gradient-to-r from-cyan-500 via-indigo-600 to-indigo-700 hover:from-cyan-400 hover:to-indigo-600 text-white font-semibold text-xs px-4 py-2 rounded-xl shadow-lg shadow-cyan-500/20 cursor-pointer">
-                <Plus className="h-4 w-4 mr-1.5" />
-                Connect New Bot
+              <Button className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 rounded-md font-medium cursor-pointer">
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                Add Project
               </Button>
             </DialogTrigger>
-
-            <DialogContent className="sm:max-w-[520px] bg-[#090d16] border-slate-800 text-slate-100 shadow-2xl rounded-2xl">
+            <DialogContent className="sm:max-w-[480px] bg-white border border-slate-200 text-slate-900 shadow-xl rounded-lg">
               <DialogHeader>
-                <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
-                  <Bot className="h-5 w-5 text-cyan-400" />
-                  Connect New Telegram Bot
+                <DialogTitle className="text-lg font-semibold text-slate-900">
+                  Register New Project
                 </DialogTitle>
-                <DialogDescription className="text-xs text-slate-400">
-                  Bot credentials are encrypted using hardware-grade AES-256 Fernet before storage in Supabase.
+                <DialogDescription className="text-xs text-slate-500">
+                  Connect a Telegram bot token. The secret is securely encrypted using AES-256 before storage.
                 </DialogDescription>
               </DialogHeader>
 
-              <form onSubmit={handleCreateProject} className="space-y-4 py-2">
-                {formError && (
-                  <div className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs">
-                    <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-rose-400" />
-                    <span>{formError}</span>
-                  </div>
-                )}
+              {formError && (
+                <div className="p-3 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="proj-name" className="text-xs font-semibold text-slate-200">
-                    Project / Bot Name *
+              <form onSubmit={handleCreateProject} className="space-y-4 pt-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="projectName" className="text-xs font-medium text-slate-700">
+                    Project Name
                   </Label>
                   <Input
-                    id="proj-name"
-                    placeholder="e.g. Solana Diamond Club ($SOLDIAMOND)"
+                    id="projectName"
+                    placeholder="e.g. Acme Community AI"
                     value={projectName}
                     onChange={(e) => setProjectName(e.target.value)}
                     required
-                    className="bg-slate-950/70 border-slate-800 text-slate-100 placeholder:text-slate-600 focus-visible:ring-cyan-500"
+                    className="bg-white border-slate-200 text-slate-900 text-xs h-9 focus:ring-1 focus:ring-slate-400"
                   />
-                  <p className="text-[11px] text-slate-500">The public brand or community identity of the bot.</p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="bot-token" className="text-xs font-semibold text-slate-200 flex items-center justify-between">
-                    <span>Telegram Bot Token *</span>
-                    <span className="text-[11px] text-cyan-400 font-mono flex items-center gap-1 font-normal">
-                      <Lock className="h-3 w-3" /> Encrypted at rest
-                    </span>
+                <div className="space-y-1.5">
+                  <Label htmlFor="botToken" className="text-xs font-medium text-slate-700">
+                    Telegram Bot Token
                   </Label>
                   <Input
-                    id="bot-token"
+                    id="botToken"
                     type="password"
-                    placeholder="e.g. 0000000000:AAFlmO4_kLqU9ZexampleTokenSecret"
+                    placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
                     value={botToken}
                     onChange={(e) => setBotToken(e.target.value)}
                     required
-                    className="bg-slate-950/70 border-slate-800 text-slate-100 placeholder:text-slate-600 font-mono text-xs focus-visible:ring-cyan-500"
+                    className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 focus:ring-1 focus:ring-slate-400"
                   />
-                  <p className="text-[11px] text-slate-500">Obtained from @BotFather in Telegram. Never logged in plaintext.</p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="group-id" className="text-xs font-semibold text-slate-200">
+                <div className="space-y-1.5">
+                  <Label htmlFor="groupId" className="text-xs font-medium text-slate-700">
                     Telegram Group ID (Optional)
                   </Label>
                   <Input
-                    id="group-id"
-                    placeholder="e.g. -1005214407126"
+                    id="groupId"
+                    placeholder="e.g. -1001234567890"
                     value={groupId}
                     onChange={(e) => setGroupId(e.target.value)}
-                    className="bg-slate-950/70 border-slate-800 text-slate-100 placeholder:text-slate-600 font-mono text-xs focus-visible:ring-cyan-500"
+                    className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 focus:ring-1 focus:ring-slate-400"
                   />
-                  <p className="text-[11px] text-slate-500">Leave blank to auto-detect from group mentions.</p>
                 </div>
 
-                <DialogFooter className="pt-4 border-t border-slate-800">
+                <DialogFooter className="pt-4 border-t border-slate-100">
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => setIsDialogOpen(false)}
-                    disabled={submitting}
-                    className="border-slate-800 bg-slate-950 hover:bg-slate-800 text-slate-300 text-xs"
+                    className="border-slate-200 text-slate-700 text-xs h-9"
                   >
                     Cancel
                   </Button>
                   <Button
                     type="submit"
                     disabled={submitting}
-                    className="bg-gradient-to-r from-cyan-500 via-indigo-600 to-indigo-700 hover:from-cyan-400 hover:to-indigo-600 text-white font-semibold text-xs shadow-md shadow-cyan-500/20 cursor-pointer"
+                    className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 font-medium"
                   >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                        Encrypting & Connecting...
-                      </>
-                    ) : (
-                      "Save & Connect Bot"
-                    )}
+                    {submitting && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                    Save Project
                   </Button>
                 </DialogFooter>
               </form>
@@ -300,229 +268,155 @@ export default function ProjectsPage() {
         </div>
       </div>
 
-      {/* Error Banner */}
-      {error && (
-        <div className="flex items-start gap-3 p-4 rounded-xl bg-rose-950/30 border border-rose-900/60 text-rose-300 text-sm">
-          <AlertCircle className="h-5 w-5 flex-shrink-0 text-rose-400 mt-0.5" />
-          <div className="flex-1">
-            <h4 className="font-semibold text-white">Connection Error</h4>
-            <p className="text-xs text-rose-300 mt-0.5">{error}</p>
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={fetchProjects}
-            className="border-rose-800 hover:bg-rose-900/50 text-xs"
-          >
-            Retry
-          </Button>
-        </div>
-      )}
-
-      {/* Section 1: Active Production Bot Fleets */}
+      {/* Core Projects Cards */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-            <Layers className="h-4 w-4 text-cyan-400" />
-            Core Orchestrator Fleets (Live 24/7)
-          </h2>
-          <Badge variant="outline" className="text-[11px] font-mono text-emerald-400 bg-emerald-950/40 border-emerald-800/40">
-            ● 2 Daemon Nodes Online
-          </Badge>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {activeFleetNodes.map((fleet) => (
-            <div 
-              key={fleet.id} 
-              className="glass-card rounded-2xl p-6 border border-slate-800/90 relative overflow-hidden transition-all hover:border-cyan-500/40 flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800/70">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-indigo-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-300 font-bold font-mono text-sm shadow-inner">
-                      {fleet.tokenSymbol.replace("$", "")}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-white text-base">{fleet.name}</h3>
-                      <p className="text-xs text-slate-400 font-mono">{fleet.botUsername}</p>
-                    </div>
-                  </div>
-                  <Badge className="bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 text-[10px] font-mono">
-                    ● {fleet.status}
-                  </Badge>
-                </div>
-
-                <div className="mt-4 space-y-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Blockchain Network</span>
-                    <span className="font-mono text-cyan-400 font-medium">{fleet.chain}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">FAISS Knowledge Base</span>
-                    <span className="font-mono text-slate-300">{fleet.chunks} chunks indexed</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-400">Telegram Group ID</span>
-                    <span className="font-mono text-slate-400 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-[11px]">
-                      {fleet.groupId}
+        <h2 className="text-base font-semibold text-slate-900">
+          Core Deployed Bots
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {coreFleets.map((fleet) => (
+            <Card key={fleet.id} className="enterprise-card border border-slate-200 shadow-sm bg-white p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-slate-900 text-sm">{fleet.name}</h3>
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      {fleet.status}
                     </span>
                   </div>
+                  <p className="text-xs text-slate-500 mt-0.5">{fleet.botUsername}</p>
                 </div>
-
-                {/* Contract Address Copy Bar */}
-                <div className="mt-4 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 truncate">
-                    <span className="text-[10px] font-mono font-bold text-slate-500 uppercase">CA:</span>
-                    <span className="font-mono text-slate-300 text-[11px] truncate max-w-[200px]">
-                      {fleet.ca}
-                    </span>
-                  </div>
-                  <button 
-                    onClick={() => copyToClipboard(fleet.ca)}
-                    className="flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-medium px-2 py-0.5 rounded bg-cyan-950/60 border border-cyan-800/50 cursor-pointer transition-colors"
-                  >
-                    {copiedCA === fleet.ca ? (
-                      <>
-                        <Check className="h-3 w-3 text-emerald-400" />
-                        <span className="text-emerald-400">Copied</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-3 w-3" />
-                        <span>Copy</span>
-                      </>
-                    )}
-                  </button>
-                </div>
+                <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded-md border border-slate-200">
+                  {fleet.tokenSymbol} · {fleet.chain}
+                </span>
               </div>
 
-              {/* Social Channels if present */}
-              {fleet.socials && Object.keys(fleet.socials).length > 0 && (
-                <div className="mt-4 pt-3 border-t border-slate-800/70 flex items-center justify-between text-[11px]">
-                  <span className="text-slate-400 font-mono text-[10px] uppercase">Official Links:</span>
-                  <div className="flex items-center gap-2 text-slate-300">
-                    <a href={fleet.socials.twitter} target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">Twitter</a>
-                    <span className="text-slate-600">·</span>
-                    <a href={fleet.socials.telegram} target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">Telegram</a>
-                    <span className="text-slate-600">·</span>
-                    <a href={fleet.socials.tiktok} target="_blank" rel="noreferrer" className="hover:text-cyan-400 transition-colors">TikTok</a>
-                  </div>
+              {/* Contract Address Box */}
+              <div className="mt-4 p-2.5 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
+                <div className="truncate text-xs font-mono text-slate-600">
+                  {fleet.ca}
                 </div>
-              )}
-            </div>
+                <button
+                  onClick={() => copyToClipboard(fleet.ca)}
+                  className="flex items-center gap-1 px-2 py-1 rounded text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors cursor-pointer"
+                  title="Copy address"
+                >
+                  {copiedCA === fleet.ca ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-600" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                  <span className="text-[11px] font-medium">{copiedCA === fleet.ca ? "Copied" : "Copy"}</span>
+                </button>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <span>Group ID: <strong className="font-mono text-slate-700 font-medium">{fleet.group}</strong></span>
+                {fleet.socials && Object.keys(fleet.socials).length > 0 && (
+                  <div className="flex items-center gap-2">
+                    {fleet.socials.telegram && (
+                      <a 
+                        href={fleet.socials.telegram} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-slate-500 hover:text-slate-900 text-xs font-medium inline-flex items-center gap-0.5"
+                      >
+                        Telegram <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                    {fleet.socials.twitter && (
+                      <a 
+                        href={fleet.socials.twitter} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-slate-500 hover:text-slate-900 text-xs font-medium inline-flex items-center gap-0.5"
+                      >
+                        X <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+            </Card>
           ))}
         </div>
       </div>
 
-      {/* Section 2: Custom Enterprise Tenant Database Table */}
-      <Card className="glass-card border-slate-800/80 rounded-2xl shadow-xl overflow-hidden">
-        <CardHeader className="border-b border-slate-800/80 pb-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-base font-bold text-white flex items-center gap-2">
-                <Database className="h-4 w-4 text-indigo-400" />
-                Custom Tenant Instances (Supabase RLS)
-              </CardTitle>
-              <CardDescription className="text-xs text-slate-400 mt-0.5">
-                Bots deployed via the web console stored with AES-256 Fernet cipher
-              </CardDescription>
-            </div>
-            <Badge variant="outline" className="text-xs font-mono bg-slate-950 border-slate-800 text-cyan-400">
-              {projects.length} Registered
-            </Badge>
-          </div>
-        </CardHeader>
+      {/* Database Registered Tenants */}
+      <div className="space-y-4">
+        <h2 className="text-base font-semibold text-slate-900">
+          Custom Registered Projects
+        </h2>
 
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="py-16 flex flex-col items-center justify-center text-slate-400 gap-3">
-              <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
-              <p className="text-xs font-medium">Querying encrypted project database...</p>
-            </div>
-          ) : projects.length === 0 ? (
-            <div className="py-12 flex flex-col items-center justify-center text-center px-4">
-              <div className="h-12 w-12 rounded-xl bg-slate-800/80 border border-slate-700/60 flex items-center justify-center text-slate-400 mb-3 shadow-inner">
-                <Bot className="h-6 w-6 text-slate-500" />
-              </div>
-              <h3 className="text-sm font-semibold text-white">No custom tenant instances yet</h3>
-              <p className="text-xs text-slate-400 max-w-sm mt-1 mb-4">
-                The core orchestrator is currently serving OneLove & Zoe Hummingbird. Click below to add a new custom community bot.
-              </p>
-              <Button
-                onClick={() => setIsDialogOpen(true)}
-                className="bg-gradient-to-r from-cyan-500 via-indigo-600 to-indigo-700 hover:from-cyan-400 hover:to-indigo-600 text-white font-semibold text-xs shadow-md shadow-cyan-500/20 cursor-pointer"
-              >
-                <Plus className="h-4 w-4 mr-1.5" />
-                Add Community Bot
-              </Button>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader className="bg-slate-950/60">
-                <TableRow className="border-slate-800 hover:bg-transparent">
-                  <TableHead className="text-xs font-semibold text-slate-400 pl-6 py-3.5">Project Name</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-400">Status</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-400">Telegram Group ID</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-400">Created At</TableHead>
-                  <TableHead className="text-xs font-semibold text-slate-400 text-right pr-6">Cipher Security</TableHead>
+        {error && (
+          <div className="p-3 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <Card className="enterprise-card border border-slate-200 shadow-sm bg-white overflow-hidden">
+          <Table>
+            <TableHeader className="bg-slate-50">
+              <TableRow className="border-b border-slate-200">
+                <TableHead className="text-xs font-semibold text-slate-600 pl-6">Project Name</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-600">Telegram Group ID</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-600">Registered</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-600 text-right pr-6">Security</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="h-32 text-center text-slate-400">
+                    <Loader2 className="h-5 w-5 animate-spin mx-auto text-slate-400 mb-2" />
+                    <span className="text-xs">Loading projects...</span>
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {projects.map((proj) => (
-                  <TableRow
-                    key={proj.id}
-                    className="border-slate-800/60 hover:bg-slate-850/40 transition-colors"
-                  >
-                    <TableCell className="font-medium text-white pl-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-lg bg-cyan-950/60 border border-cyan-800/40 flex items-center justify-center text-cyan-400 font-bold text-xs">
-                          {proj.name.slice(0, 2).toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-sm text-slate-100">{proj.name}</div>
-                          <div className="text-[11px] font-mono text-slate-500">{proj.id}</div>
-                        </div>
+              ) : projects.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="h-32 text-center text-slate-400">
+                    <p className="text-sm font-medium text-slate-600">No custom projects yet</p>
+                    <p className="text-xs text-slate-400 mt-1">Click "Add Project" above to register an additional Telegram bot.</p>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                projects.map((proj) => (
+                  <TableRow key={proj.id} className="border-b border-slate-100 hover:bg-slate-50/70 transition-colors">
+                    <TableCell className="font-medium text-slate-900 pl-6 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Bot className="h-4 w-4 text-slate-400" />
+                        <span>{proj.name}</span>
                       </div>
                     </TableCell>
 
-                    <TableCell>
-                      <Badge className="bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 text-[11px] font-medium flex items-center gap-1.5 w-fit px-2 py-0.5">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        Live / Active
-                      </Badge>
-                    </TableCell>
-
-                    <TableCell className="text-xs text-slate-300 font-mono">
-                      {proj.telegram_group_id ? (
-                        <span className="px-2 py-1 rounded bg-slate-950 border border-slate-800/80 text-slate-300">
-                          {proj.telegram_group_id}
-                        </span>
-                      ) : (
-                        <span className="text-slate-500 italic text-[11px]">Auto-routing</span>
+                    <TableCell className="text-xs text-slate-600 font-mono">
+                      {proj.telegram_group_id || (
+                        <span className="text-slate-400 italic font-sans text-xs">Auto-routing</span>
                       )}
                     </TableCell>
 
-                    <TableCell className="text-xs text-slate-400">
+                    <TableCell className="text-xs text-slate-500">
                       <div className="flex items-center gap-1.5">
-                        <Calendar className="h-3.5 w-3.5 text-slate-500" />
+                        <Calendar className="h-3.5 w-3.5 text-slate-400" />
                         {formatDate(proj.created_at)}
                       </div>
                     </TableCell>
 
                     <TableCell className="text-right pr-6">
-                      <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-cyan-950/30 border border-cyan-900/40 text-cyan-400 text-[11px] font-medium font-mono">
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                        AES-256 Fernet
-                      </div>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                        AES-256
+                      </span>
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </Card>
+      </div>
     </div>
   )
 }

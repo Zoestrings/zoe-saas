@@ -17,9 +17,16 @@ ALLOWED_TOP_LEVEL = {
     "token_address",
     "modules",
     "display_name",
+    "links",
 }
 
 ALLOWED_NESTED = {
+    "links": {
+        "website",
+        "twitter",
+        "telegram",
+        "tiktok",
+    },
     "modules": {
         "community_manager",
         "crypto_intelligence",
@@ -55,7 +62,7 @@ ALLOWED_NESTED = {
     },
     "safety": {
         "enabled", "content_filter", "max_token_length", "banned_words",
-        "pii_detection", "block_patterns"
+        "pii_detection", "block_patterns", "url_allowlist"
     },
     "escalation": {
         "acknowledgement_deadline_minutes", "channels", "admin_user_ids",

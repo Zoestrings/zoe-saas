@@ -168,49 +168,68 @@ async def run_bot_worker(bot: BotInstance, shutdown_event: asyncio.Event) -> Non
 
 def ensure_knowledge_indexes(model: Optional[Any] = None) -> None:
     """Auto-ingest project knowledge if FAISS index files do not exist."""
+    import shutil
     from zoe.knowledge.ingestion import ingest_document
     from zoe.settings import get_data_dir
 
     data_dir = get_data_dir()
     project_docs = [
-        ("onelove", data_dir / "knowledge" / "onelove_info.txt"),
-        ("live_test", data_dir / "knowledge" / "hummingbird_info.txt"),
+        ("onelove", "onelove_info.txt"),
+        ("live_test", "hummingbird_info.txt"),
     ]
-    for project_id, doc_path in project_docs:
+    for project_id, filename in project_docs:
+        target_knowledge_dir = data_dir / "knowledge"
+        target_knowledge_dir.mkdir(parents=True, exist_ok=True)
+        target_doc_path = target_knowledge_dir / filename
+
+        # Search candidates if document is missing from target volume
+        if not target_doc_path.exists():
+            candidates = [
+                Path("data/knowledge") / filename,
+                Path("/app/data/knowledge") / filename,
+                Path(__file__).resolve().parent.parent / "data" / "knowledge" / filename,
+            ]
+            for cand in candidates:
+                if cand.exists():
+                    try:
+                        shutil.copy2(cand, target_doc_path)
+                        logger.info("Auto-seeded %s to %s", cand, target_doc_path)
+                        break
+                    except Exception as copy_err:
+                        logger.warning("Could not copy %s to %s: %s", cand, target_doc_path, copy_err)
+
+        doc_path = target_doc_path if target_doc_path.exists() else None
         index_file = data_dir / "indexes" / project_id / "index.faiss"
         needs_ingestion = False
         if not index_file.exists() or index_file.stat().st_size == 0:
             needs_ingestion = True
-        elif doc_path.exists() and doc_path.stat().st_mtime > index_file.stat().st_mtime:
+        elif doc_path and doc_path.exists() and doc_path.stat().st_mtime > index_file.stat().st_mtime:
             needs_ingestion = True
 
-        if needs_ingestion and doc_path.exists():
-            logger.info(
-                "Auto-Ingestion: Ingesting %s for project '%s'...",
-                doc_path,
-                project_id,
-            )
-            try:
-                res = ingest_document(
-                    filepath=doc_path,
-                    project_id=project_id,
-                    db_path=data_dir / "official_knowledge" / "official_knowledge.db",
-                    index_dir=data_dir / "indexes",
-                    model=model,
-                )
-                logger.info(
-                    "Auto-Ingestion: Finished '%s' (%d chunks indexed).",
-                    project_id,
-                    res.chunk_count,
-                )
-            except Exception as exc:
-                logger.error("Auto-Ingestion: Failed to ingest %s for '%s': %s", doc_path, project_id, exc)
-        elif not doc_path.exists() and not index_file.exists():
-            logger.warning(
-                "Auto-Ingestion: Knowledge doc %s not found for '%s'. Skipping.",
-                doc_path,
-                project_id,
-            )
+        if needs_ingestion:
+            if doc_path and doc_path.exists():
+                msg_start = f"[INGESTION] Building FAISS index for {project_id.upper()}..."
+                print(msg_start, flush=True)
+                logger.info(msg_start)
+                try:
+                    res = ingest_document(
+                        filepath=doc_path,
+                        project_id=project_id,
+                        db_path=data_dir / "official_knowledge" / "official_knowledge.db",
+                        index_dir=data_dir / "indexes",
+                        model=model,
+                    )
+                    msg_done = f"[INGESTION] Successfully ingested {res.chunk_count} chunks for {project_id.upper()}."
+                    print(msg_done, flush=True)
+                    logger.info(msg_done)
+                except Exception as exc:
+                    msg_err = f"[INGESTION ERROR] Failed to ingest {doc_path} for '{project_id}': {exc}"
+                    print(msg_err, flush=True)
+                    logger.error(msg_err)
+            else:
+                msg_warn = f"[INGESTION WARNING] Knowledge document '{filename}' not found for '{project_id}'. Skipping index generation."
+                print(msg_warn, flush=True)
+                logger.warning(msg_warn)
         else:
             logger.info("Knowledge index exists and is up to date for project '%s' (%d bytes).", project_id, index_file.stat().st_size)
 

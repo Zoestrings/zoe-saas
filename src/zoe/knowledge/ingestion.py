@@ -1,6 +1,7 @@
 """Official knowledge ingestion, chunking, and indexing."""
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
 from typing import Any, List, Optional, Tuple, Union

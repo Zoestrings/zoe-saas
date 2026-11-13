@@ -112,7 +112,8 @@ def rebuild_faiss_index(
     if model is None:
         model = get_embedding_model()
 
-    base_dir = Path(index_dir) if index_dir else Path("data/indexes")
+    data_root = Path(os.getenv("DATA_DIR", "data"))
+    base_dir = Path(index_dir) if index_dir else (data_root / "indexes")
     index_path = base_dir / project_id / "index.faiss"
     index_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -174,7 +175,8 @@ def ingest_document(
             quarantine_reason = "Prompt injection detected in chunk content"
             break
 
-    effective_db = Path(db_path) if db_path else Path("data/official_knowledge/official_knowledge.db")
+    data_root = Path(os.getenv("DATA_DIR", "data"))
+    effective_db = Path(db_path) if db_path else (data_root / "official_knowledge" / "official_knowledge.db")
     conn = open_official_knowledge_db(effective_db)
 
     try:

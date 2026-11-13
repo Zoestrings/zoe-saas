@@ -1,6 +1,7 @@
 """Official knowledge retriever querying FAISS and SQLite."""
 
 import asyncio
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional, Union
@@ -36,7 +37,8 @@ async def search_async(
     if not query or not query.strip():
         return []
 
-    base_dir = Path(index_dir) if index_dir else Path("data/indexes")
+    data_root = Path(os.getenv("DATA_DIR", "data"))
+    base_dir = Path(index_dir) if index_dir else (data_root / "indexes")
     index_path = base_dir / project_id / "index.faiss"
 
     if not index_path.exists():
@@ -62,7 +64,7 @@ async def search_async(
     found_scores = scores[0]
     found_ids = ids[0]
 
-    effective_db = Path(db_path) if db_path else Path("data/official_knowledge/official_knowledge.db")
+    effective_db = Path(db_path) if db_path else (data_root / "official_knowledge" / "official_knowledge.db")
     conn = open_official_knowledge_db(effective_db)
 
     results: List[RetrievedChunk] = []
@@ -112,7 +114,8 @@ def search(
     if not query or not query.strip():
         return []
 
-    base_dir = Path(index_dir) if index_dir else Path("data/indexes")
+    data_root = Path(os.getenv("DATA_DIR", "data"))
+    base_dir = Path(index_dir) if index_dir else (data_root / "indexes")
     index_path = base_dir / project_id / "index.faiss"
 
     if not index_path.exists():
@@ -137,7 +140,7 @@ def search(
     found_scores = scores[0]
     found_ids = ids[0]
 
-    effective_db = Path(db_path) if db_path else Path("data/official_knowledge/official_knowledge.db")
+    effective_db = Path(db_path) if db_path else (data_root / "official_knowledge" / "official_knowledge.db")
     conn = open_official_knowledge_db(effective_db)
 
     results: List[RetrievedChunk] = []

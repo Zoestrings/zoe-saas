@@ -79,15 +79,25 @@ app = FastAPI(
 )
 
 
+def _backend_data_dir() -> Path:
+    """Return root data directory, prioritizing DATA_DIR env var (e.g. mounted Railway volume)."""
+    env_dir = os.getenv("DATA_DIR")
+    if env_dir and env_dir.strip():
+        p = Path(env_dir.strip())
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    data_dir = Path(__file__).resolve().parent.parent.parent / "data"
+    if not data_dir.exists():
+        data_dir = Path("data")
+    return data_dir
+
+
 @app.on_event("startup")
 def on_startup() -> None:
     """Ensure runtime databases and schemas are initialized on cold start."""
     try:
         from zoe.db.connections import ensure_databases_initialized
-        data_dir = Path(__file__).resolve().parent.parent.parent / "data"
-        if not data_dir.exists():
-            data_dir = Path("data")
-        ensure_databases_initialized(data_dir)
+        ensure_databases_initialized(_backend_data_dir())
     except Exception:
         pass
 
@@ -545,7 +555,7 @@ def _get_project_knowledge_files(project_id: str, knowledge_dir: Path) -> List[P
 @app.get("/api/projects/{project_id}/documents")
 async def list_documents(project_id: str):
     """Scan data/knowledge/ and return all knowledge documents belonging to this project."""
-    knowledge_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
+    knowledge_dir = _backend_data_dir() / "knowledge"
     files = _get_project_knowledge_files(project_id, knowledge_dir)
     
     docs = []
@@ -576,7 +586,7 @@ async def delete_document(project_id: str, filename: str):
     if not safe_filename.endswith(".txt"):
         raise HTTPException(status_code=400, detail="Invalid filename. Only .txt knowledge files can be removed.")
 
-    knowledge_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
+    knowledge_dir = _backend_data_dir() / "knowledge"
     target_file = knowledge_dir / safe_filename
 
     if not target_file.exists():
@@ -594,7 +604,7 @@ async def delete_document(project_id: str, filename: str):
         from zoe.db.connections import open_official_knowledge_db
         from zoe.knowledge.ingestion import rebuild_faiss_index
 
-        db_path = Path(__file__).resolve().parent.parent.parent / "data" / "official_knowledge" / "official_knowledge.db"
+        db_path = _backend_data_dir() / "official_knowledge" / "official_knowledge.db"
         if db_path.exists():
             conn = open_official_knowledge_db(db_path)
             try:
@@ -603,7 +613,7 @@ async def delete_document(project_id: str, filename: str):
                     (project_id, safe_filename),
                 )
                 conn.commit()
-                index_dir = Path(__file__).resolve().parent.parent.parent / "data" / "indexes"
+                index_dir = _backend_data_dir() / "indexes"
                 rebuild_faiss_index(project_id, conn, index_dir=index_dir)
             finally:
                 conn.close()
@@ -651,7 +661,7 @@ async def ingest_url(project_id: str, payload: URLIngestRequest):
             raise HTTPException(status_code=400, detail="No readable text content found on the specified page.")
 
         # Save to data/knowledge/ with timestamp
-        knowledge_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
+        knowledge_dir = _backend_data_dir() / "knowledge"
         knowledge_dir.mkdir(parents=True, exist_ok=True)
         timestamp_slug = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = f"{project_id}_web_{timestamp_slug}.txt"
@@ -664,8 +674,8 @@ async def ingest_url(project_id: str, payload: URLIngestRequest):
         chunk_count = 0
         try:
             from zoe.knowledge.ingestion import ingest_document
-            db_path = Path(__file__).resolve().parent.parent.parent / "data" / "official_knowledge" / "official_knowledge.db"
-            index_dir = Path(__file__).resolve().parent.parent.parent / "data" / "indexes"
+            db_path = _backend_data_dir() / "official_knowledge" / "official_knowledge.db"
+            index_dir = _backend_data_dir() / "indexes"
             res = ingest_document(filepath=file_path, project_id=project_id, db_path=db_path, index_dir=index_dir, source_url=url)
             chunk_count = res.chunk_count
         except Exception as ingest_err:
@@ -692,7 +702,7 @@ async def ingest_text(project_id: str, payload: TextIngestRequest):
         raise HTTPException(status_code=400, detail="Text content cannot be empty.")
 
     try:
-        knowledge_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
+        knowledge_dir = _backend_data_dir() / "knowledge"
         knowledge_dir.mkdir(parents=True, exist_ok=True)
         timestamp_slug = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         filename = f"{project_id}_update_{timestamp_slug}.txt"
@@ -704,8 +714,8 @@ async def ingest_text(project_id: str, payload: TextIngestRequest):
         chunk_count = 0
         try:
             from zoe.knowledge.ingestion import ingest_document
-            db_path = Path(__file__).resolve().parent.parent.parent / "data" / "official_knowledge" / "official_knowledge.db"
-            index_dir = Path(__file__).resolve().parent.parent.parent / "data" / "indexes"
+            db_path = _backend_data_dir() / "official_knowledge" / "official_knowledge.db"
+            index_dir = _backend_data_dir() / "indexes"
             res = ingest_document(filepath=file_path, project_id=project_id, db_path=db_path, index_dir=index_dir)
             chunk_count = res.chunk_count
         except Exception as ingest_err:
@@ -726,8 +736,8 @@ async def ingest_text(project_id: str, payload: TextIngestRequest):
 async def get_settings(project_id: str):
     """Retrieve custom persona instructions and system rules for the bot."""
     instructions = ""
-    # 1. Check local file on disk
-    inst_file = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge" / f"{project_id}_instructions.txt"
+    # 1. Check volume/local file on disk
+    inst_file = _backend_data_dir() / "knowledge" / f"{project_id}_instructions.txt"
     if inst_file.exists():
         try:
             instructions = inst_file.read_text(encoding="utf-8")
@@ -756,9 +766,9 @@ async def update_settings(project_id: str, payload: SettingsRequest):
     """Save custom persona instructions and system prompt rules for the bot."""
     instructions = payload.custom_instructions.strip()
     
-    # 1. Save to local file so pipeline picks it up immediately
+    # 1. Save to volume/local file so pipeline picks it up immediately
     try:
-        inst_dir = Path(__file__).resolve().parent.parent.parent / "data" / "knowledge"
+        inst_dir = _backend_data_dir() / "knowledge"
         inst_dir.mkdir(parents=True, exist_ok=True)
         inst_file = inst_dir / f"{project_id}_instructions.txt"
         with open(inst_file, "w", encoding="utf-8") as f:

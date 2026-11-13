@@ -169,13 +169,15 @@ async def run_bot_worker(bot: BotInstance, shutdown_event: asyncio.Event) -> Non
 def ensure_knowledge_indexes(model: Optional[Any] = None) -> None:
     """Auto-ingest project knowledge if FAISS index files do not exist."""
     from zoe.knowledge.ingestion import ingest_document
+    from zoe.settings import get_data_dir
 
+    data_dir = get_data_dir()
     project_docs = [
-        ("onelove", Path("data/knowledge/onelove_info.txt")),
-        ("live_test", Path("data/knowledge/hummingbird_info.txt")),
+        ("onelove", data_dir / "knowledge" / "onelove_info.txt"),
+        ("live_test", data_dir / "knowledge" / "hummingbird_info.txt"),
     ]
     for project_id, doc_path in project_docs:
-        index_file = Path(f"data/indexes/{project_id}/index.faiss")
+        index_file = data_dir / "indexes" / project_id / "index.faiss"
         needs_ingestion = False
         if not index_file.exists() or index_file.stat().st_size == 0:
             needs_ingestion = True
@@ -189,7 +191,13 @@ def ensure_knowledge_indexes(model: Optional[Any] = None) -> None:
                 project_id,
             )
             try:
-                res = ingest_document(filepath=doc_path, project_id=project_id, model=model)
+                res = ingest_document(
+                    filepath=doc_path,
+                    project_id=project_id,
+                    db_path=data_dir / "official_knowledge" / "official_knowledge.db",
+                    index_dir=data_dir / "indexes",
+                    model=model,
+                )
                 logger.info(
                     "Auto-Ingestion: Finished '%s' (%d chunks indexed).",
                     project_id,
@@ -231,8 +239,12 @@ async def start_orchestrator(
     set_current_project("orchestrator")
     logger.info("Starting Zoe Multi-Tenant Bot Orchestrator...")
 
+    from zoe.settings import get_data_dir
+    data_dir = get_data_dir()
+    logger.info("Using data directory: %s", data_dir.resolve())
+
     # 0. Auto-initialize SQLite databases and apply schemas if missing
-    ensure_databases_initialized("data")
+    ensure_databases_initialized(data_dir)
 
     # 1. Discover all project configs
     all_projects = discover_projects(config_dir)
@@ -289,12 +301,12 @@ async def start_orchestrator(
                 continue
 
             # DB Connections with WAL mode & busy timeout
-            conn_op = open_operational_db("data/operational/operational.db")
+            conn_op = open_operational_db(data_dir / "operational" / "operational.db")
             conn_kb = open_official_knowledge_db(
-                cfg.get("knowledge", {}).get("db_path", "data/official_knowledge/official_knowledge.db")
+                cfg.get("knowledge", {}).get("db_path") or (data_dir / "official_knowledge" / "official_knowledge.db")
             )
             conn_mem = open_community_memory_db(
-                cfg.get("memory", {}).get("db_path", "data/community_memory/community_memory.db")
+                cfg.get("memory", {}).get("db_path") or (data_dir / "community_memory" / "community_memory.db")
             )
 
             stack.callback(conn_op.close)

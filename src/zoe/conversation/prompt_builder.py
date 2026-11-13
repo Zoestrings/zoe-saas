@@ -1,5 +1,7 @@
 """Prompt builder formatting official knowledge, community memory, and persona guidelines."""
 
+import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from zoe.knowledge.retriever import RetrievedChunk
@@ -106,7 +108,8 @@ def get_project_system_prompt(
     )
 
     # Dynamically inject custom persona instructions if configured via the SaaS dashboard
-    custom_inst_file = Path("data/knowledge") / f"{project_id}_instructions.txt"
+    data_dir = Path(os.getenv("DATA_DIR", "data"))
+    custom_inst_file = data_dir / "knowledge" / f"{project_id}_instructions.txt"
     if custom_inst_file.exists():
         try:
             with open(custom_inst_file, "r", encoding="utf-8") as f:

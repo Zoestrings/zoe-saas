@@ -6,7 +6,7 @@ import random
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Callable, TypeVar, Union
+from typing import Any, Callable, Optional, TypeVar, Union
 
 from zoe.utils.logging import get_logger
 
@@ -121,14 +121,64 @@ def open_community_memory_db(path: Union[str, Path]) -> sqlite3.Connection:
     return conn
 
 
-def ensure_databases_initialized(base_dir: Union[str, Path] = "data") -> None:
+def get_data_dir() -> Path:
+    """Return root data directory, prioritizing DATA_DIR env var (e.g. mounted Railway volume)."""
+    env_dir = os.getenv("DATA_DIR")
+    if env_dir and env_dir.strip():
+        p = Path(env_dir.strip())
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    return Path("data")
+
+
+def _seed_knowledge_docs_if_needed(base: Path) -> None:
+    """Seed baseline knowledge files to the data directory if not already present."""
+    target_knowledge = base / "knowledge"
+    target_knowledge.mkdir(parents=True, exist_ok=True)
+
+    candidates = [
+        Path("data/knowledge"),
+        Path("/app/data/knowledge"),
+        Path(__file__).resolve().parent.parent.parent / "data" / "knowledge",
+    ]
+    import shutil
+    for src in candidates:
+        if src.exists():
+            try:
+                if src.resolve() == target_knowledge.resolve():
+                    continue
+            except Exception:
+                pass
+            for f in src.glob("*.txt"):
+                dest = target_knowledge / f.name
+                if not dest.exists():
+                    try:
+                        shutil.copy2(f, dest)
+                        logger.info("Seeded baseline knowledge document %s to %s", f.name, dest)
+                    except Exception as err:
+                        logger.warning("Could not seed %s to %s: %s", f, dest, err)
+            break
+
+
+def ensure_databases_initialized(base_dir: Optional[Union[str, Path]] = None) -> None:
     """Check and ensure that operational, knowledge, and community SQLite databases exist with schemas applied."""
-    base = Path(base_dir)
+    if base_dir is None:
+        base = get_data_dir()
+    else:
+        env_dir = os.getenv("DATA_DIR")
+        if env_dir and env_dir.strip() and str(base_dir) == "data":
+            base = Path(env_dir.strip())
+        else:
+            base = Path(base_dir)
+
+    base.mkdir(parents=True, exist_ok=True)
+    _seed_knowledge_docs_if_needed(base)
+
     op_path = base / "operational" / "operational.db"
     kb_path = base / "official_knowledge" / "official_knowledge.db"
     mem_path = base / "community_memory" / "community_memory.db"
 
-    logger.info("Verifying and auto-initializing SQLite databases...")
+    logger.info("Verifying and auto-initializing SQLite databases at %s...", base)
     conn1 = open_operational_db(op_path)
     conn1.close()
     conn2 = open_official_knowledge_db(kb_path)

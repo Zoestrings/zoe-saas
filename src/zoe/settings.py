@@ -91,6 +91,19 @@ def _get_project_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
+def get_data_dir() -> Path:
+    """Return root data directory, prioritizing DATA_DIR env var (e.g. mounted Railway volume)."""
+    env_dir = os.getenv("DATA_DIR")
+    if env_dir and env_dir.strip():
+        p = Path(env_dir.strip())
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    root = _get_project_root()
+    if (root / "data").exists():
+        return root / "data"
+    return Path("data")
+
+
 def _check_no_secrets(data: Any, path: str = "") -> None:
     if isinstance(data, dict):
         for k, v in data.items():
@@ -225,37 +238,65 @@ def load_project_config(project_id: str) -> Dict[str, Any]:
 
 
 def load_project_secrets(project_id: str) -> Dict[str, Any]:
-    """Load project secrets from config/secrets/{project_id}.secrets.yaml or environment variables."""
+    """Load project secrets from environment variables first, falling back to config/secrets/*.yaml."""
     clean_id = project_id[:-5] if project_id.endswith(".yaml") else project_id
-    filename = f"{clean_id}.secrets.yaml"
+    data: Dict[str, Any] = {}
 
-    paths_to_try = [
-        Path("config") / "secrets" / filename,
-        _get_project_root() / "config" / "secrets" / filename,
+    # 1. Check os.environ FIRST (prioritize cloud worker environment)
+    env_candidates = [
+        f"{clean_id.upper()}_BOT_TOKEN",
+        f"TELEGRAM_BOT_TOKEN_{clean_id.upper()}",
     ]
+    if clean_id.lower() in ("live_test", "hummingbird"):
+        env_candidates.extend(["LIVE_TEST_BOT_TOKEN", "HUMMINGBIRD_BOT_TOKEN"])
+    elif clean_id.lower() in ("onelove", "one_love"):
+        env_candidates.extend(["ONELOVE_BOT_TOKEN", "ONE_LOVE_BOT_TOKEN"])
 
-    data = {}
-    for p in paths_to_try:
-        if p.exists():
-            with open(p, "r", encoding="utf-8") as f:
-                loaded = yaml.safe_load(f)
-                if loaded is not None:
-                    data.update(loaded)
+    env_token = None
+    for cand in env_candidates:
+        val = os.getenv(cand)
+        if val and val.strip():
+            env_token = val.strip()
             break
 
-    # Environment variable fallbacks for production cloud deployments (Railway/Docker)
-    import os
-    env_token_key = f"{clean_id.upper()}_BOT_TOKEN"
-    bot_token = os.getenv(env_token_key) or os.getenv("TELEGRAM_BOT_TOKEN")
-    if bot_token and not data.get("bot_token"):
-        data["bot_token"] = bot_token
+    if not env_token:
+        generic_token = os.getenv("TELEGRAM_BOT_TOKEN")
+        if generic_token and generic_token.strip():
+            env_token = generic_token.strip()
+
+    if env_token:
+        data["bot_token"] = env_token
 
     groq_key = os.getenv("GROQ_API_KEY")
-    if groq_key and not data.get("groq_api_key"):
-        data["groq_api_key"] = groq_key
+    if groq_key and groq_key.strip():
+        data["groq_api_key"] = groq_key.strip()
+
+    hmac_key = os.getenv(f"{clean_id.upper()}_HMAC_KEY")
+    if hmac_key and hmac_key.strip():
+        data["hmac_key"] = hmac_key.strip()
+
+    # 2. If secrets still missing, fall back to reading local YAML file (for laptop dev)
+    if not data.get("bot_token") or not data.get("groq_api_key"):
+        filename = f"{clean_id}.secrets.yaml"
+        paths_to_try = [
+            Path("config") / "secrets" / filename,
+            _get_project_root() / "config" / "secrets" / filename,
+        ]
+        for p in paths_to_try:
+            if p.exists():
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        loaded = yaml.safe_load(f)
+                        if isinstance(loaded, dict):
+                            for k, v in loaded.items():
+                                if k not in data or not data[k]:
+                                    data[k] = v
+                except Exception:
+                    pass
+                break
 
     if not data.get("hmac_key"):
-        data["hmac_key"] = os.getenv(f"{clean_id.upper()}_HMAC_KEY", f"zoe_{clean_id}_hmac_secret_key_32_characters_minimum")
+        data["hmac_key"] = f"zoe_{clean_id}_hmac_secret_key_32_characters_minimum"
 
     return data
 

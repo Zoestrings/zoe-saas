@@ -36,4 +36,4 @@ COPY saas-dashboard/backend/ ./saas-dashboard/backend/
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python -u scripts/run_all_bots.py --projects live_test onelove & cd saas-dashboard/backend && exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "if [ \"$SERVICE_ROLE\" = \"worker\" ]; then exec python -u scripts/run_all_bots.py --projects live_test onelove; else cd saas-dashboard/backend && exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}; fi"]

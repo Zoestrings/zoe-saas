@@ -944,7 +944,7 @@ def process_message(
                         "Accuracy Guard triggered: score below 0.25 and no web search results for query '%s'",
                         norm_msg.text,
                     )
-                    generated_text = "I don't have that in my official documents yet. Please check the official announcements."
+                    generated_text = "I don't have the latest details on that yet. As soon as the team announces it, I'll have the update for you."
                 else:
                     prompt = build_prompt(
                         message=norm_msg,

@@ -18,7 +18,8 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import httpx
-from pydantic import BaseModel, EmailStr
+import asyncio
+from pydantic import BaseModel, EmailStr, field_validator
 from cryptography.fernet import Fernet
 import jwt
 
@@ -39,6 +40,8 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "")
+ZOE_ENGINE_URL = os.getenv("ZOE_ENGINE_URL", "http://zoe-worker.railway.internal:8080").rstrip("/")
+ENGINE_SHARED_SECRET = os.getenv("ENGINE_SHARED_SECRET", "")
 
 DEV_DB_PATH = Path(__file__).parent / "saas_dev.db"
 
@@ -64,11 +67,27 @@ def get_dev_db() -> sqlite3.Connection:
             name TEXT NOT NULL,
             telegram_bot_token TEXT NOT NULL,
             telegram_group_id TEXT,
+            token_address TEXT,
+            status TEXT DEFAULT 'live',
+            status_error TEXT,
             created_at TEXT NOT NULL
         )
         """
     )
     conn.commit()
+
+    # Graceful migration for existing local dev databases
+    for col, col_def in [
+        ("token_address", "TEXT"),
+        ("status", "TEXT DEFAULT 'live'"),
+        ("status_error", "TEXT"),
+    ]:
+        try:
+            conn.execute(f"ALTER TABLE dev_projects ADD COLUMN {col} {col_def}")
+            conn.commit()
+        except Exception:
+            pass
+
     return conn
 
 # Initialize FastAPI app
@@ -256,10 +275,38 @@ class AuthResponse(BaseModel):
     user: Dict[str, Any]
 
 
+def sanitize_project_id(raw_name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", raw_name.lower().strip()).strip("-")
+    if len(slug) < 3:
+        slug = f"project-{slug}"
+    return slug[:35]
+
+
 class CreateProjectRequest(BaseModel):
     name: str
     telegram_bot_token: str
     telegram_group_id: Optional[str] = None
+    token_address: str
+    token_symbol: Optional[str] = None
+    knowledge_base: Optional[str] = None
+
+    @field_validator("telegram_group_id", mode="before")
+    def normalize_group_id(cls, v):
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
+        return str(v).strip()
+
+    @field_validator("token_address")
+    def validate_token_address(cls, v):
+        val = str(v).strip()
+        if not re.match(r"^(0x[a-fA-F0-9]{40}|[A-Za-z0-9]{32,64})$", val):
+            raise ValueError("Token address must be a valid Solana (base58, 32-64 chars) or EVM (0x..., 42 chars) contract address.")
+        return val
+
+
+class PatchProjectRequest(BaseModel):
+    telegram_group_id: Optional[str] = None
+    token_address: Optional[str] = None
 
 
 class ProjectResponse(BaseModel):
@@ -267,7 +314,54 @@ class ProjectResponse(BaseModel):
     owner_id: str
     name: str
     telegram_group_id: Optional[str] = None
+    token_address: Optional[str] = None
+    status: str = "live"
+    status_error: Optional[str] = None
     created_at: Optional[str] = None
+
+
+async def call_engine(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Call Zoe Bot Engine internal API with retries and authentication."""
+    url = f"{ZOE_ENGINE_URL}{path}"
+    headers = {"Content-Type": "application/json"}
+    if ENGINE_SHARED_SECRET:
+        headers["X-Engine-Key"] = ENGINE_SHARED_SECRET
+
+    retries = 2
+    for attempt in range(retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                if method.upper() == "POST":
+                    resp = await client.post(url, json=payload, headers=headers)
+                elif method.upper() == "PATCH":
+                    resp = await client.patch(url, json=payload, headers=headers)
+                elif method.upper() == "DELETE":
+                    resp = await client.delete(url, headers=headers)
+                else:
+                    resp = await client.get(url, headers=headers)
+
+                if resp.status_code >= 400:
+                    err_msg = resp.text
+                    try:
+                        err_data = resp.json()
+                        err_msg = err_data.get("detail", resp.text)
+                    except Exception:
+                        pass
+                    raise HTTPException(
+                        status_code=resp.status_code,
+                        detail=f"Engine Error: {err_msg}",
+                    )
+                return resp.json()
+        except HTTPException:
+            raise
+        except httpx.RequestError as exc:
+            if attempt == retries:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Unable to connect to Zoe Engine at {ZOE_ENGINE_URL}: {str(exc)}",
+                )
+            await asyncio.sleep(0.5 * (attempt + 1))
+    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Engine communication failed")
 
 
 # --- Endpoints ---
@@ -383,12 +477,27 @@ def login_user(req: AuthRequest):
         )
 
 
+def _update_project_status(project_id: str, new_status: str, error_msg: Optional[str] = None, client: Any = None):
+    if client is None:
+        try:
+            conn = get_dev_db()
+            conn.execute("UPDATE dev_projects SET status = ?, status_error = ? WHERE id = ?", (new_status, error_msg, project_id))
+            conn.commit()
+        except Exception:
+            pass
+    else:
+        try:
+            client.table("projects").update({"status": new_status, "status_error": error_msg}).eq("id", project_id).execute()
+        except Exception:
+            pass
+
+
 @app.post("/api/projects", status_code=status.HTTP_201_CREATED, response_model=ProjectResponse)
-def create_project(
+async def create_project(
     req: CreateProjectRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Create a new project with encrypted Telegram bot token in Supabase or dev fallback."""
+    """Create a new project, save encrypted credentials, and trigger live bot spawning in the Engine."""
     owner_id = current_user.get("id")
     if not owner_id:
         raise HTTPException(
@@ -396,66 +505,103 @@ def create_project(
             detail="User ID could not be identified from token",
         )
 
-    # CRITICAL: Encrypt the Telegram bot token BEFORE saving to database
-    encrypted_token = encrypt_token(req.telegram_bot_token)
-
+    # 1. Clean and slugify project_id
+    base_slug = sanitize_project_id(req.name)
+    now_str = datetime.now(timezone.utc).isoformat()
     client = get_supabase()
+
+    # Determine unique ID
+    proj_id = base_slug
     if client is None:
         conn = get_dev_db()
-        proj_id = str(uuid.uuid4())
-        now_str = datetime.now(timezone.utc).isoformat()
+        cur = conn.cursor()
+        existing = cur.execute("SELECT id FROM dev_projects WHERE id = ?", (proj_id,)).fetchone()
+        if existing:
+            proj_id = f"{base_slug}-{uuid.uuid4().hex[:6]}"
+    else:
+        try:
+            res_ex = client.table("projects").select("id").eq("id", proj_id).execute()
+            if res_ex.data:
+                proj_id = f"{base_slug}-{uuid.uuid4().hex[:6]}"
+        except Exception:
+            pass
+
+    # 2. Encrypt token for persistence
+    encrypted_token = encrypt_token(req.telegram_bot_token)
+
+    # 3. Save initial record with status "deploying"
+    if client is None:
+        conn = get_dev_db()
         conn.execute(
             """
-            INSERT INTO dev_projects (id, owner_id, name, telegram_bot_token, telegram_group_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO dev_projects (id, owner_id, name, telegram_bot_token, telegram_group_id, token_address, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'deploying', ?)
             """,
             (
                 proj_id,
                 owner_id,
                 req.name.strip(),
                 encrypted_token,
-                req.telegram_group_id.strip() if req.telegram_group_id else None,
+                req.telegram_group_id,
+                req.token_address.strip(),
                 now_str,
             ),
         )
         conn.commit()
-        return ProjectResponse(
-            id=proj_id,
-            owner_id=owner_id,
-            name=req.name.strip(),
-            telegram_group_id=req.telegram_group_id.strip() if req.telegram_group_id else None,
-            created_at=now_str,
-        )
+    else:
+        payload = {
+            "id": proj_id,
+            "owner_id": owner_id,
+            "name": req.name.strip(),
+            "telegram_bot_token": encrypted_token,
+            "telegram_group_id": req.telegram_group_id,
+            "token_address": req.token_address.strip(),
+            "status": "deploying",
+        }
+        try:
+            client.table("projects").insert(payload).execute()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Database insert error: {str(exc)}",
+            )
 
-    payload = {
-        "owner_id": owner_id,
+    # 4. Call Engine to spawn bot poller
+    engine_payload = {
+        "project_id": proj_id,
+        "bot_token": req.telegram_bot_token.strip(),
+        "group_id": req.telegram_group_id,
+        "token_address": req.token_address.strip(),
+        "token_symbol": req.token_symbol,
         "name": req.name.strip(),
-        "telegram_bot_token": encrypted_token,
-        "telegram_group_id": req.telegram_group_id.strip() if req.telegram_group_id else None,
+        "knowledge_base": req.knowledge_base,
     }
 
     try:
-        result = client.table("projects").insert(payload).execute()
-        if not result.data:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to insert project into Supabase",
-            )
-        row = result.data[0]
-        return ProjectResponse(
-            id=str(row.get("id")),
-            owner_id=str(row.get("owner_id")),
-            name=row.get("name"),
-            telegram_group_id=row.get("telegram_group_id"),
-            created_at=str(row.get("created_at")),
-        )
-    except HTTPException:
-        raise
+        await call_engine("POST", "/api/spawn-bot", engine_payload)
+        _update_project_status(proj_id, "live", None, client)
+        current_status = "live"
+        current_error = None
     except Exception as exc:
+        err_msg = str(getattr(exc, "detail", exc))
+        _update_project_status(proj_id, "failed", err_msg, client)
+        if isinstance(exc, HTTPException):
+            raise exc
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database error: {str(exc)}",
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Engine failed to spawn bot: {err_msg}",
         )
+
+    return ProjectResponse(
+        id=proj_id,
+        owner_id=owner_id,
+        name=req.name.strip(),
+        telegram_group_id=req.telegram_group_id,
+        token_address=req.token_address.strip(),
+        status=current_status,
+        status_error=current_error,
+        created_at=now_str,
+    )
 
 
 @app.get("/api/projects", response_model=List[ProjectResponse])
@@ -474,7 +620,7 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
         cur = conn.cursor()
         rows = cur.execute(
             """
-            SELECT id, owner_id, name, telegram_group_id, created_at
+            SELECT id, owner_id, name, telegram_group_id, token_address, status, status_error, created_at
             FROM dev_projects
             WHERE owner_id = ?
             ORDER BY created_at DESC
@@ -487,7 +633,10 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
                 owner_id=str(r[1]),
                 name=str(r[2]),
                 telegram_group_id=r[3],
-                created_at=str(r[4]),
+                token_address=r[4],
+                status=r[5] or "live",
+                status_error=r[6],
+                created_at=str(r[7]),
             )
             for r in rows
         ]
@@ -495,7 +644,7 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
         result = (
             client.table("projects")
-            .select("id, owner_id, name, telegram_group_id, created_at")
+            .select("id, owner_id, name, telegram_group_id, token_address, status, status_error, created_at")
             .eq("owner_id", owner_id)
             .order("created_at", desc=True)
             .execute()
@@ -507,6 +656,9 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
                 owner_id=str(r.get("owner_id")),
                 name=r.get("name"),
                 telegram_group_id=r.get("telegram_group_id"),
+                token_address=r.get("token_address"),
+                status=r.get("status") or "live",
+                status_error=r.get("status_error"),
                 created_at=str(r.get("created_at")),
             )
             for r in rows
@@ -514,8 +666,107 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Database query error: {str(exc)}",
+            detail=f"Database error: {str(exc)}",
         )
+
+
+@app.patch("/api/projects/{project_id}", response_model=ProjectResponse)
+async def patch_project(
+    project_id: str,
+    req: PatchProjectRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Hot-reload project settings (e.g. locking group ID or updating contract address)."""
+    owner_id = current_user.get("id")
+    client = get_supabase()
+
+    # 1. Update Engine
+    engine_payload = {}
+    if req.telegram_group_id is not None:
+        engine_payload["group_id"] = req.telegram_group_id.strip()
+    if req.token_address is not None:
+        engine_payload["token_address"] = req.token_address.strip()
+
+    if engine_payload:
+        await call_engine("PATCH", f"/api/bots/{project_id}", engine_payload)
+
+    # 2. Update Database
+    if client is None:
+        conn = get_dev_db()
+        if req.telegram_group_id is not None:
+            conn.execute("UPDATE dev_projects SET telegram_group_id = ? WHERE id = ? AND owner_id = ?", (req.telegram_group_id.strip(), project_id, owner_id))
+        if req.token_address is not None:
+            conn.execute("UPDATE dev_projects SET token_address = ? WHERE id = ? AND owner_id = ?", (req.token_address.strip(), project_id, owner_id))
+        conn.commit()
+        row = conn.execute("SELECT id, owner_id, name, telegram_group_id, token_address, status, created_at FROM dev_projects WHERE id = ?", (project_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return ProjectResponse(
+            id=str(row[0]),
+            owner_id=str(row[1]),
+            name=str(row[2]),
+            telegram_group_id=row[3],
+            token_address=row[4],
+            status=row[5] or "live",
+            created_at=str(row[6]),
+        )
+    else:
+        db_update = {}
+        if req.telegram_group_id is not None:
+            db_update["telegram_group_id"] = req.telegram_group_id.strip()
+        if req.token_address is not None:
+            db_update["token_address"] = req.token_address.strip()
+        res = client.table("projects").update(db_update).eq("id", project_id).eq("owner_id", owner_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Project not found")
+        row = res.data[0]
+        return ProjectResponse(
+            id=str(row.get("id")),
+            owner_id=str(row.get("owner_id")),
+            name=row.get("name"),
+            telegram_group_id=row.get("telegram_group_id"),
+            token_address=row.get("token_address"),
+            status=row.get("status") or "live",
+            created_at=str(row.get("created_at")),
+        )
+
+
+@app.delete("/api/projects/{project_id}")
+async def delete_project(
+    project_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Decommission a bot, cancel worker task, and purge credentials."""
+    owner_id = current_user.get("id")
+    client = get_supabase()
+
+    # 1. Stop bot in Engine
+    try:
+        await call_engine("DELETE", f"/api/bots/{project_id}")
+    except Exception as exc:
+        logger.warning("Engine delete failed for %s: %s", project_id, exc)
+
+    # 2. Remove or mark stopped in DB
+    if client is None:
+        conn = get_dev_db()
+        conn.execute("UPDATE dev_projects SET status = 'stopped' WHERE id = ? AND owner_id = ?", (project_id, owner_id))
+        conn.commit()
+    else:
+        try:
+            client.table("projects").update({"status": "stopped"}).eq("id", project_id).eq("owner_id", owner_id).execute()
+        except Exception:
+            pass
+
+    return {"project_id": project_id, "status": "stopped", "message": "Bot decommissioned successfully"}
+
+
+@app.get("/api/projects/{project_id}/status")
+async def get_project_status(
+    project_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Query live telemetry and poller health directly from the Bot Engine."""
+    return await call_engine("GET", f"/api/bots/{project_id}/status")
 
 
 # --- Knowledge Base Ingestion & Document Management Endpoints ---

@@ -382,6 +382,18 @@ async def start_orchestrator(
         set_current_project("orchestrator")
         logger.info("Successfully initialized %d bot instance(s). Spawning workers...", len(bot_instances))
 
+        # Wire BotManager singleton so all bots are observable via GET /health and internal API
+        from datetime import datetime, timezone
+        import uvicorn
+        from zoe.api import bot_manager, engine_app
+        bot_manager.shared_model = model
+
+        for bot in bot_instances:
+            bot_manager.statuses[bot.project_id] = "running"
+            bot_manager.configs[bot.project_id] = bot.config
+            bot_manager.started_at[bot.project_id] = datetime.now(timezone.utc).isoformat()
+            bot_manager.shutdown_events[bot.project_id] = shutdown_event
+
         if run_once:
             # Single iteration across all bots
             for bot in bot_instances:
@@ -389,16 +401,25 @@ async def start_orchestrator(
                 await bot.step()
             return
 
-        # Spawn concurrent supervised tasks
-        tasks = [
-            asyncio.create_task(run_bot_worker(bot, shutdown_event))
-            for bot in bot_instances
-        ]
+        # Spawn concurrent supervised tasks for initial bots
+        tasks = []
+        for bot in bot_instances:
+            t = asyncio.create_task(run_bot_worker(bot, shutdown_event))
+            bot_manager.tasks[bot.project_id] = t
+            tasks.append(t)
+
+        # Launch Engine FastAPI on port 8080 concurrently
+        uvi_config = uvicorn.Config(engine_app, host="0.0.0.0", port=8080, log_level="warning")
+        uvi_server = uvicorn.Server(uvi_config)
+        logger.info("Starting Zoe Engine Internal API on http://0.0.0.0:8080...")
+        api_task = asyncio.create_task(uvi_server.serve())
+        tasks.append(api_task)
 
         try:
             await asyncio.gather(*tasks, return_exceptions=True)
         except (KeyboardInterrupt, asyncio.CancelledError):
             handle_signal()
+            uvi_server.should_exit = True
             await asyncio.gather(*tasks, return_exceptions=True)
 
         set_current_project("orchestrator")

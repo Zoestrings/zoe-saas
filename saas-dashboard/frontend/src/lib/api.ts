@@ -24,13 +24,19 @@ export interface Project {
   owner_id: string
   name: string
   telegram_group_id?: string | null
+  token_address?: string | null
+  status?: string | null
+  status_error?: string | null
   created_at?: string | null
 }
 
 export interface CreateProjectPayload {
   name: string
   telegram_bot_token: string
-  telegram_group_id?: string
+  token_address: string
+  telegram_group_id?: string | null
+  token_symbol?: string | null
+  knowledge_base?: string | null
 }
 
 // --- Local Storage Helpers ---
@@ -187,6 +193,25 @@ export const api = {
     return apiRequest<Project>("/api/projects", {
       method: "POST",
       body: JSON.stringify(payload),
+    })
+  },
+
+  async patchProject(id: string, payload: { telegram_group_id?: string; token_address?: string }): Promise<Project> {
+    return apiRequest<Project>(`/api/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async deleteProject(id: string): Promise<{ project_id: string; status: string; message: string }> {
+    return apiRequest<{ project_id: string; status: string; message: string }>(`/api/projects/${id}`, {
+      method: "DELETE",
+    })
+  },
+
+  async getProjectStatus(id: string): Promise<any> {
+    return apiRequest<any>(`/api/projects/${id}/status`, {
+      method: "GET",
     })
   },
 }

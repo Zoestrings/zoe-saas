@@ -10,11 +10,14 @@ import {
   AlertCircle, 
   Loader2, 
   Calendar,
-  ExternalLink,
   Copy,
   Check,
   BrainCircuit,
-  ArrowRight
+  Eye,
+  EyeOff,
+  Edit2,
+  StopCircle,
+  CheckCircle2
 } from "lucide-react"
 import { 
   Table, 
@@ -39,25 +42,47 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { api, Project } from "@/lib/api"
 
+// Regex for client-side instant validation
+const BOT_TOKEN_REGEX = /^\d{8,12}:[A-Za-z0-9_-]{32,}$/
+const TOKEN_ADDR_REGEX = /^(0x[a-fA-F0-9]{40}|[A-Za-z0-9]{32,64})$/
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [successToast, setSuccessToast] = useState<string | null>(null)
   const [copiedCA, setCopiedCA] = useState<string | null>(null)
 
-  // Dialog & Form State
+  // Add Project Dialog & Form State
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
   const [projectName, setProjectName] = useState("")
   const [botToken, setBotToken] = useState("")
+  const [showToken, setShowToken] = useState(false)
   const [groupId, setGroupId] = useState("")
+  const [tokenAddress, setTokenAddress] = useState("")
+  const [tokenSymbol, setTokenSymbol] = useState("")
+
+  // Edit Group ID Dialog State
+  const [editProject, setEditProject] = useState<Project | null>(null)
+  const [editGroupId, setEditGroupId] = useState("")
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
+  // Stopping Bot State
+  const [stoppingId, setStoppingId] = useState<string | null>(null)
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
     setCopiedCA(text)
     setTimeout(() => setCopiedCA(null), 2000)
+  }
+
+  const showToast = (msg: string) => {
+    setSuccessToast(msg)
+    setTimeout(() => setSuccessToast(null), 4000)
   }
 
   const fetchProjects = async () => {
@@ -77,37 +102,86 @@ export default function ProjectsPage() {
     fetchProjects()
   }, [])
 
+  // Validation calculations
+  const isNameValid = projectName.trim().length >= 2
+  const isTokenValid = BOT_TOKEN_REGEX.test(botToken.trim())
+  const isAddressValid = TOKEN_ADDR_REGEX.test(tokenAddress.trim())
+  const isFormValid = isNameValid && isTokenValid && isAddressValid
+
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault()
     setFormError(null)
 
-    if (!projectName.trim()) {
-      setFormError("Project name is required.")
+    if (!isNameValid) {
+      setFormError("Project name must be at least 2 characters.")
       return
     }
-    if (!botToken.trim()) {
-      setFormError("Telegram bot token is required.")
+    if (!isTokenValid) {
+      setFormError("Invalid Telegram Bot Token format. Example: 123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ")
+      return
+    }
+    if (!isAddressValid) {
+      setFormError("Invalid Token Address. Must be a valid Solana (base58) or EVM (0x...) address.")
       return
     }
 
     setSubmitting(true)
     try {
-      await api.createProject({
+      const created = await api.createProject({
         name: projectName.trim(),
         telegram_bot_token: botToken.trim(),
         telegram_group_id: groupId.trim() || undefined,
+        token_address: tokenAddress.trim(),
+        token_symbol: tokenSymbol.trim() || undefined,
       })
 
       setProjectName("")
       setBotToken("")
       setGroupId("")
+      setTokenAddress("")
+      setTokenSymbol("")
       setIsDialogOpen(false)
 
+      showToast(`Project '${created.name}' successfully deployed to Zoe Engine!`)
       await fetchProjects()
     } catch (err: any) {
-      setFormError(err.message || "Failed to register project.")
+      setFormError(err.message || "Failed to deploy project to Zoe Engine.")
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleSaveGroupId = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editProject) return
+    setSavingEdit(true)
+    setEditError(null)
+
+    try {
+      await api.patchProject(editProject.id, {
+        telegram_group_id: editGroupId.trim(),
+      })
+      showToast(`Group ID updated for '${editProject.name}'.`)
+      setEditProject(null)
+      await fetchProjects()
+    } catch (err: any) {
+      setEditError(err.message || "Failed to update Group ID.")
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const handleStopBot = async (proj: Project) => {
+    if (!confirm(`Are you sure you want to stop bot '${proj.name}'?`)) return
+    setStoppingId(proj.id)
+    try {
+      await api.deleteProject(proj.id)
+      showToast(`Bot '${proj.name}' stopped.`)
+      await fetchProjects()
+    } catch (err: any) {
+      setError(err.message || `Failed to stop bot '${proj.name}'.`)
+    } finally {
+      setStoppingId(null)
     }
   }
 
@@ -119,14 +193,8 @@ export default function ProjectsPage() {
       tokenSymbol: "$ONELOVE",
       chain: "Solana",
       ca: "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon",
-      status: "Online",
-      chunks: 5,
+      status: "Live",
       group: "-5214407126",
-      socials: {
-        twitter: "https://x.com/thecaptrobbie?s=11",
-        telegram: "https://t.me/ONELOVECoinCrew",
-        tiktok: "https://www.tiktok.com/@captain.robbie"
-      }
     },
     {
       id: "live_test",
@@ -135,10 +203,8 @@ export default function ProjectsPage() {
       tokenSymbol: "$FLY",
       chain: "Multi-Chain",
       ca: "0x1b44f3514812d835eb1bdb0acb33d3ff3351655c",
-      status: "Online",
-      chunks: 2,
+      status: "Live",
       group: "Verified Testnet",
-      socials: {}
     }
   ]
 
@@ -155,8 +221,61 @@ export default function ProjectsPage() {
     }
   }
 
+  const renderStatusBadge = (status?: string | null, errorMsg?: string | null) => {
+    const s = (status || "live").toLowerCase()
+    if (s === "live" || s === "running") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          Live
+        </span>
+      )
+    }
+    if (s === "deploying" || s === "starting") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+          <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
+          Deploying
+        </span>
+      )
+    }
+    if (s === "stopped") {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+          <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+          Stopped
+        </span>
+      )
+    }
+    return (
+      <span 
+        title={errorMsg || "Bot failed to initialize"}
+        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200 cursor-help"
+      >
+        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+        Failed
+      </span>
+    )
+  }
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-12">
+      {/* Success Toast Banner */}
+      {successToast && (
+        <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+            <span className="font-medium">{successToast}</span>
+          </div>
+          <button 
+            onClick={() => setSuccessToast(null)} 
+            className="text-emerald-600 hover:text-emerald-900 text-xs font-semibold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
         <div>
@@ -164,7 +283,7 @@ export default function ProjectsPage() {
             Active Projects
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Manage your AI agents, Telegram group bindings, and secure credentials.
+            Deploy, monitor, and hot-reload autonomous Telegram bots connected to the Zoe Engine.
           </p>
         </div>
 
@@ -174,26 +293,39 @@ export default function ProjectsPage() {
             size="sm"
             onClick={fetchProjects}
             disabled={loading}
-            className="border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs h-9"
+            className="border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs h-9 cursor-pointer"
           >
             <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
 
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          {/* Add Project Modal */}
+          <Dialog 
+            open={isDialogOpen} 
+            onOpenChange={(open) => {
+              // Prevent modal dismissal mid-request
+              if (!submitting) {
+                setIsDialogOpen(open)
+                if (!open) setFormError(null)
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 rounded-md font-medium cursor-pointer">
                 <Plus className="h-3.5 w-3.5 mr-1.5" />
                 Add Project
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[480px] bg-white border border-slate-200 text-slate-900 shadow-xl rounded-lg">
+            <DialogContent 
+              aria-busy={submitting}
+              className="sm:max-w-[500px] bg-white border border-slate-200 text-slate-900 shadow-xl rounded-lg"
+            >
               <DialogHeader>
                 <DialogTitle className="text-lg font-semibold text-slate-900">
-                  Register New Project
+                  Deploy New Bot to Zoe Engine
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-500">
-                  Connect a Telegram bot token. The secret is securely encrypted using AES-256 before storage.
+                  Register your Telegram credentials and token contract. The bot poller starts automatically.
                 </DialogDescription>
               </DialogHeader>
 
@@ -204,14 +336,19 @@ export default function ProjectsPage() {
                 </div>
               )}
 
-              <form onSubmit={handleCreateProject} className="space-y-4 pt-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="projectName" className="text-xs font-medium text-slate-700">
-                    Project Name
+              <form onSubmit={handleCreateProject} className="space-y-3.5 pt-2">
+                {/* Project Name */}
+                <div className="space-y-1">
+                  <Label htmlFor="projectName" className="text-xs font-medium text-slate-700 flex items-center justify-between">
+                    <span>Project Name <span className="text-rose-500">*</span></span>
+                    {projectName && !isNameValid && (
+                      <span className="text-[11px] text-rose-500 font-normal">Min 2 characters</span>
+                    )}
                   </Label>
                   <Input
                     id="projectName"
-                    placeholder="e.g. Acme Community AI"
+                    disabled={submitting}
+                    placeholder="e.g. Nexus Community AI"
                     value={projectName}
                     onChange={(e) => setProjectName(e.target.value)}
                     required
@@ -219,38 +356,79 @@ export default function ProjectsPage() {
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="botToken" className="text-xs font-medium text-slate-700">
-                    Telegram Bot Token
+                {/* Bot Token with Show/Hide Toggle */}
+                <div className="space-y-1">
+                  <Label htmlFor="botToken" className="text-xs font-medium text-slate-700 flex items-center justify-between">
+                    <span>Telegram Bot Token <span className="text-rose-500">*</span></span>
+                    {botToken && !isTokenValid && (
+                      <span className="text-[11px] text-rose-500 font-normal">Format: 123456789:ABC...</span>
+                    )}
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="botToken"
+                      disabled={submitting}
+                      type={showToken ? "text" : "password"}
+                      placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                      value={botToken}
+                      onChange={(e) => setBotToken(e.target.value)}
+                      required
+                      className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 pr-9 focus:ring-1 focus:ring-slate-400"
+                    />
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => setShowToken(!showToken)}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 focus:outline-none"
+                      title={showToken ? "Hide token" : "Show token"}
+                    >
+                      {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Token Contract Address */}
+                <div className="space-y-1">
+                  <Label htmlFor="tokenAddress" className="text-xs font-medium text-slate-700 flex items-center justify-between">
+                    <span>Token Contract Address <span className="text-rose-500">*</span></span>
+                    {tokenAddress && !isAddressValid && (
+                      <span className="text-[11px] text-rose-500 font-normal">Valid Solana or EVM address</span>
+                    )}
                   </Label>
                   <Input
-                    id="botToken"
-                    type="password"
-                    placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
-                    value={botToken}
-                    onChange={(e) => setBotToken(e.target.value)}
+                    id="tokenAddress"
+                    disabled={submitting}
+                    placeholder="e.g. 0x... or Solana base58 address"
+                    value={tokenAddress}
+                    onChange={(e) => setTokenAddress(e.target.value)}
                     required
                     className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 focus:ring-1 focus:ring-slate-400"
                   />
                 </div>
 
-                <div className="space-y-1.5">
+                {/* Group ID (Optional) */}
+                <div className="space-y-1">
                   <Label htmlFor="groupId" className="text-xs font-medium text-slate-700">
-                    Telegram Group ID (Optional)
+                    Group ID (Optional)
                   </Label>
                   <Input
                     id="groupId"
+                    disabled={submitting}
                     placeholder="e.g. -1001234567890"
                     value={groupId}
                     onChange={(e) => setGroupId(e.target.value)}
                     className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 focus:ring-1 focus:ring-slate-400"
                   />
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Leave blank to deploy to DMs or assign a group later.
+                  </p>
                 </div>
 
-                <DialogFooter className="pt-4 border-t border-slate-100">
+                <DialogFooter className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                   <Button
                     type="button"
                     variant="outline"
+                    disabled={submitting}
                     onClick={() => setIsDialogOpen(false)}
                     className="border-slate-200 text-slate-700 text-xs h-9"
                   >
@@ -258,11 +436,11 @@ export default function ProjectsPage() {
                   </Button>
                   <Button
                     type="submit"
-                    disabled={submitting}
-                    className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 font-medium"
+                    disabled={submitting || !isFormValid}
+                    className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 font-medium disabled:opacity-50 cursor-pointer"
                   >
                     {submitting && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-                    Save Project
+                    {submitting ? "Deploying..." : "Deploy Bot"}
                   </Button>
                 </DialogFooter>
               </form>
@@ -332,7 +510,7 @@ export default function ProjectsPage() {
       {/* Database Registered Tenants */}
       <div className="space-y-4">
         <h2 className="text-base font-semibold text-slate-900">
-          Custom Registered Projects
+          Dynamic Registered Projects
         </h2>
 
         {error && (
@@ -348,23 +526,24 @@ export default function ProjectsPage() {
               <TableRow className="border-b border-slate-200">
                 <TableHead className="text-xs font-semibold text-slate-600 pl-6">Project Name</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-600">Telegram Group ID</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-600">Status</TableHead>
                 <TableHead className="text-xs font-semibold text-slate-600">Registered</TableHead>
-                <TableHead className="text-xs font-semibold text-slate-600 text-right pr-6">Security</TableHead>
+                <TableHead className="text-xs font-semibold text-slate-600 text-right pr-6">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-32 text-center text-slate-400">
+                  <TableCell colSpan={5} className="h-32 text-center text-slate-400">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto text-slate-400 mb-2" />
-                    <span className="text-xs">Loading projects...</span>
+                    <span className="text-xs">Loading projects from Zoe Engine...</span>
                   </TableCell>
                 </TableRow>
               ) : projects.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-32 text-center text-slate-400">
-                    <p className="text-sm font-medium text-slate-600">No custom projects yet</p>
-                    <p className="text-xs text-slate-400 mt-1">Click "Add Project" above to register an additional Telegram bot.</p>
+                  <TableCell colSpan={5} className="h-32 text-center text-slate-400">
+                    <p className="text-sm font-medium text-slate-600">No dynamic projects deployed yet</p>
+                    <p className="text-xs text-slate-400 mt-1">Click "Add Project" above to deploy an autonomous bot to the Engine.</p>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -375,12 +554,27 @@ export default function ProjectsPage() {
                         <Bot className="h-4 w-4 text-slate-400" />
                         <span>{proj.name}</span>
                       </div>
+                      {proj.token_address && (
+                        <span className="text-[10px] font-mono text-slate-400 block mt-0.5 truncate max-w-[200px]">
+                          {proj.token_address}
+                        </span>
+                      )}
                     </TableCell>
 
                     <TableCell className="text-xs text-slate-600 font-mono">
-                      {proj.telegram_group_id || (
-                        <span className="text-slate-400 italic font-sans text-xs">Auto-routing</span>
+                      {proj.telegram_group_id ? (
+                        <span className="inline-flex items-center gap-1 font-medium text-slate-800">
+                          {proj.telegram_group_id}
+                        </span>
+                      ) : (
+                        <span className="text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded text-[10px] border border-amber-200">
+                          Unlocked (DMs)
+                        </span>
                       )}
+                    </TableCell>
+
+                    <TableCell>
+                      {renderStatusBadge(proj.status, proj.status_error)}
                     </TableCell>
 
                     <TableCell className="text-xs text-slate-500">
@@ -391,10 +585,42 @@ export default function ProjectsPage() {
                     </TableCell>
 
                     <TableCell className="text-right pr-6">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                        AES-256
-                      </span>
+                      <div className="flex items-center justify-end gap-2">
+                        {/* Edit Group ID Button */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setEditProject(proj)
+                            setEditGroupId(proj.telegram_group_id || "")
+                            setEditError(null)
+                          }}
+                          className="h-7 px-2 text-[11px] text-slate-600 hover:text-slate-900 hover:bg-slate-100 cursor-pointer"
+                          title="Edit Group ID"
+                        >
+                          <Edit2 className="h-3.5 w-3.5 mr-1" />
+                          Edit Group
+                        </Button>
+
+                        {/* Stop Bot Button */}
+                        {proj.status !== "stopped" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={stoppingId === proj.id}
+                            onClick={() => handleStopBot(proj)}
+                            className="h-7 px-2 text-[11px] text-rose-600 hover:text-rose-700 hover:bg-rose-50 cursor-pointer"
+                            title="Stop bot worker"
+                          >
+                            {stoppingId === proj.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <StopCircle className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            Stop
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -403,6 +629,71 @@ export default function ProjectsPage() {
           </Table>
         </Card>
       </div>
+
+      {/* Edit Group ID Modal */}
+      <Dialog 
+        open={Boolean(editProject)} 
+        onOpenChange={(open) => {
+          if (!open && !savingEdit) setEditProject(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px] bg-white border border-slate-200 text-slate-900 shadow-xl rounded-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold text-slate-900">
+              Update Telegram Group ID
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Lock or re-route <strong>{editProject?.name}</strong> to a specific Telegram group chat.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editError && (
+            <div className="p-3 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{editError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSaveGroupId} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="editGroupId" className="text-xs font-medium text-slate-700">
+                Telegram Group ID
+              </Label>
+              <Input
+                id="editGroupId"
+                disabled={savingEdit}
+                placeholder="e.g. -1001234567890 (or leave empty for DMs)"
+                value={editGroupId}
+                onChange={(e) => setEditGroupId(e.target.value)}
+                className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 focus:ring-1 focus:ring-slate-400"
+              />
+              <p className="text-[11px] text-slate-400">
+                The bot will immediately hot-reload and bind to this group.
+              </p>
+            </div>
+
+            <DialogFooter className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={savingEdit}
+                onClick={() => setEditProject(null)}
+                className="border-slate-200 text-slate-700 text-xs h-9"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={savingEdit}
+                className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 font-medium"
+              >
+                {savingEdit && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                {savingEdit ? "Updating..." : "Save Group ID"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

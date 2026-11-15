@@ -68,6 +68,7 @@ def get_dev_db() -> sqlite3.Connection:
             telegram_bot_token TEXT NOT NULL,
             telegram_group_id TEXT,
             token_address TEXT,
+            custom_instructions TEXT,
             status TEXT DEFAULT 'live',
             status_error TEXT,
             created_at TEXT NOT NULL
@@ -79,6 +80,7 @@ def get_dev_db() -> sqlite3.Connection:
     # Graceful migration for existing local dev databases
     for col, col_def in [
         ("token_address", "TEXT"),
+        ("custom_instructions", "TEXT"),
         ("status", "TEXT DEFAULT 'live'"),
         ("status_error", "TEXT"),
     ]:
@@ -117,6 +119,12 @@ def on_startup() -> None:
     try:
         from zoe.db.connections import ensure_databases_initialized
         ensure_databases_initialized(_backend_data_dir())
+    except Exception:
+        pass
+
+    try:
+        from init_db import init_database
+        init_database()
     except Exception:
         pass
 
@@ -315,6 +323,7 @@ class ProjectResponse(BaseModel):
     name: str
     telegram_group_id: Optional[str] = None
     token_address: Optional[str] = None
+    custom_instructions: Optional[str] = None
     status: str = "live"
     status_error: Optional[str] = None
     created_at: Optional[str] = None
@@ -600,8 +609,8 @@ async def create_project(
         conn = get_dev_db()
         conn.execute(
             """
-            INSERT INTO dev_projects (id, owner_id, name, telegram_bot_token, telegram_group_id, token_address, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, 'deploying', ?)
+            INSERT INTO dev_projects (id, owner_id, name, telegram_bot_token, telegram_group_id, token_address, custom_instructions, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'deploying', ?)
             """,
             (
                 proj_id,
@@ -610,6 +619,7 @@ async def create_project(
                 encrypted_token,
                 req.telegram_group_id,
                 req.token_address.strip(),
+                req.custom_instructions.strip() if req.custom_instructions else None,
                 now_str,
             ),
         )
@@ -622,6 +632,7 @@ async def create_project(
             "telegram_bot_token": encrypted_token,
             "telegram_group_id": req.telegram_group_id,
             "token_address": req.token_address.strip(),
+            "custom_instructions": req.custom_instructions.strip() if req.custom_instructions else None,
             "status": "deploying",
         }
         try:
@@ -665,6 +676,7 @@ async def create_project(
         name=req.name.strip(),
         telegram_group_id=req.telegram_group_id,
         token_address=req.token_address.strip(),
+        custom_instructions=req.custom_instructions.strip() if req.custom_instructions else None,
         status=current_status,
         status_error=current_error,
         created_at=now_str,
@@ -687,7 +699,7 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
         cur = conn.cursor()
         rows = cur.execute(
             """
-            SELECT id, owner_id, name, telegram_group_id, token_address, status, status_error, created_at
+            SELECT id, owner_id, name, telegram_group_id, token_address, custom_instructions, status, status_error, created_at
             FROM dev_projects
             WHERE owner_id = ?
             ORDER BY created_at DESC
@@ -701,9 +713,10 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
                 name=str(r[2]),
                 telegram_group_id=r[3],
                 token_address=r[4],
-                status=r[5] or "live",
-                status_error=r[6],
-                created_at=str(r[7]),
+                custom_instructions=r[5],
+                status=r[6] or "live",
+                status_error=r[7],
+                created_at=str(r[8]),
             )
             for r in rows
         ]
@@ -711,7 +724,7 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
     try:
         result = (
             client.table("projects")
-            .select("id, owner_id, name, telegram_group_id, token_address, status, status_error, created_at")
+            .select("id, owner_id, name, telegram_group_id, token_address, custom_instructions, status, status_error, created_at")
             .eq("owner_id", owner_id)
             .order("created_at", desc=True)
             .execute()
@@ -724,6 +737,7 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
                 name=r.get("name"),
                 telegram_group_id=r.get("telegram_group_id"),
                 token_address=r.get("token_address"),
+                custom_instructions=r.get("custom_instructions"),
                 status=r.get("status") or "live",
                 status_error=r.get("status_error"),
                 created_at=str(r.get("created_at")),

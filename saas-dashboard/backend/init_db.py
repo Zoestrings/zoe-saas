@@ -1,89 +1,192 @@
-"""Database initialization & migration helper for Zoe SaaS Dashboard."""
+"""Database initialization and schema auto-migration module for Zoe SaaS Dashboard.
 
+Ensures the database tables and columns match the current application models
+on startup to prevent schema drift and 'column does not exist' errors.
+"""
+
+import logging
 import os
 from pathlib import Path
+import sqlite3
+from typing import Any, Dict, List, Optional
+
 from dotenv import load_dotenv
 
-# Load environment variables
-env_path = Path(__file__).parent / ".env"
-if env_path.exists():
-    load_dotenv(dotenv_path=env_path)
+logger = logging.getLogger("zoe.saas.init_db")
+
+# Ensure environment variables are loaded
+_env_path = Path(__file__).parent / ".env"
+if _env_path.exists():
+    load_dotenv(dotenv_path=_env_path)
 else:
     load_dotenv()
 
-PROJECTS_TABLE_SQL = """-- ========================================================
--- Zoe SaaS Dashboard: Projects Table & RLS Setup
--- Run this in your Supabase Dashboard -> SQL Editor
--- ========================================================
+PROJECTS_REQUIRED_COLUMNS: List[tuple[str, str]] = [
+    ("id", "TEXT PRIMARY KEY"),
+    ("owner_id", "TEXT"),
+    ("name", "TEXT NOT NULL"),
+    ("telegram_bot_token", "TEXT NOT NULL"),
+    ("telegram_group_id", "TEXT"),
+    ("token_address", "TEXT"),
+    ("custom_instructions", "TEXT"),
+    ("status", "TEXT DEFAULT 'deploying'"),
+    ("status_error", "TEXT"),
+    ("created_at", "TEXT"),
+]
 
--- Enable pgcrypto extension for UUID generation if not already enabled
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
--- Create projects table
+SQL_POSTGRES_INIT = """
 CREATE TABLE IF NOT EXISTS public.projects (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     telegram_bot_token TEXT NOT NULL,
     telegram_group_id TEXT,
+    token_address TEXT,
+    custom_instructions TEXT,
+    status TEXT DEFAULT 'deploying',
+    status_error TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Enable Row Level Security (RLS) on projects table
-ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
-
--- Drop existing policies if re-running
-DROP POLICY IF EXISTS "Users can view their own projects" ON public.projects;
-DROP POLICY IF EXISTS "Users can insert their own projects" ON public.projects;
-DROP POLICY IF EXISTS "Users can update their own projects" ON public.projects;
-DROP POLICY IF EXISTS "Users can delete their own projects" ON public.projects;
-
--- Policy 1: Users can view their own projects
-CREATE POLICY "Users can view their own projects"
-    ON public.projects FOR SELECT
-    USING (auth.uid() = owner_id);
-
--- Policy 2: Users can insert their own projects
-CREATE POLICY "Users can insert their own projects"
-    ON public.projects FOR INSERT
-    WITH CHECK (auth.uid() = owner_id);
-
--- Policy 3: Users can update their own projects
-CREATE POLICY "Users can update their own projects"
-    ON public.projects FOR UPDATE
-    USING (auth.uid() = owner_id);
-
--- Policy 4: Users can delete their own projects
-CREATE POLICY "Users can delete their own projects"
-    ON public.projects FOR DELETE
-    USING (auth.uid() = owner_id);
+-- Ensure all columns exist to prevent schema drift across migrations
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS telegram_group_id TEXT;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS token_address TEXT;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS custom_instructions TEXT;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'deploying';
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS status_error TEXT;
+ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
 """
 
 
-def check_supabase_connection():
-    supabase_url = os.getenv("SUPABASE_URL", "")
-    supabase_key = os.getenv("SUPABASE_KEY", "")
+def init_sqlite_dev_db(db_path: Optional[Path] = None) -> None:
+    """Initialize or migrate local SQLite database for development."""
+    if db_path is None:
+        db_path = Path(__file__).parent / "saas_dev.db"
 
-    print("\n" + "=" * 60)
-    print("Zoe SaaS Dashboard — Supabase Database Setup")
-    print("=" * 60)
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dev_users (
+                id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dev_projects (
+                id TEXT PRIMARY KEY,
+                owner_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                telegram_bot_token TEXT NOT NULL,
+                telegram_group_id TEXT,
+                token_address TEXT,
+                custom_instructions TEXT,
+                status TEXT DEFAULT 'deploying',
+                status_error TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.commit()
 
-    if not supabase_url or "your-project" in supabase_url or not supabase_key:
-        print("[!] Note: SUPABASE_URL and SUPABASE_KEY are currently using template/placeholder values in .env.")
-        print("    Update saas-dashboard/backend/.env with your real Supabase credentials.")
-    else:
+        # Check and add missing columns dynamically
+        cur = conn.cursor()
+        existing_cols = {row[1] for row in cur.execute("PRAGMA table_info(dev_projects)").fetchall()}
+        for col_name, col_type in PROJECTS_REQUIRED_COLUMNS:
+            if col_name not in existing_cols and col_name != "id":
+                try:
+                    conn.execute(f"ALTER TABLE dev_projects ADD COLUMN {col_name} {col_type}")
+                    conn.commit()
+                    logger.info("Migrated SQLite dev_projects: added column '%s'", col_name)
+                except Exception as alter_err:
+                    logger.warning("Could not add column '%s' to dev_projects: %s", col_name, alter_err)
+
+        logger.info("SQLite dev database verified and up to date at %s", db_path)
+    finally:
+        conn.close()
+
+
+def init_postgres_db(connection_url: str) -> bool:
+    """Connect to PostgreSQL/Supabase directly and run migration DDL."""
+    try:
+        import psycopg2
+    except ImportError:
+        logger.warning("psycopg2 is not installed; skipping direct PostgreSQL migration.")
+        return False
+
+    try:
+        conn = psycopg2.connect(connection_url)
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute(SQL_POSTGRES_INIT)
+        conn.close()
+        logger.info("Successfully executed PostgreSQL/Supabase auto-migration for 'projects' table.")
+        return True
+    except Exception as exc:
+        logger.warning("Direct PostgreSQL migration notice: %s", exc)
+        return False
+
+
+def verify_supabase_schema(supabase_client: Any) -> bool:
+    """Probe Supabase via PostgREST to verify that the 'projects' table has all required columns."""
+    if supabase_client is None:
+        return False
+
+    required_select = "id, owner_id, name, telegram_bot_token, telegram_group_id, token_address, custom_instructions, status, status_error, created_at"
+    try:
+        res = supabase_client.table("projects").select(required_select).limit(1).execute()
+        logger.info("Supabase 'projects' table schema verified: all required columns present.")
+        return True
+    except Exception as exc:
+        err_msg = str(exc)
+        logger.warning(
+            "Supabase schema verification alert: %s. "
+            "Please ensure public.projects table has been updated in Supabase SQL editor.",
+            err_msg,
+        )
+        return False
+
+
+def init_database() -> Dict[str, Any]:
+    """Execute complete database initialization and migration sequence."""
+    results = {
+        "sqlite": False,
+        "postgres": False,
+        "supabase_verified": False,
+    }
+
+    # 1. Local SQLite dev DB
+    try:
+        init_sqlite_dev_db()
+        results["sqlite"] = True
+    except Exception as exc:
+        logger.error("Error initializing SQLite dev database: %s", exc)
+
+    # 2. Check for direct PostgreSQL connection (DATABASE_URL, SUPABASE_DB_URL, POSTGRES_URL)
+    pg_url = os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URL") or os.getenv("POSTGRES_URL")
+    if pg_url:
+        results["postgres"] = init_postgres_db(pg_url)
+
+    # 3. Supabase client verification
+    supabase_url = os.getenv("SUPABASE_URL", "").strip()
+    supabase_key = os.getenv("SUPABASE_KEY", "").strip()
+    if supabase_url and supabase_key and "your-project" not in supabase_url:
         try:
             from supabase import create_client
             client = create_client(supabase_url, supabase_key)
-            print("[+] Successfully initialized Supabase client connection.")
+            results["supabase_verified"] = verify_supabase_schema(client)
         except Exception as exc:
-            print(f"[!] Warning connecting to Supabase: {exc}")
+            logger.warning("Could not initialize Supabase client for verification: %s", exc)
 
-    print("\n--- COPY AND PASTE THIS SQL INTO SUPABASE SQL EDITOR ---\n")
-    print(PROJECTS_TABLE_SQL)
-    print("=" * 60)
+    return results
 
 
 if __name__ == "__main__":
-    check_supabase_connection()
-
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    print("Running Zoe SaaS Database Schema Migration...")
+    res = init_database()
+    print("Migration results:", res)

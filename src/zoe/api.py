@@ -153,14 +153,31 @@ class BotManager:
             symbol = f"${symbol}"
 
         config_data = {
+            "capabilities": {
+                "token_scanner": False,
+                "security_audit": False,
+            },
+            "modules": {
+                "community_manager": True,
+                "crypto_intelligence": False,
+                "community_intelligence": True,
+            },
             "project": {
                 "id": project_id,
                 "name": proj_name,
                 "active": 1,
+                "token_address": token_address.strip(),
             },
+            "token_address": token_address.strip(),
             "telegram": {
                 "group_id": norm_group,
                 "poll_interval_seconds": 0.1,
+                "live_send_responses_enabled": True,
+                "environment": "live_verification",
+            },
+            "personality": {
+                "name": proj_name,
+                "system_prompt": custom_instructions.strip() if custom_instructions and custom_instructions.strip() else f"You are {proj_name}, an AI assistant for this community.",
             },
             "token": {
                 "symbol": symbol,

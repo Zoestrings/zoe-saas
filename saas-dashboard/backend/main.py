@@ -638,10 +638,16 @@ async def create_project(
         try:
             client.table("projects").insert(payload).execute()
         except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Database insert error: {str(exc)}",
-            )
+            # If the database enforces UUID primary key, generate a valid UUID
+            if "invalid input syntax for type uuid" in str(exc).lower():
+                proj_id = str(uuid.uuid4())
+                payload["id"] = proj_id
+                client.table("projects").insert(payload).execute()
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Database insert error: {str(exc)}",
+                )
 
     # 4. Call Engine to spawn bot poller
     engine_payload = {

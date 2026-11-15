@@ -83,8 +83,9 @@ PROJECT_QUESTION_KEYWORDS = [
         r"token|tokens|tokenomics|supply|circulating|contract|contract\s+address|\bca\b|"
         r"how\s+(?:do|can)\s+i\s+buy|where\s+(?:can|to)\s+buy|how\s+to\s+buy|where\s+to\s+buy|"
         r"ath|atl|"
-        r"roadmap|whitepaper|docs|documentation|team|founder|utility|airdrop|allocation|vesting|lockup|"
-        r"fly|hummingbird|protocol|upgrade|mainnet|testnet|nodes?|validators?|"
+        r"roadmap|whitepaper|docs|documentation|team|founder|creator|utility|airdrop|allocation|vesting|lockup|"
+        r"fly|hummingbird|onelove|protocol|upgrade|mainnet|testnet|nodes?|validators?|"
+        r"yacht|vessel|catamaran|captain|robbie|"
         r"kyc|kyb|verify|verification|identity|"
         r"solana|sol|bitcoin|btc|ethereum|eth|crypto|web3|blockchain|smart\s+contracts?|"
         r"python|coding|code|script|program|"
@@ -148,14 +149,14 @@ def detect_intent(
     if re.match(r"^(?:gm|gn|hi|hello|hey|yo|sup)$", clean_text, re.IGNORECASE):
         return IntentResult(intent="casual_chat", confidence=1.0, source="heuristic")
 
-    # 2. Strict Price & Market Query Routing -> api_call
-    if re.search(r"\b(?:price|chart|liquidity|volume|market\s*cap|mcap|fdv)\b", clean_text, re.IGNORECASE):
-        return IntentResult(intent="api_call", confidence=1.0, source="heuristic")
-
-    # 3. Contract Address Detection (0x... or 32-44 base58 chars) -> crypto_intelligence
+    # 2. Contract Address Detection (0x... or 32-44 base58 chars) -> crypto_intelligence (Universal CA Scanner)
     ca = detect_contract_address(clean_text)
     if ca:
         return IntentResult(intent="crypto_intelligence", confidence=1.0, source="heuristic")
+
+    # 3. Strict Price & Market Query Routing -> api_call
+    if re.search(r"\b(?:price|chart|liquidity|volume|market\s*cap|mcap|fdv)\b", clean_text, re.IGNORECASE):
+        return IntentResult(intent="api_call", confidence=1.0, source="heuristic")
 
     # 4. Explicit Bot Tagging Check: If the message explicitly tags the bot, ensure it routes directly
     if re.search(r"@(zoe|onelove|onelovemanager_bot|zoecommunity_bot|zoetest123_bot|\w*bot)\b", clean_text, re.IGNORECASE):

@@ -728,7 +728,7 @@ def process_message(
                     generated_text = analyze_contract_address_sync(ca)
                     inline_keyboard = generate_ca_inline_keyboard(ca)
                 else:
-                    intel = get_token_intel_sync(ca=ca, project_id=norm_msg.project_id)
+                    intel = get_token_intel_sync(ca=ca)
                     generated_text = format_token_intel_response(intel)
                     inline_keyboard = generate_ca_inline_keyboard(ca, intel)
         elif intent == "general_knowledge":

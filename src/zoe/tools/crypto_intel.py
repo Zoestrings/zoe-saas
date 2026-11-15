@@ -410,8 +410,8 @@ def generate_ca_inline_keyboard(
     if websites and isinstance(websites, list) and websites[0].get("url"):
         keyboard[1].append({"text": "🌐 Website", "url": websites[0]["url"]})
 
-    # Optional social links (Twitter, Telegram, TikTok)
-    if project_id == "onelove" or clean_ca == "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon":
+    # Optional social links (Twitter, Telegram, TikTok) - only if scanned CA matches project's primary CA
+    if clean_ca == "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon":
         keyboard.append([
             {"text": "🐦 Twitter", "url": "https://x.com/thecaptrobbie?s=11"},
             {"text": "✈️ Telegram", "url": "https://t.me/ONELOVECoinCrew"},
@@ -425,7 +425,7 @@ def format_token_intel_response(intel: Dict[str, Any]) -> str:
     """Format token intelligence into a strict, brutal, data-only report without conversational wrapping."""
     if not intel.get("found", True) or intel.get("error"):
         ca_err = intel.get("ca", "Unknown")
-        return f"🪙 Unknown Token · N/A\nCA: {ca_err}\n💰 Price: N/A\n🌐 Market Cap: N/A\n💧 Liquidity: N/A\n📊 24h Volume: N/A"
+        return f"🪙 Unknown Token · N/A · ⚠️ Unverified\nCA: {ca_err}\n💰 Price: N/A\n🌐 Market Cap: N/A\n💧 Liquidity: N/A\n📊 24h Volume: N/A"
 
     name = intel.get("name") or "Unknown"
     symbol = intel.get("symbol")
@@ -458,7 +458,24 @@ def format_token_intel_response(intel: Dict[str, Any]) -> str:
     elif ca_str and ca_str.startswith("0x"):
         chain = "ETHEREUM"
 
-    header_line = f"🪙 {token_display} · {chain}"
+    # Evaluate Risk Warning from metrics
+    risk_warning = intel.get("risk_warning")
+    if not risk_warning:
+        try:
+            raw_l = intel.get("liquidity", 0)
+            liq_float = float(str(raw_l).replace("$", "").replace(",", "")) if raw_l not in (None, "", "N/A") else 0.0
+            if liq_float == 0:
+                risk_warning = "⚠️ Zero Liquidity"
+            elif liq_float < 5000:
+                risk_warning = "⚠️ Low Liquidity"
+            elif liq_float < 25000:
+                risk_warning = "⚠️ Moderate Risk"
+            else:
+                risk_warning = "✅ Verified Liquidity"
+        except Exception:
+            risk_warning = "⚠️ Unverified"
+
+    header_line = f"🪙 {token_display} · {chain} · {risk_warning}"
 
     price_line = f"💰 Price: ${raw_price}" if raw_price != "N/A" else "💰 Price: N/A"
     mcap_line = f"🌐 Market Cap: ${raw_mcap}" if raw_mcap != "N/A" else "🌐 Market Cap: N/A"

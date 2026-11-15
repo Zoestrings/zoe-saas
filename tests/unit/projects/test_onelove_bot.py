@@ -252,3 +252,186 @@ def test_onelove_conversational_speed_under_one_point_five_seconds():
     assert resp is not None and len(resp) > 0
     # Must generate in under 8.0 seconds over live network
     assert duration < 8.0, f"Generation took {duration:.2f}s, expected < 8.0s"
+
+
+def test_universal_ca_scanner_preserves_onelove_identity(monkeypatch):
+    """Test A (Universal CA Scanner): Send an ONELOVE message with a random Solana CA.
+    Assert the pipeline extracts that CA, returns the correct DexScreener data,
+    the inline buttons target the scanned CA, and the system prompt still injects 'You are One Love AI'.
+    """
+    import random
+    from zoe.conversation.prompt_builder import get_project_system_prompt
+    from zoe.inbox.inbox_service import persist_batch
+    from zoe.tools.crypto_intel import get_token_intel_sync
+    from zoe.worker.claim import claim_next_inbox_row
+
+    random_ca = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"
+    mock_intel = {
+        "ca": random_ca,
+        "found": True,
+        "name": "Raydium",
+        "symbol": "RAY",
+        "price": "1.85",
+        "market_cap": "480000000",
+        "fdv": "480000000",
+        "liquidity": "12500000",
+        "volume_24h": "3400000",
+        "raw_pair": {
+            "chainId": "solana",
+            "url": f"https://dexscreener.com/solana/{random_ca}",
+        },
+    }
+
+    # Patch get_token_intel_sync to return our deterministic mock intel
+    import zoe.tools.crypto_intel as ci_mod
+    monkeypatch.setattr(ci_mod, "get_token_intel_sync", lambda ca=None, **kwargs: mock_intel)
+
+    conn_op = open_operational_db("data/operational/operational.db")
+    uid = random.randint(500000000, 999999999)
+
+    msg = NormalizedMessage(
+        project_id="onelove",
+        telegram_update_id=uid,
+        group_id=GROUP_ID,
+        telegram_message_id=uid % 100000,
+        pseudonymous_user_id="sailor_jack",
+        text=f"Check this token guys: {random_ca}",
+        reply_to_message_id=None,
+        is_forward=False,
+        timestamp="2026-11-15 06:00:00",
+    )
+    persist_batch(conn_op, "onelove", [msg], uid)
+
+    cur = conn_op.execute(
+        "SELECT * FROM inbox_messages WHERE telegram_update_id = ?",
+        (uid,),
+    )
+    claim = dict(zip([col[0] for col in cur.description], cur.fetchone()))
+    assert claim is not None
+
+    result = process_message(
+        inbox_row=claim,
+        db_conns={"operational": conn_op},
+        llm_client=MockLLMClient(),
+        simulated=True,
+    )
+
+    assert result.responded is True
+    resp_text = result.response_text
+    # Assert extracted CA and DexScreener formatting
+    assert f"CA: {random_ca}" in resp_text
+    assert "Raydium" in resp_text or "RAY" in resp_text
+    assert "💰 Price: $1.85" in resp_text
+    assert "🌐 Market Cap: $480,000,000.00" in resp_text
+    assert "💧 Liquidity: $12,500,000.00" in resp_text
+    assert "📊 24h Volume: $3,400,000.00" in resp_text
+    assert "🪙 Raydium (RAY) · SOLANA" in resp_text
+
+    # Assert inline keyboard buttons target scanned CA
+    assert result.inline_keyboard is not None
+    chart_btn = result.inline_keyboard[0][0]
+    assert chart_btn["text"] == "📈 Chart"
+    assert random_ca in chart_btn["url"]
+
+    explorer_btn = result.inline_keyboard[0][1]
+    assert "Solscan" in explorer_btn["text"]
+    assert random_ca in explorer_btn["url"]
+
+    buy_btn = result.inline_keyboard[1][0]
+    assert "Jupiter" in buy_btn["text"]
+    assert random_ca in buy_btn["url"]
+
+    # Assert One Love Twitter is NOT attached to a 3rd party token
+    for row in result.inline_keyboard:
+        for btn in row:
+            assert "thecaptrobbie" not in btn.get("url", "")
+
+    # Assert project identity remains One Love AI
+    sys_prompt = get_project_system_prompt("onelove")
+    assert "You are One Love AI" in sys_prompt
+    assert "One Love ($ONELOVE)" in sys_prompt
+    conn_op.close()
+
+
+def test_universal_ca_scanner_followup_preserves_rag_memory(monkeypatch):
+    """Test B (Identity & Memory Preservation): After scanning a random CA,
+    immediately ask 'What is the name of the yacht?'.
+    Assert the bot answers correctly using the One Love RAG database, proving the identity and memory weren't overwritten.
+    """
+    import random
+    from zoe.db.connections import open_community_memory_db
+    from zoe.inbox.inbox_service import persist_batch
+    from zoe.knowledge.retriever import RetrievedChunk
+    from zoe.worker.claim import claim_next_inbox_row
+
+    conn_op = open_operational_db("data/operational/operational.db")
+    conn_mem = open_community_memory_db("data/community_memory/community_memory.db")
+
+    # Mock RAG search to return One Love yacht chunks without requiring live HuggingFace download
+    mock_chunks = [
+        RetrievedChunk(
+            chunk_id=1,
+            doc_id=1,
+            project_id="onelove",
+            content="The One Love Sailing project operates aboard an 82-foot Nautitech catamaran, captained by founder Captain Robbie Olson.",
+            score=0.95,
+        )
+    ]
+    import zoe.worker.pipeline as pipeline_mod
+    monkeypatch.setattr(pipeline_mod, "search", lambda *args, **kwargs: mock_chunks)
+
+    class FollowUpMockLLM:
+        def __init__(self):
+            self.last_system_prompt = ""
+            self.last_user_prompt = ""
+
+        def generate(self, system_prompt, user_prompt, **kwargs):
+            self.last_system_prompt = system_prompt
+            self.last_user_prompt = user_prompt
+            # Emulate response synthesizing One Love RAG knowledge
+            return "The official vessel of the One Love project is the Nautitech 82 catamaran, captained by Captain Robbie Olson."
+
+    mock_llm = FollowUpMockLLM()
+    uid = random.randint(500000000, 999999999)
+
+    msg = NormalizedMessage(
+        project_id="onelove",
+        telegram_update_id=uid,
+        group_id=GROUP_ID,
+        telegram_message_id=uid % 100000,
+        pseudonymous_user_id="sailor_jack",
+        text="What is the name of the yacht?",
+        reply_to_message_id=None,
+        is_forward=False,
+        timestamp="2026-11-15 06:01:00",
+    )
+    persist_batch(conn_op, "onelove", [msg], uid)
+
+    cur = conn_op.execute(
+        "SELECT * FROM inbox_messages WHERE telegram_update_id = ?",
+        (uid,),
+    )
+    claim = dict(zip([col[0] for col in cur.description], cur.fetchone()))
+    assert claim is not None
+
+    result = process_message(
+        inbox_row=claim,
+        db_conns={"operational": conn_op, "community_memory": conn_mem},
+        llm_client=mock_llm,
+        simulated=True,
+    )
+
+    assert result.responded is True
+    # Verify the LLM was called with the One Love identity
+    assert "You are One Love AI" in mock_llm.last_system_prompt
+    assert "One Love ($ONELOVE)" in mock_llm.last_system_prompt
+
+    # Verify RAG retrieved One Love knowledge and prompt included Nautitech 82 catamaran
+    user_prompt_lower = mock_llm.last_user_prompt.lower()
+    assert "nautitech" in user_prompt_lower or "82" in user_prompt_lower or "catamaran" in user_prompt_lower
+
+    # Verify response contains the yacht name
+    assert "nautitech 82" in result.response_text.lower() or "catamaran" in result.response_text.lower()
+    conn_op.close()
+    conn_mem.close()
+

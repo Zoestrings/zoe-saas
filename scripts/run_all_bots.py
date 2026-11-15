@@ -187,6 +187,7 @@ def ensure_knowledge_indexes(model: Optional[Any] = None) -> None:
 
     data_dir = get_data_dir()
     project_docs = [
+        ("zoe", "zoe_info.txt"),
         ("onelove", "onelove_info.txt"),
         ("live_test", "hummingbird_info.txt"),
     ]
@@ -261,7 +262,7 @@ def ensure_baseline_projects_seeded(data_dir: Path) -> None:
     root = Path(__file__).resolve().parent.parent
 
     # 1. Seed project YAMLs
-    for p_id in ("live_test", "onelove"):
+    for p_id in ("zoe", "live_test", "onelove"):
         target_yaml = persistent_cfg_dir / f"{p_id}.yaml"
         candidates = [
             Path("config/projects") / f"{p_id}.yaml",

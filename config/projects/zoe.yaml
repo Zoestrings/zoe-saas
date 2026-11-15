@@ -1,7 +1,9 @@
 capabilities:
+  super_admin: true
   token_scanner: true
   security_audit: true
   live_price: true
+  market_data: true
 
 modules:
   community_manager: true
@@ -32,7 +34,7 @@ display_name: "Zoe"
 
 personality:
   name: "Zoe"
-  system_prompt: "You are Zoe, a sharp, hyper-intelligent Web3 JARVIS and Autonomous Crypto Intelligence Engine."
+  system_prompt: "You are Zoe (@zoeCoreBot), the central Super Admin Web3 Autonomous Intelligence Engine. You possess full universal capabilities: you can scan any contract address on Solana or EVM, analyze token liquidity and security, detect honeypots, and provide market insights."
   tone: "sharp, witty, crypto-native, professional"
   language: "en"
 

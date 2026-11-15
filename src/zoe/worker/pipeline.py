@@ -796,14 +796,18 @@ def process_message(
             )
         elif intent == "proactive_fud":
             logger.info("Executing JARVIS proactive FUD intervention for inbox msg %d", inbox_id)
-            official_chunks = search(
-                project_id=norm_msg.project_id,
-                query="liquidity contract security official status announcements tokenomics",
-                top_k=3,
-                db_path=kb_db_path,
-                index_dir=index_dir,
-                model=model,
-            )
+            try:
+                official_chunks = search(
+                    project_id=norm_msg.project_id,
+                    query="liquidity contract security official status announcements tokenomics",
+                    top_k=3,
+                    db_path=kb_db_path,
+                    index_dir=index_dir,
+                    model=model,
+                )
+            except Exception as search_err:
+                logger.warning("Proactive FUD RAG search failed for %s: %s", norm_msg.project_id, search_err)
+                official_chunks = []
             token_addr = None
             try:
                 from zoe.settings import load_project_config
@@ -939,14 +943,18 @@ def process_message(
             is_project_question = (intent == "knowledge" or classification.category in ("direct_question", "project_discussion", "project_question"))
             # Step 2: RAG Retrieval (top_k=3 for high-precision document recall)
             rag_start = time.perf_counter()
-            official_chunks = search(
-                project_id=norm_msg.project_id,
-                query=norm_msg.text,
-                top_k=3,
-                db_path=kb_db_path,
-                index_dir=index_dir,
-                model=model,
-            )
+            try:
+                official_chunks = search(
+                    project_id=norm_msg.project_id,
+                    query=norm_msg.text,
+                    top_k=3,
+                    db_path=kb_db_path,
+                    index_dir=index_dir,
+                    model=model,
+                )
+            except Exception as search_err:
+                logger.warning("RAG retrieval failed for project %s query '%s': %s", norm_msg.project_id, norm_msg.text, search_err)
+                official_chunks = []
             rag_time = round(time.perf_counter() - rag_start, 3)
 
             rag_score = official_chunks[0].score if official_chunks else 0.0

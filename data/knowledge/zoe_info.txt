@@ -10,3 +10,9 @@ Core Capabilities:
 2. Security Audits: On-chain contract auditing, honeypot detection, liquidity lock verification, and ownership analysis via GoPlus Security.
 3. Multi-Tenant Intelligence: Central coordinator managing sub-bots and community knowledge across diverse Web3 ecosystems.
 
+Team and Leadership:
+Zoe was architected and built by the Zoe core engineering team and founders as an autonomous Web3 intelligence platform. The team consists of veteran blockchain engineers, AI researchers, and community security architects. For official updates, ecosystem announcements, and verified leadership contacts, visit https://zoe.ai or reach out on official community channels.
+
+Contact:
+For official inquiries, partnerships, and developer access, visit https://zoe.ai or reach out via official Telegram channels.
+

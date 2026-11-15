@@ -220,9 +220,9 @@ def should_respond(
         reason_code = classification.reason or "escalation_requested"
         do_respond = False
 
-    elif cooldown_remaining > 0 and not is_private_chat and not bot_addressed:
+    elif cooldown_remaining > 0 and not is_private_chat and not bot_addressed and cat != "direct_question" and intent_str not in ("project_question", "project_misinformation"):
         # Strict Global Lock: Zoe cannot send another unprompted message within rate_limit_seconds (20s) in groups.
-        # Direct mentions/tags (bot_addressed) bypass group cooldown so user questions are never ignored.
+        # Direct mentions/tags (bot_addressed) and direct project questions bypass group cooldown so user questions are never ignored.
         decision_str = "remain_silent"
         reason_code = "rate_limit_cooldown"
         do_respond = False

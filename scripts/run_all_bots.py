@@ -196,21 +196,32 @@ def ensure_knowledge_indexes(model: Optional[Any] = None) -> None:
         target_knowledge_dir.mkdir(parents=True, exist_ok=True)
         target_doc_path = target_knowledge_dir / filename
 
-        # Search candidates if document is missing from target volume
-        if not target_doc_path.exists():
-            candidates = [
-                Path("data/knowledge") / filename,
-                Path("/app/data/knowledge") / filename,
-                Path(__file__).resolve().parent.parent / "data" / "knowledge" / filename,
-            ]
-            for cand in candidates:
-                if cand.exists():
-                    try:
-                        shutil.copy2(cand, target_doc_path)
-                        logger.info("Auto-seeded %s to %s", cand, target_doc_path)
-                        break
-                    except Exception as copy_err:
-                        logger.warning("Could not copy %s to %s: %s", cand, target_doc_path, copy_err)
+        # Search candidates and sync knowledge doc to target volume if missing or updated
+        candidates = [
+            Path("data/knowledge") / filename,
+            Path("/app/data/knowledge") / filename,
+            Path(__file__).resolve().parent.parent / "data" / "knowledge" / filename,
+        ]
+        repo_cand = None
+        for cand in candidates:
+            if cand.exists():
+                repo_cand = cand
+                break
+
+        if repo_cand:
+            should_sync = not target_doc_path.exists()
+            if not should_sync:
+                try:
+                    if repo_cand.stat().st_mtime > target_doc_path.stat().st_mtime or repo_cand.read_text(encoding="utf-8") != target_doc_path.read_text(encoding="utf-8"):
+                        should_sync = True
+                except Exception:
+                    pass
+            if should_sync:
+                try:
+                    shutil.copy2(repo_cand, target_doc_path)
+                    logger.info("Auto-seeded/synced %s to %s", repo_cand, target_doc_path)
+                except Exception as copy_err:
+                    logger.warning("Could not sync %s to %s: %s", repo_cand, target_doc_path, copy_err)
 
         doc_path = target_doc_path if target_doc_path.exists() else None
         index_file = data_dir / "indexes" / project_id / "index.faiss"

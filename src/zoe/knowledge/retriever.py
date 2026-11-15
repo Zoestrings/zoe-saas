@@ -53,11 +53,15 @@ async def search_async(
     if index.ntotal == 0:
         return []
 
-    if model is None:
-        model = get_embedding_model()
+    try:
+        if model is None:
+            model = get_embedding_model()
 
-    # Offload the query embedding generation to a background thread to prevent event loop freeze
-    query_vec = await asyncio.to_thread(model.encode, [query], normalize_embeddings=True)
+        # Offload the query embedding generation to a background thread to prevent event loop freeze
+        query_vec = await asyncio.to_thread(model.encode, [query], normalize_embeddings=True)
+    except Exception as exc:
+        logger.warning("Failed to generate embedding in search_async for project '%s': %s", project_id, exc)
+        return []
     k = min(top_k * 2, index.ntotal)
     scores, ids = index.search(query_vec.astype(np.float32), k)
 
@@ -130,12 +134,16 @@ def search(
     if index.ntotal == 0:
         return []
 
-    if model is None:
-        model = get_embedding_model()
+    try:
+        if model is None:
+            model = get_embedding_model()
 
-    query_vec = model.encode([query], normalize_embeddings=True)
-    k = min(top_k * 2, index.ntotal)
-    scores, ids = index.search(query_vec.astype(np.float32), k)
+        query_vec = model.encode([query], normalize_embeddings=True)
+        k = min(top_k * 2, index.ntotal)
+        scores, ids = index.search(query_vec.astype(np.float32), k)
+    except Exception as exc:
+        logger.warning("Failed during FAISS search for project '%s': %s", project_id, exc)
+        return []
 
     found_scores = scores[0]
     found_ids = ids[0]

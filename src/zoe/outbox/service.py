@@ -156,9 +156,12 @@ async def drain_outbox(
 
         # Send via adapter
         try:
+            send_text = (text or "").strip()
+            if not send_text:
+                send_text = "I'm having a brief connection delay with my intelligence network. Please ask me again in just a moment!"
             resp = await adapter.send_message(
                 chat_id=group_id,
-                text=text,
+                text=send_text,
                 reply_to_message_id=reply_to,
                 inline_keyboard=parsed_ik,
             )

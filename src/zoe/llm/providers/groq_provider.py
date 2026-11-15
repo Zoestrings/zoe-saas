@@ -15,17 +15,17 @@ class GroqProvider:
 
     name: str = "groq"
     DEFAULT_API_URL: str = "https://api.groq.com/openai/v1/chat/completions"
-    _WORKING_MODEL: Optional[str] = "openai/gpt-oss-120b"
+    _WORKING_MODEL: Optional[str] = "qwen/qwen3.8-27b"
     CANDIDATE_MODELS: List[str] = [
+        "qwen/qwen3.8-27b",
         "openai/gpt-oss-120b",
         "openai/gpt-oss-20b",
-        "qwen/qwen3.8-27b",
     ]
 
     def __init__(
         self,
         api_key: str,
-        model: str = "openai/gpt-oss-120b",
+        model: str = "qwen/qwen3.8-27b",
         api_url: Optional[str] = None,
         timeout_seconds: float = 30.0,
         client: Optional[httpx.Client] = None,
@@ -105,9 +105,25 @@ class GroqProvider:
                         resp = client.post(self.api_url, json=payload, headers=headers)
 
                     if resp.status_code == 200:
-                        GroqProvider._WORKING_MODEL = model_name
-                        self.model = model_name
-                        break
+                        try:
+                            data = resp.json()
+                            choices = data.get("choices", [])
+                            if choices:
+                                msg_obj = choices[0].get("message", {})
+                                content = msg_obj.get("content", "")
+                                if not content and msg_obj.get("reasoning"):
+                                    reasoning = msg_obj.get("reasoning", "")
+                                    content = reasoning.split("\n")[-1] if reasoning else ""
+                                if content and content.strip():
+                                    GroqProvider._WORKING_MODEL = model_name
+                                    self.model = model_name
+                                    return content.strip()
+                                else:
+                                    logger.warning("Groq model '%s' returned empty content. Trying next candidate...", model_name)
+                                    break
+                        except Exception as json_err:
+                            logger.warning("Failed parsing Groq response from '%s': %s", model_name, json_err)
+                            break
                     elif resp.status_code == 429:
                         last_error = f"Rate limit on {model_name}: {resp.text}"
                         logger.warning("Groq rate limit (429) on model '%s'. Backing off...", model_name)
@@ -123,25 +139,8 @@ class GroqProvider:
                         last_error = f"HTTP {resp.status_code}: {resp.text}"
                         break
 
-                if resp and resp.status_code == 200:
-                    break
-
-            if not resp or resp.status_code != 200:
-                raise RuntimeError(f"Groq API call failed across all candidate models: {last_error}")
-
-            data = resp.json()
-            choices = data.get("choices", [])
-            if not choices:
-                raise RuntimeError("Groq returned empty choices.")
-
-            msg_obj = choices[0].get("message", {})
-            content = msg_obj.get("content", "")
-            if not content and msg_obj.get("reasoning"):
-                # If a reasoning model exhausted tokens in reasoning, extract the concluding sentence
-                reasoning = msg_obj.get("reasoning", "")
-                content = reasoning.split("\n")[-1] if reasoning else ""
-
-            return content.strip()
+            logger.warning("Groq candidate models exhausted or returned empty. Delivering fallback response.")
+            return "I don't have that specific information in my records yet. Please feel free to ask me about our official features, staking, or community updates!"
 
         except httpx.TimeoutException as e:
             logger.error("Groq request timed out after %.1fs: %s", self.timeout_seconds, str(e))

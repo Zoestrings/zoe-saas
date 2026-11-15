@@ -40,6 +40,7 @@ ALLOWED_NESTED = {
         "security_audit",
         "live_price",
         "market_data",
+        "super_admin",
     },
     "modules": {
         "community_manager",

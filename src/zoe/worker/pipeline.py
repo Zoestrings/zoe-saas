@@ -130,6 +130,8 @@ def _safe_generate(
 
     elapsed = time.perf_counter() - t0
     logger.info("[%s] LLM generation took: %.2f seconds (capped max_tokens=%d)", project_id, elapsed, effective_tokens)
+    if not resp or not str(resp).strip():
+        return "I'm having a brief connection delay with my intelligence network. Please ask me again in just a moment!"
     return resp
 
 

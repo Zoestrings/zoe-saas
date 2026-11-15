@@ -263,20 +263,31 @@ def ensure_baseline_projects_seeded(data_dir: Path) -> None:
     # 1. Seed project YAMLs
     for p_id in ("live_test", "onelove"):
         target_yaml = persistent_cfg_dir / f"{p_id}.yaml"
-        if not target_yaml.exists():
-            candidates = [
-                Path("config/projects") / f"{p_id}.yaml",
-                root / "config/projects" / f"{p_id}.yaml",
-                Path("/app/config/projects") / f"{p_id}.yaml",
-            ]
-            for c in candidates:
-                if c.exists():
-                    try:
-                        shutil.copy2(c, target_yaml)
-                        logger.info("Auto-seeded persistent config for '%s' to %s", p_id, target_yaml)
-                        break
-                    except Exception as exc:
-                        logger.warning("Could not copy config %s: %s", c, exc)
+        candidates = [
+            Path("config/projects") / f"{p_id}.yaml",
+            root / "config/projects" / f"{p_id}.yaml",
+            Path("/app/config/projects") / f"{p_id}.yaml",
+        ]
+        repo_cand = None
+        for c in candidates:
+            if c.exists():
+                repo_cand = c
+                break
+        if repo_cand:
+            should_sync = not target_yaml.exists()
+            if not should_sync:
+                try:
+                    # Sync if repo file was modified later or differs
+                    if repo_cand.stat().st_mtime > target_yaml.stat().st_mtime or repo_cand.read_text(encoding="utf-8") != target_yaml.read_text(encoding="utf-8"):
+                        should_sync = True
+                except Exception:
+                    pass
+            if should_sync:
+                try:
+                    shutil.copy2(repo_cand, target_yaml)
+                    logger.info("Auto-seeded/synced config for '%s' to %s", p_id, target_yaml)
+                except Exception as exc:
+                    logger.warning("Could not sync config %s: %s", repo_cand, exc)
 
         # 2. Seed secrets YAMLs if token exists in env or local file
         target_sec = persistent_sec_dir / f"{p_id}.secrets.yaml"

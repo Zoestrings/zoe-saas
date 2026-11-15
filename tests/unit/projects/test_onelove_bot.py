@@ -117,7 +117,12 @@ def test_multi_bot_orchestrator_initializes_both_bots():
         "onelove": MockLLMClient(),
     }
 
-    model = get_embedding_model()
+    class MockEmbeddingModel:
+        def encode(self, texts, **kwargs):
+            import numpy as np
+            return np.zeros((len(texts), 384), dtype=np.float32)
+
+    model = MockEmbeddingModel()
 
     async def _run():
         await start_orchestrator(

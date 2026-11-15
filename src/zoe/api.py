@@ -414,11 +414,15 @@ def verify_engine_key(x_engine_key: Optional[str] = Header(None, alias="X-Engine
 
 @engine_app.get("/health")
 def health() -> Dict[str, Any]:
-    """Engine health status and bot counts."""
+    """Engine health status, readiness, and active bot telemetry."""
+    from zoe.knowledge.model import is_model_ready
+
+    model_loaded = is_model_ready()
     statuses = bot_manager.get_all_statuses()
     running_count = sum(1 for s in statuses if s["status"] == "running")
     return {
-        "status": "ok",
+        "status": "ready" if model_loaded else "starting",
+        "model_loaded": model_loaded,
         "active_bots": running_count,
         "total_bots": len(statuses),
         "bots": [s["project_id"] for s in statuses],

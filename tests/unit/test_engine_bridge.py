@@ -60,7 +60,7 @@ def test_engine_health_endpoint():
     resp = client.get("/health")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["status"] == "ok"
+    assert data["status"] in ("ready", "starting")
     assert "active_bots" in data
 
 

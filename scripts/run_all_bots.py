@@ -337,15 +337,19 @@ async def start_orchestrator(
 
     logger.info("Discovered %d project configuration(s): %s", len(all_projects), all_projects)
 
-    # 2. Singleton Embedding Model (Shared RAM foot-print)
-    model = shared_model
-    if model is None:
-        logger.info("Pre-warming shared singleton embedding model...")
-        model = prewarm_model()
-        logger.info("Shared embedding model ready in RAM.")
+    # 2. Asynchronous Model Pre-Warming & Cold-Start Knowledge Indexing
+    def _bg_prewarm_and_index() -> None:
+        try:
+            m = prewarm_model()
+            ensure_knowledge_indexes(model=m)
+        except Exception as exc:
+            logger.error("Background model pre-warming or index rebuild failed: %s", exc)
 
-    # 2b. Auto-Ingest Knowledge if FAISS indexes are missing on cold start
-    ensure_knowledge_indexes(model=model)
+    if shared_model is None:
+        logger.info("[orchestrator] Model pre-warming started in background. Starting Telegram workers...")
+        asyncio.create_task(asyncio.to_thread(_bg_prewarm_and_index))
+    else:
+        ensure_knowledge_indexes(model=shared_model)
 
     # 3. Setup shutdown coordinator
     shutdown_event = asyncio.Event()
@@ -431,7 +435,7 @@ async def start_orchestrator(
                 db_conns=db_conns,
                 adapter=adapter,
                 llm_client=llm,
-                model=model,
+                model=shared_model,
             )
             bot_instances.append(instance)
 
@@ -447,7 +451,7 @@ async def start_orchestrator(
         from datetime import datetime, timezone
         import uvicorn
         from zoe.api import bot_manager, engine_app
-        bot_manager.shared_model = model
+        bot_manager.shared_model = shared_model
 
         for bot in bot_instances:
             bot_manager.statuses[bot.project_id] = "running"

@@ -17,6 +17,7 @@ ALLOWED_TOP_LEVEL = {
     "token_address",
     "token",
     "modules",
+    "capabilities",
     "display_name",
     "links",
 }
@@ -33,6 +34,12 @@ ALLOWED_NESTED = {
         "twitter",
         "telegram",
         "tiktok",
+    },
+    "capabilities": {
+        "token_scanner",
+        "security_audit",
+        "live_price",
+        "market_data",
     },
     "modules": {
         "community_manager",

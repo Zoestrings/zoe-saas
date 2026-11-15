@@ -292,8 +292,19 @@ def process_message(
             except Exception:
                 modules_cfg = {}
 
+        capabilities_cfg = p_cfg.get("capabilities", {})
+        if not capabilities_cfg:
+            try:
+                from zoe.settings import load_project_config
+                cfg_file = load_project_config(norm_msg.project_id)
+                capabilities_cfg = cfg_file.get("capabilities", {})
+            except Exception:
+                capabilities_cfg = {}
+
+        token_scanner_enabled = bool(capabilities_cfg.get("token_scanner", False))
+        security_audit_enabled = bool(capabilities_cfg.get("security_audit", False))
         module_comm_mgr = modules_cfg.get("community_manager", True)
-        module_crypto_intel = modules_cfg.get("crypto_intelligence", True)
+        module_crypto_intel = token_scanner_enabled
         module_comm_intel = modules_cfg.get("community_intelligence", True)
 
         if not module_comm_mgr and classification.category == "casual":
@@ -710,19 +721,24 @@ def process_message(
                 generated_text = "I just checked the group logs, but it's quiet right now."
 
         elif intent in ("crypto_intelligence", "ca_detection"):
-            if not module_crypto_intel:
-                logger.info("Crypto intelligence module disabled for project %s", norm_msg.project_id)
-                generated_text = "I've detected a contract address, but the Crypto Intelligence module is currently disabled for this project."
+            from zoe.conversation.router import extract_detected_ca
+            from zoe.tools.crypto_intel import (
+                _DEFAULT_ANALYZE_SYNC,
+                analyze_contract_address_sync,
+                format_token_intel_response,
+                generate_ca_inline_keyboard,
+                get_token_intel_sync,
+            )
+            ca = detect_contract_address(norm_msg.text) or extract_detected_ca(norm_msg.text) or norm_msg.text.strip()
+            
+            # Check if this CA is the bot's own native project token
+            own_token_addr = str(p_cfg.get("token_address") or p_cfg.get("project", {}).get("token_address") or "")
+            is_own_token = bool(own_token_addr and ca and ca.lower() == own_token_addr.lower())
+
+            if not token_scanner_enabled and not is_own_token:
+                logger.info("External token scanning disabled (token_scanner=false) for project %s", norm_msg.project_id)
+                generated_text = "I only manage data for this community. Please DYOR on external contracts."
             else:
-                from zoe.conversation.router import extract_detected_ca
-                from zoe.tools.crypto_intel import (
-                    _DEFAULT_ANALYZE_SYNC,
-                    analyze_contract_address_sync,
-                    format_token_intel_response,
-                    generate_ca_inline_keyboard,
-                    get_token_intel_sync,
-                )
-                ca = detect_contract_address(norm_msg.text) or extract_detected_ca(norm_msg.text) or norm_msg.text.strip()
                 logger.info("Executing on-demand Crypto Intelligence CA analysis for: %s", ca)
                 if analyze_contract_address_sync is not _DEFAULT_ANALYZE_SYNC:
                     generated_text = analyze_contract_address_sync(ca)
@@ -731,6 +747,28 @@ def process_message(
                     intel = get_token_intel_sync(ca=ca)
                     generated_text = format_token_intel_response(intel)
                     inline_keyboard = generate_ca_inline_keyboard(ca, intel)
+
+                # Persist a clean summary of the scanned token into community memory for follow-up questions
+                try:
+                    tok_name = intel.get("name") or "Unknown"
+                    tok_sym = intel.get("symbol") or ""
+                    tok_price = intel.get("price_usd") or "N/A"
+                    tok_chain = intel.get("chain") or "Solana"
+                    scanned_summary = (
+                        f"Scanned Token Summary: Name: {tok_name} ({tok_sym}), "
+                        f"Chain: {tok_chain}, CA: {ca}, Price: ${tok_price}"
+                    )
+                    record_community_message(
+                        project_id=norm_msg.project_id,
+                        group_id=norm_msg.group_id,
+                        telegram_message_id=0,
+                        pseudonymous_user_id="zoe",
+                        content=f"{generated_text}\n\n{scanned_summary}",
+                        received_at=now(),
+                        db_path=mem_db_path,
+                    )
+                except Exception as mem_err:
+                    logger.warning("Could not persist scanned CA summary to memory: %s", mem_err)
         elif intent == "general_knowledge":
             logger.info("Direct general knowledge / coding intent triggered for msg %d: '%s'", inbox_id, norm_msg.text)
             prompt = build_prompt(
@@ -938,8 +976,45 @@ def process_message(
                 else not isinstance(llm_client, MockLLMClient)
             )
 
+            # Check if this query is a follow-up about a recently scanned token in conversation history
+            has_scanned_token_in_history = False
+            scanned_token_context = ""
+            if conversation_history:
+                for turn in reversed(conversation_history):
+                    if any(term in turn for term in ("CA:", "🪙", "Scanned Token Summary:", "Price: $")):
+                        has_scanned_token_in_history = True
+                        scanned_token_context = turn
+                        break
+
+            is_token_followup = has_scanned_token_in_history and any(
+                term in norm_msg.text.lower() for term in ("token", "name", "price", "ca", "address", "market cap", "liquidity", "it", "this", "that", "coin", "ticker")
+            )
+
             if rag_failed and not web_results:
-                if use_guard or enforce_accuracy_guard:
+                if is_token_followup:
+                    logger.info("Detected follow-up question regarding recently scanned token; generating response from conversation history.")
+                    prompt = build_prompt(
+                        message=norm_msg,
+                        community_context=community_context,
+                        official_chunks=[],
+                        conversation_history=conversation_history,
+                        system_prompt=active_system_prompt,
+                    )
+                    prompt += (
+                        f"\n\n[RECENT SCANNED TOKEN CONTEXT]\n{scanned_token_context}\n\n"
+                        f"Directive: Answer the user's follow-up question directly using the recent scanned token context above."
+                    )
+                    client = llm_client or MockLLMClient()
+                    llm_start = time.perf_counter()
+                    generated_text = _safe_generate(
+                        client=client,
+                        system_prompt=active_system_prompt,
+                        user_prompt=prompt,
+                        max_tokens=150,
+                        project_id=norm_msg.project_id,
+                    )
+                    llm_time = round(time.perf_counter() - llm_start, 3)
+                elif use_guard or enforce_accuracy_guard:
                     logger.info(
                         "Accuracy Guard triggered: score below 0.25 and no web search results for query '%s'",
                         norm_msg.text,

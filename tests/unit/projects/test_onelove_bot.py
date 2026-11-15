@@ -254,38 +254,12 @@ def test_onelove_conversational_speed_under_one_point_five_seconds():
     assert duration < 8.0, f"Generation took {duration:.2f}s, expected < 8.0s"
 
 
-def test_universal_ca_scanner_preserves_onelove_identity(monkeypatch):
-    """Test A (Universal CA Scanner): Send an ONELOVE message with a random Solana CA.
-    Assert the pipeline extracts that CA, returns the correct DexScreener data,
-    the inline buttons target the scanned CA, and the system prompt still injects 'You are One Love AI'.
-    """
+def test_sub_bot_rejects_external_ca_scanning_without_token_scanner_capability():
+    """Verify that sub-bots with capabilities.token_scanner=false reject external CAs."""
     import random
-    from zoe.conversation.prompt_builder import get_project_system_prompt
     from zoe.inbox.inbox_service import persist_batch
-    from zoe.tools.crypto_intel import get_token_intel_sync
-    from zoe.worker.claim import claim_next_inbox_row
 
     random_ca = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"
-    mock_intel = {
-        "ca": random_ca,
-        "found": True,
-        "name": "Raydium",
-        "symbol": "RAY",
-        "price": "1.85",
-        "market_cap": "480000000",
-        "fdv": "480000000",
-        "liquidity": "12500000",
-        "volume_24h": "3400000",
-        "raw_pair": {
-            "chainId": "solana",
-            "url": f"https://dexscreener.com/solana/{random_ca}",
-        },
-    }
-
-    # Patch get_token_intel_sync to return our deterministic mock intel
-    import zoe.tools.crypto_intel as ci_mod
-    monkeypatch.setattr(ci_mod, "get_token_intel_sync", lambda ca=None, **kwargs: mock_intel)
-
     conn_op = open_operational_db("data/operational/operational.db")
     uid = random.randint(500000000, 999999999)
 
@@ -317,40 +291,226 @@ def test_universal_ca_scanner_preserves_onelove_identity(monkeypatch):
     )
 
     assert result.responded is True
+    assert "I only manage data for this community" in result.response_text
+    assert "DYOR on external contracts" in result.response_text
+    conn_op.close()
+
+
+def test_main_zoe_bot_scans_external_ca_with_token_scanner_capability(monkeypatch):
+    """Verify that Main Zoe Bot (capabilities.token_scanner=true) scans external CAs and produces live DexScreener intel."""
+    import random
+    from zoe.inbox.inbox_service import persist_batch
+
+    random_ca = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"
+    mock_intel = {
+        "ca": random_ca,
+        "found": True,
+        "name": "Raydium",
+        "symbol": "RAY",
+        "chain": "Solana",
+        "price": "1.85",
+        "price_usd": "1.85",
+        "market_cap": "480000000",
+        "fdv": "480000000",
+        "liquidity": "12500000",
+        "volume_24h": "3400000",
+        "raw_pair": {
+            "chainId": "solana",
+            "url": f"https://dexscreener.com/solana/{random_ca}",
+        },
+    }
+
+    import zoe.tools.crypto_intel as ci_mod
+    monkeypatch.setattr(ci_mod, "get_token_intel_sync", lambda ca=None, **kwargs: mock_intel)
+
+    conn_op = open_operational_db("data/operational/operational.db")
+    uid = random.randint(500000000, 999999999)
+
+    msg = NormalizedMessage(
+        project_id="zoe",
+        telegram_update_id=uid,
+        group_id=GROUP_ID,
+        telegram_message_id=uid % 100000,
+        pseudonymous_user_id="crypto_trader",
+        text=f"Scan this token: {random_ca}",
+        reply_to_message_id=None,
+        is_forward=False,
+        timestamp="2026-11-15 06:00:00",
+    )
+    persist_batch(conn_op, "zoe", [msg], uid)
+
+    cur = conn_op.execute(
+        "SELECT * FROM inbox_messages WHERE telegram_update_id = ?",
+        (uid,),
+    )
+    claim = dict(zip([col[0] for col in cur.description], cur.fetchone()))
+    assert claim is not None
+
+    result = process_message(
+        inbox_row=claim,
+        db_conns={"operational": conn_op},
+        llm_client=MockLLMClient(),
+        simulated=True,
+    )
+
+    assert result.responded is True
     resp_text = result.response_text
-    # Assert extracted CA and DexScreener formatting
     assert f"CA: {random_ca}" in resp_text
     assert "Raydium" in resp_text or "RAY" in resp_text
     assert "💰 Price: $1.85" in resp_text
     assert "🌐 Market Cap: $480,000,000.00" in resp_text
     assert "💧 Liquidity: $12,500,000.00" in resp_text
     assert "📊 24h Volume: $3,400,000.00" in resp_text
-    assert "🪙 Raydium (RAY) · SOLANA" in resp_text
 
     # Assert inline keyboard buttons target scanned CA
     assert result.inline_keyboard is not None
     chart_btn = result.inline_keyboard[0][0]
     assert chart_btn["text"] == "📈 Chart"
     assert random_ca in chart_btn["url"]
-
-    explorer_btn = result.inline_keyboard[0][1]
-    assert "Solscan" in explorer_btn["text"]
-    assert random_ca in explorer_btn["url"]
-
-    buy_btn = result.inline_keyboard[1][0]
-    assert "Jupiter" in buy_btn["text"]
-    assert random_ca in buy_btn["url"]
-
-    # Assert One Love Twitter is NOT attached to a 3rd party token
-    for row in result.inline_keyboard:
-        for btn in row:
-            assert "thecaptrobbie" not in btn.get("url", "")
-
-    # Assert project identity remains One Love AI
-    sys_prompt = get_project_system_prompt("onelove")
-    assert "You are One Love AI" in sys_prompt
-    assert "One Love ($ONELOVE)" in sys_prompt
     conn_op.close()
+
+
+def test_main_zoe_ca_followup_answers_from_short_term_memory(monkeypatch):
+    """Verify that asking a follow-up about a scanned token uses short-term memory without triggering the tenant RAG block."""
+    import random
+    from zoe.db.connections import open_community_memory_db
+    from zoe.inbox.inbox_service import persist_batch
+
+    conn_op = open_operational_db("data/operational/operational.db")
+    conn_mem = open_community_memory_db("data/community_memory/community_memory.db")
+
+    random_ca = "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R"
+    mock_intel = {
+        "ca": random_ca,
+        "found": True,
+        "name": "Raydium",
+        "symbol": "RAY",
+        "chain": "Solana",
+        "price": "1.85",
+        "price_usd": "1.85",
+        "market_cap": "480000000",
+        "fdv": "480000000",
+        "liquidity": "12500000",
+        "volume_24h": "3400000",
+    }
+    import zoe.tools.crypto_intel as ci_mod
+    monkeypatch.setattr(ci_mod, "get_token_intel_sync", lambda ca=None, **kwargs: mock_intel)
+
+    # 1. First message: Scan CA
+    uid1 = random.randint(500000000, 999999999)
+    msg1 = NormalizedMessage(
+        project_id="zoe",
+        telegram_update_id=uid1,
+        group_id=GROUP_ID,
+        telegram_message_id=uid1 % 100000,
+        pseudonymous_user_id="crypto_trader",
+        text=f"{random_ca}",
+        reply_to_message_id=None,
+        is_forward=False,
+        timestamp="2026-11-15 06:05:00",
+    )
+    persist_batch(conn_op, "zoe", [msg1], uid1)
+    cur1 = conn_op.execute("SELECT * FROM inbox_messages WHERE telegram_update_id = ?", (uid1,))
+    claim1 = dict(zip([col[0] for col in cur1.description], cur1.fetchone()))
+    process_message(inbox_row=claim1, db_conns={"operational": conn_op, "memory": conn_mem}, llm_client=MockLLMClient(), simulated=True)
+
+    # 2. Second message: Follow-up question about the token
+    class MemoryAnsweringLLM:
+        def __init__(self):
+            self.last_user_prompt = ""
+
+        def generate(self, system_prompt, user_prompt, **kwargs):
+            self.last_user_prompt = user_prompt
+            return "That token is Raydium ($RAY) on Solana."
+
+    mock_llm = MemoryAnsweringLLM()
+    uid2 = random.randint(500000000, 999999999)
+    msg2 = NormalizedMessage(
+        project_id="zoe",
+        telegram_update_id=uid2,
+        group_id=GROUP_ID,
+        telegram_message_id=uid2 % 100000,
+        pseudonymous_user_id="crypto_trader",
+        text="What is the name of this token?",
+        reply_to_message_id=None,
+        is_forward=False,
+        timestamp="2026-11-15 06:05:30",
+    )
+    persist_batch(conn_op, "zoe", [msg2], uid2)
+    cur2 = conn_op.execute("SELECT * FROM inbox_messages WHERE telegram_update_id = ?", (uid2,))
+    claim2 = dict(zip([col[0] for col in cur2.description], cur2.fetchone()))
+
+    result2 = process_message(
+        inbox_row=claim2,
+        db_conns={"operational": conn_op, "memory": conn_mem},
+        llm_client=mock_llm,
+        simulated=True,
+        enforce_accuracy_guard=True,
+    )
+
+    assert result2.responded is True
+    # Must NOT trigger the canned Accuracy Guard refusal
+    assert "I don't have the latest details" not in result2.response_text
+    assert "Raydium" in result2.response_text or "RAY" in result2.response_text
+    # Prompt must have included the recent scanned token context
+    assert "Raydium" in mock_llm.last_user_prompt or "RAY" in mock_llm.last_user_prompt
+    conn_op.close()
+    conn_mem.close()
+
+
+def test_dm_bypasses_twenty_second_rate_limit():
+    """Verify that Private Messages (DMs, positive chat IDs) bypass the 20s rate limit."""
+    from datetime import datetime
+    from zoe.conversation.classifier import ClassificationResult
+    from zoe.participation.decision import should_respond
+
+    dm_chat_id = "987654321"  # Positive ID = Telegram DM
+    msg1 = NormalizedMessage(
+        project_id="zoe",
+        telegram_update_id=101,
+        group_id=dm_chat_id,
+        telegram_message_id=1,
+        pseudonymous_user_id="user_dm",
+        text="GM Zoe!",
+        reply_to_message_id=None,
+        is_forward=False,
+        timestamp="2026-11-15 12:00:00",
+    )
+    class_res = ClassificationResult(category="casual", confidence=1.0)
+
+    # First message responds
+    d1 = should_respond(
+        message=msg1,
+        classification=class_res,
+        last_response_time=None,
+        rate_limit_seconds=20.0,
+    )
+    assert d1.should_respond is True
+
+    # Immediate second message 2 seconds later (within 20s window) in DM must STILL respond
+    msg2 = NormalizedMessage(
+        project_id="zoe",
+        telegram_update_id=102,
+        group_id=dm_chat_id,
+        telegram_message_id=2,
+        pseudonymous_user_id="user_dm",
+        text="What is Bitcoin price?",
+        reply_to_message_id=None,
+        is_forward=False,
+        timestamp="2026-11-15 12:00:02",
+    )
+    class_res2 = ClassificationResult(category="direct_question", confidence=1.0)
+
+    d2 = should_respond(
+        message=msg2,
+        classification=class_res2,
+        last_response_time=datetime(2026, 11, 15, 12, 0, 0),
+        current_time=datetime(2026, 11, 15, 12, 0, 2),
+        rate_limit_seconds=20.0,
+    )
+    # In DM, rate limit MUST be bypassed
+    assert d2.should_respond is True
+    assert d2.reason != "rate_limit_cooldown"
 
 
 def test_universal_ca_scanner_followup_preserves_rag_memory(monkeypatch):

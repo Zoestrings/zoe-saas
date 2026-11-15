@@ -1,0 +1,73 @@
+capabilities:
+  token_scanner: true
+  security_audit: true
+  live_price: true
+
+modules:
+  community_manager: true
+  crypto_intelligence: true
+  community_intelligence: true
+  wallet_intelligence: true
+  alerts_monitoring: true
+  caller_reputation: true
+
+project:
+  id: "zoe"
+  name: "Zoe Main Intelligence"
+  description: "Central Web3 Intelligence Platform and Autonomous Bot"
+  version: "1.0.0"
+  created_at: "2026-11-15 00:00:00"
+  active: 1
+  display_name: "Zoe"
+
+telegram:
+  environment: "live_verification"
+  group_id: "-5214407126"
+  live_send_responses_enabled: true
+  live_send_moderator_notifications_enabled: false
+  poll_timeout_seconds: 10
+  poll_interval_seconds: 0.05
+
+display_name: "Zoe"
+
+personality:
+  name: "Zoe"
+  system_prompt: "You are Zoe, a sharp, hyper-intelligent Web3 JARVIS and Autonomous Crypto Intelligence Engine."
+  tone: "sharp, witty, crypto-native, professional"
+  language: "en"
+
+participation:
+  mode: "selective"
+  cooldown_seconds: 20
+  rate_limit_seconds: 20.0
+  max_daily_messages: 5000
+  rate_limit_per_minute: 30
+  respond_to_casual: true
+
+knowledge:
+  db_path: "data/official_knowledge/official_knowledge.db"
+  index_path: "data/indexes/zoe/index.faiss"
+  chunk_size: 512
+  chunk_overlap: 64
+  embedding_model: "all-MiniLM-L6-v2"
+  top_k: 3
+  similarity_threshold: 0.75
+
+memory:
+  db_path: "data/community_memory/community_memory.db"
+  short_term_window: 20
+  long_term_retention_days: 90
+  summary_interval_hours: 6
+
+safety:
+  enabled: true
+  content_filter: true
+  max_token_length: 1024
+
+escalation:
+  acknowledgement_deadline_minutes:
+    critical: 5
+    high: 30
+    normal: 1440
+  moderator_group_id: "-5214407126"
+

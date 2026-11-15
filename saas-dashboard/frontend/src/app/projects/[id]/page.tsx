@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { getToken } from "@/lib/api"
 import { 
   Globe, 
   FileText, 
@@ -61,11 +62,22 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
     })
   }, [params])
 
+  const getAuthHeaders = (extra: Record<string, string> = {}) => {
+    const token = getToken()
+    const headers: Record<string, string> = { ...extra }
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`
+    }
+    return headers
+  }
+
   // Fetch document list & existing settings
   const fetchDocuments = async () => {
     setLoadingDocs(true)
     try {
-      const res = await fetch(`${apiBase}/api/projects/${projectId}/documents`)
+      const res = await fetch(`${apiBase}/api/projects/${projectId}/documents`, {
+        headers: getAuthHeaders(),
+      })
       if (res.ok) {
         const data = await res.json()
         setDocuments(data.documents || [])
@@ -79,7 +91,9 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch(`${apiBase}/api/projects/${projectId}/settings`)
+      const res = await fetch(`${apiBase}/api/projects/${projectId}/settings`, {
+        headers: getAuthHeaders(),
+      })
       if (res.ok) {
         const data = await res.json()
         if (data.custom_instructions) {
@@ -103,7 +117,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
     try {
       const res = await fetch(`${apiBase}/api/projects/${projectId}/ingest-url`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ url: url.trim() })
       })
       const data = await res.json()
@@ -125,7 +139,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
     try {
       const res = await fetch(`${apiBase}/api/projects/${projectId}/ingest-text`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ text: rawText.trim() })
       })
       const data = await res.json()
@@ -148,7 +162,8 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
     setDeletingFile(filename)
     try {
       const res = await fetch(`${apiBase}/api/projects/${projectId}/documents/${encodeURIComponent(filename)}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: getAuthHeaders(),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || "Failed to delete document")
@@ -167,7 +182,7 @@ export default function ProjectDetail({ params }: { params: Promise<{ id: string
     try {
       const res = await fetch(`${apiBase}/api/projects/${projectId}/settings`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ custom_instructions: instructions.trim() })
       })
       const data = await res.json()

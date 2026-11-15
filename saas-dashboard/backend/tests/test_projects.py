@@ -85,20 +85,21 @@ def test_authenticated_create_project_encrypts_token():
     app.dependency_overrides[get_current_user] = lambda: mock_user
 
     try:
-        with patch("main.get_supabase", return_value=mock_supabase):
+        with patch("main.get_supabase", return_value=mock_supabase), patch("main.call_engine", return_value={"status": "ok", "project_id": "project-uuid-1234"}):
             raw_secret_token = "987654321:AAE_Secr3tB0tT0k3n_Test"
             res = client.post(
                 "/api/projects",
                 json={
                     "name": "One Love Sailing",
                     "telegram_bot_token": raw_secret_token,
-                    "telegram_group_id": "-5214407126"
+                    "telegram_group_id": "-5214407126",
+                    "token_address": "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon"
                 }
             )
             assert res.status_code == 201
             data = res.json()
             assert data["name"] == "One Love Sailing"
-            assert data["id"] == "project-uuid-1234"
+            assert "one-love-sailing" in data["id"]
 
             # Verify the token passed to Supabase insert was encrypted
             assert len(inserted_payloads) == 1
@@ -106,6 +107,51 @@ def test_authenticated_create_project_encrypts_token():
             assert saved_token != raw_secret_token
             # Verify decrypting it restores the original token
             assert decrypt_token(saved_token) == raw_secret_token
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_knowledge_endpoints_require_authentication():
+    """Verify that knowledge endpoints reject unauthenticated requests with 401."""
+    res_list = client.get("/api/projects/sample-project/documents")
+    assert res_list.status_code == 401
+
+    res_del = client.delete("/api/projects/sample-project/documents/sample.txt")
+    assert res_del.status_code == 401
+
+    res_url = client.post("/api/projects/sample-project/ingest-url", json={"url": "https://example.com"})
+    assert res_url.status_code == 401
+
+    res_text = client.post("/api/projects/sample-project/ingest-text", json={"text": "sample text"})
+    assert res_text.status_code == 401
+
+    res_settings = client.get("/api/projects/sample-project/settings")
+    assert res_settings.status_code == 401
+
+
+def test_knowledge_endpoints_enforce_owner_authorization():
+    """Verify that accessing another user's project knowledge returns 403 Forbidden."""
+    # User A tries to access User B's project
+    user_a = {"id": "user-a-1111", "email": "usera@example.com"}
+    app.dependency_overrides[get_current_user] = lambda: user_a
+
+    # Mock Supabase returning project owned by user-b-2222
+    mock_supabase = MagicMock()
+    mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=[{"id": "user-b-project", "owner_id": "user-b-2222"}]
+    )
+
+    try:
+        with patch("main.get_supabase", return_value=mock_supabase):
+            res = client.get("/api/projects/user-b-project/documents")
+            assert res.status_code == 403
+            assert "Access denied" in res.json()["detail"]
+
+            res_del = client.delete("/api/projects/user-b-project/documents/sample.txt")
+            assert res_del.status_code == 403
+
+            res_url = client.post("/api/projects/user-b-project/ingest-url", json={"url": "https://example.com"})
+            assert res_url.status_code == 403
     finally:
         app.dependency_overrides.clear()
 

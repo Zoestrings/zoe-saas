@@ -128,8 +128,10 @@ def should_respond(
     """
     curr_dt = current_time if current_time is not None else now()
 
-    # 1. Cooldown / Rate Limit Check (Strictly scoped per project_id and group_id)
-    if last_response_time is None and db_conn is not None:
+    is_private_chat = not str(message.group_id).startswith("-")
+
+    # 1. Cooldown / Rate Limit Check (Enforced ONLY for public group chats; bypassed for direct messages)
+    if not is_private_chat and last_response_time is None and db_conn is not None:
         try:
             cur = db_conn.cursor()
             cur.execute(
@@ -147,7 +149,7 @@ def should_respond(
 
     cooldown_remaining = 0.0
     elapsed = 999999.0
-    if last_response_time is not None:
+    if not is_private_chat and last_response_time is not None:
         last_dt = (
             parse_timestamp(last_response_time)
             if isinstance(last_response_time, str)
@@ -157,7 +159,6 @@ def should_respond(
         if 0 < elapsed < rate_limit_seconds:
             cooldown_remaining = rate_limit_seconds - elapsed
 
-    is_private_chat = not str(message.group_id).startswith("-")
     other_bot_addressed = not is_private_chat and is_other_bot_addressed(
         message.text, project_id=message.project_id, bot_name=bot_name
     )

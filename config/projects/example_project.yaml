@@ -1,3 +1,7 @@
+capabilities:
+  token_scanner: false
+  security_audit: false
+
 project:
   id: "example_project"
   name: "Zoe Example Project"

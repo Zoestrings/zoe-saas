@@ -77,29 +77,42 @@ class BotInstance:
         # 2. Process pending inbox items
         processed_count = 0
         while True:
-            claim = claim_next_inbox_row(conn_op, project_id=self.project_id, worker_id=f"orch_{self.project_id}")
+            claim = claim_next_inbox_row(
+                conn_op,
+                project_id=self.project_id,
+                worker_id=f"orch_{self.project_id}",
+                lease_duration_seconds=60,
+            )
             if not claim:
                 break
 
             text_preview = claim.get("text", "")[:40]
             logger.info("Processing inbox msg %d: '%s'...", claim["id"], text_preview)
 
-            res = await asyncio.to_thread(
-                process_message,
-                inbox_row=claim,
-                db_conns=None,
-                llm_client=self.llm_client,
-                model=self.model,
-                simulated=False,
-            )
-            processed_count += 1
-            logger.info(
-                "Inbox msg %d processed: decision=%s, reason=%s, responded=%s",
-                claim["id"],
-                res.decision.decision,
-                res.decision.reason,
-                res.responded,
-            )
+            try:
+                res = await asyncio.to_thread(
+                    process_message,
+                    inbox_row=claim,
+                    db_conns=None,
+                    llm_client=self.llm_client,
+                    model=self.model,
+                    simulated=False,
+                )
+                processed_count += 1
+                logger.info(
+                    "Inbox msg %d processed: decision=%s, reason=%s, responded=%s",
+                    claim["id"],
+                    res.decision.decision,
+                    res.decision.reason,
+                    res.responded,
+                )
+            except Exception as proc_exc:
+                logger.error("Unhandled error processing inbox msg %d: %s", claim["id"], proc_exc, exc_info=True)
+                from zoe.inbox.lifecycle import transition
+                try:
+                    transition(conn_op, claim["id"], "failed", error=str(proc_exc))
+                except Exception:
+                    pass
 
         # 3. Drain outbox
         delivered = await drain_outbox(

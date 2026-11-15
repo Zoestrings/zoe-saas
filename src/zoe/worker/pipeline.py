@@ -111,19 +111,23 @@ def _safe_generate(
 ) -> str:
     """Invoke client.generate with max_tokens strictly capped at 250 and log latency."""
     import time
-    # Hard cap at 250 tokens prevents overly long copy-pasted responses and Telegram timeouts
     effective_tokens = min(int(max_tokens) if max_tokens else 250, 250)
 
     t0 = time.perf_counter()
     try:
-        resp = client.generate(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            max_tokens=effective_tokens,
-            is_technical=is_technical,
-        )
-    except TypeError:
-        resp = client.generate(system_prompt=system_prompt, user_prompt=user_prompt)
+        try:
+            resp = client.generate(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=effective_tokens,
+                is_technical=is_technical,
+            )
+        except TypeError:
+            resp = client.generate(system_prompt=system_prompt, user_prompt=user_prompt)
+    except Exception as exc:
+        logger.error("[%s] LLM generation failed: %s", project_id, exc)
+        return "I'm having a brief connection delay with my intelligence network. Please ask me again in just a moment!"
+
     elapsed = time.perf_counter() - t0
     logger.info("[%s] LLM generation took: %.2f seconds (capped max_tokens=%d)", project_id, elapsed, effective_tokens)
     return resp

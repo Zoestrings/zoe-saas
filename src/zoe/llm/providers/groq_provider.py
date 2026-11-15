@@ -15,12 +15,17 @@ class GroqProvider:
 
     name: str = "groq"
     DEFAULT_API_URL: str = "https://api.groq.com/openai/v1/chat/completions"
-    _WORKING_MODEL: Optional[str] = "qwen/qwen3.8-27b"
+    _WORKING_MODEL: Optional[str] = "openai/gpt-oss-120b"
+    CANDIDATE_MODELS: List[str] = [
+        "openai/gpt-oss-120b",
+        "openai/gpt-oss-20b",
+        "qwen/qwen3.8-27b",
+    ]
 
     def __init__(
         self,
         api_key: str,
-        model: str = "llama-3.1-8b-instant",
+        model: str = "openai/gpt-oss-120b",
         api_url: Optional[str] = None,
         timeout_seconds: float = 30.0,
         client: Optional[httpx.Client] = None,
@@ -80,32 +85,49 @@ class GroqProvider:
 
         client = self._get_client()
         limiter = get_global_rate_limiter()
+
+        models_to_try = [target_model] + [m for m in self.CANDIDATE_MODELS if m != target_model]
+        resp: Optional[httpx.Response] = None
+        last_error = ""
+
         try:
-            with limiter:
-                resp = client.post(self.api_url, json=payload, headers=headers)
-            if resp.status_code == 404 and "model_not_found" in resp.text:
-                logger.warning("Model '%s' not found on Groq; automatically falling back to 'qwen/qwen3.8-27b'", payload["model"])
-                payload["model"] = "qwen/qwen3.8-27b"
-                with limiter:
-                    resp = client.post(self.api_url, json=payload, headers=headers)
-                if resp.status_code == 404:
-                    logger.warning("Model 'qwen/qwen3.8-27b' not found; falling back to 'openai/gpt-oss-120b'")
-                    payload["model"] = "openai/gpt-oss-120b"
-                    # For reasoning models, allocate extra headroom so completion tokens details doesn't exhaust reasoning
+            for model_name in models_to_try:
+                payload["model"] = model_name
+                # Reasoning models allocate extra headroom so completion details don't exhaust reasoning
+                if "gpt-oss" in model_name:
                     payload["max_tokens"] = max(effective_max_tokens, 250)
+                else:
+                    payload["max_tokens"] = effective_max_tokens
+
+                # Attempt up to 2 times per candidate model in case of temporary 429
+                for attempt in range(2):
                     with limiter:
                         resp = client.post(self.api_url, json=payload, headers=headers)
 
-            if resp.status_code == 200:
-                # Cache the verified working model across all future calls
-                GroqProvider._WORKING_MODEL = payload["model"]
-                self.model = payload["model"]
+                    if resp.status_code == 200:
+                        GroqProvider._WORKING_MODEL = model_name
+                        self.model = model_name
+                        break
+                    elif resp.status_code == 429:
+                        last_error = f"Rate limit on {model_name}: {resp.text}"
+                        logger.warning("Groq rate limit (429) on model '%s'. Backing off...", model_name)
+                        import time
+                        time.sleep(1.0)
+                    elif resp.status_code == 404:
+                        last_error = f"Model {model_name} not found (404)"
+                        logger.warning("Groq model '%s' not found (404). Trying next candidate...", model_name)
+                        break
+                    elif resp.status_code == 401:
+                        raise RuntimeError("Groq API authentication failed: invalid API key.")
+                    else:
+                        last_error = f"HTTP {resp.status_code}: {resp.text}"
+                        break
 
-            if resp.status_code == 401:
-                raise RuntimeError("Groq API authentication failed: invalid API key.")
-            if resp.status_code == 429:
-                raise RuntimeError("Groq API rate limit exceeded.")
-            resp.raise_for_status()
+                if resp and resp.status_code == 200:
+                    break
+
+            if not resp or resp.status_code != 200:
+                raise RuntimeError(f"Groq API call failed across all candidate models: {last_error}")
 
             data = resp.json()
             choices = data.get("choices", [])

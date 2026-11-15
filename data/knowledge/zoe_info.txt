@@ -9,3 +9,4 @@ Core Capabilities:
 1. Universal Token Scanner: Detects Solana and EVM contract addresses, fetching live market metrics, liquidity pairs, and price analysis via DexScreener.
 2. Security Audits: On-chain contract auditing, honeypot detection, liquidity lock verification, and ownership analysis via GoPlus Security.
 3. Multi-Tenant Intelligence: Central coordinator managing sub-bots and community knowledge across diverse Web3 ecosystems.
+

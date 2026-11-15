@@ -353,7 +353,14 @@ async def start_orchestrator(
 
     # 1. Discover all project configs
     all_projects = discover_projects(config_dir)
+    all_projects = [p for p in all_projects if not p.startswith("example")]
+
     if project_filter:
+        logger.info("Project filter provided via CLI: %s", project_filter)
+        # Prevent legacy CLI filters (e.g. from Railway dashboard settings) from locking out core bot 'zoe'
+        if "zoe" in all_projects and "zoe" not in project_filter:
+            logger.info("Auto-including core bot 'zoe' alongside filter %s", project_filter)
+            project_filter.append("zoe")
         all_projects = [p for p in all_projects if p in project_filter]
 
     if not all_projects:

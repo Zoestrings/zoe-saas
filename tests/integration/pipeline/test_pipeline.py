@@ -238,3 +238,112 @@ def test_pipeline_routes_fly_price_to_dexscreener_tool(pipeline_env) -> None:
     assert "[LIVE MARKET DATA]" in mock_llm.calls[0]["user_prompt"]
     assert "price" in result.response_text.lower() or "$0.0024" in result.response_text
 
+
+@pytest.mark.automated
+def test_pipeline_refuses_external_ca_when_token_scanner_disabled(pipeline_env, monkeypatch) -> None:
+    """When a bot has token_scanner: false (like live_test), pasting an external CA returns refusal and never calls get_token_intel_sync."""
+    conns, op_path, kb_path, mem_path, index_dir = pipeline_env
+    conn_op = conns["operational"]
+
+    # Configure live_test in projects table with token_scanner: false
+    conn_op.execute(
+        """
+        INSERT OR REPLACE INTO projects (project_id, name, telegram_group_id, config_json, created_at, active)
+        VALUES ('live_test', 'Hummingbird', '-5214407126', '{"capabilities": {"token_scanner": false}, "token_address": "EmgFnDhxoDBCyFPoSoo2ejrsJRHNt1ovaaB3gCNDnRvf"}', '2026-01-01 00:00:00', 1)
+        """
+    )
+    conn_op.commit()
+
+    # External CA (e.g. One Love token mint)
+    external_ca = "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon"
+
+    cur = conn_op.execute(
+        """
+        INSERT INTO inbox_messages (
+            project_id, telegram_update_id, group_id, telegram_message_id,
+            pseudonymous_user_id, text, reply_to_message_id, is_forward,
+            message_timestamp, state, state_changed_at, created_at
+        ) VALUES (
+            'live_test', 301, '-5214407126', 401, 'pseudo_u6',
+            ?, NULL, 0,
+            '2026-11-15 12:00:00', 'message_persisted', '2026-11-15 12:00:00', '2026-11-15 12:00:00'
+        )
+        """,
+        (external_ca,),
+    )
+    inbox_id = cur.lastrowid
+    conn_op.commit()
+
+    import zoe.tools.crypto_intel
+    called = []
+    def fake_intel(*args, **kwargs):
+        called.append(kwargs)
+        return {"name": "Fake", "symbol": "FAKE"}
+
+    monkeypatch.setattr(zoe.tools.crypto_intel, "get_token_intel_sync", fake_intel)
+
+    result = process_message(
+        inbox_row=inbox_id,
+        db_conns=conns,
+        index_dir=index_dir,
+    )
+
+    assert result.responded
+    assert len(called) == 0, "get_token_intel_sync must NOT be called when token_scanner is False"
+    assert result.response_text == "I only manage data for this community. I don't scan external tokens."
+
+
+@pytest.mark.automated
+def test_pipeline_allows_ca_when_token_scanner_enabled(pipeline_env, monkeypatch) -> None:
+    """When a bot has token_scanner: true (like zoe), pasting a CA calls get_token_intel_sync and returns scan report."""
+    conns, op_path, kb_path, mem_path, index_dir = pipeline_env
+    conn_op = conns["operational"]
+
+    # Configure zoe in projects table with token_scanner: true
+    conn_op.execute(
+        """
+        INSERT OR REPLACE INTO projects (project_id, name, telegram_group_id, config_json, created_at, active)
+        VALUES ('zoe', 'Zoe Main', '-5214407126', '{"capabilities": {"token_scanner": true}}', '2026-01-01 00:00:00', 1)
+        """
+    )
+    conn_op.commit()
+
+    external_ca = "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon"
+
+    cur = conn_op.execute(
+        """
+        INSERT INTO inbox_messages (
+            project_id, telegram_update_id, group_id, telegram_message_id,
+            pseudonymous_user_id, text, reply_to_message_id, is_forward,
+            message_timestamp, state, state_changed_at, created_at
+        ) VALUES (
+            'zoe', 302, '-5214407126', 402, 'pseudo_u7',
+            ?, NULL, 0,
+            '2026-11-15 12:00:00', 'message_persisted', '2026-11-15 12:00:00', '2026-11-15 12:00:00'
+        )
+        """,
+        (external_ca,),
+    )
+    inbox_id = cur.lastrowid
+    conn_op.commit()
+
+    import zoe.tools.crypto_intel
+    called = []
+    def fake_intel(*args, **kwargs):
+        called.append(kwargs)
+        return {"name": "One Love", "symbol": "ONELOVE", "price_usd": "0.005", "chain": "Solana"}
+
+    monkeypatch.setattr(zoe.tools.crypto_intel, "get_token_intel_sync", fake_intel)
+
+    result = process_message(
+        inbox_row=inbox_id,
+        db_conns=conns,
+        index_dir=index_dir,
+    )
+
+    assert result.responded
+    assert len(called) == 1, "get_token_intel_sync MUST be called when token_scanner is True"
+    assert "One Love" in result.response_text or "ONELOVE" in result.response_text
+
+
+

@@ -278,35 +278,37 @@ def process_message(
         # Load project config and module toggles from DB or config file
         respond_to_casual = False
         modules_cfg = {}
+        p_cfg = {}
+        try:
+            from zoe.settings import load_project_config
+            p_cfg = load_project_config(norm_msg.project_id) or {}
+            modules_cfg = p_cfg.get("modules", {})
+            respond_to_casual = p_cfg.get("participation", {}).get("respond_to_casual", False)
+        except Exception:
+            p_cfg = {}
+            modules_cfg = {}
+
         try:
             row_proj = conn_op.execute(
                 "SELECT config_json FROM projects WHERE project_id = ?",
                 (norm_msg.project_id,),
             ).fetchone()
             if row_proj and row_proj[0]:
-                p_cfg = json.loads(row_proj[0])
-                respond_to_casual = p_cfg.get("participation", {}).get("respond_to_casual", False)
-                modules_cfg = p_cfg.get("modules", {})
+                db_p_cfg = json.loads(row_proj[0])
+                if isinstance(db_p_cfg, dict):
+                    for k, v in db_p_cfg.items():
+                        if isinstance(v, dict) and isinstance(p_cfg.get(k), dict):
+                            p_cfg[k].update(v)
+                        else:
+                            p_cfg[k] = v
+                    if "participation" in db_p_cfg and "respond_to_casual" in db_p_cfg["participation"]:
+                        respond_to_casual = db_p_cfg["participation"]["respond_to_casual"]
+                    if "modules" in db_p_cfg:
+                        modules_cfg.update(db_p_cfg["modules"])
         except Exception as exc:
             logger.warning("Error loading config_json: %s", exc)
 
-        if not modules_cfg:
-            try:
-                from zoe.settings import load_project_config
-                cfg_file = load_project_config(norm_msg.project_id)
-                modules_cfg = cfg_file.get("modules", {})
-            except Exception:
-                modules_cfg = {}
-
         capabilities_cfg = p_cfg.get("capabilities", {})
-        if not capabilities_cfg:
-            try:
-                from zoe.settings import load_project_config
-                cfg_file = load_project_config(norm_msg.project_id)
-                capabilities_cfg = cfg_file.get("capabilities", {})
-            except Exception:
-                capabilities_cfg = {}
-
         token_scanner_enabled = bool(capabilities_cfg.get("token_scanner", False))
         security_audit_enabled = bool(capabilities_cfg.get("security_audit", False))
         module_comm_mgr = modules_cfg.get("community_manager", True)
@@ -743,7 +745,7 @@ def process_message(
 
             if not token_scanner_enabled and not is_own_token:
                 logger.info("External token scanning disabled (token_scanner=false) for project %s", norm_msg.project_id)
-                generated_text = "I only manage data for this community. Please DYOR on external contracts."
+                generated_text = "I only manage data for this community. I don't scan external tokens."
             else:
                 logger.info("Executing on-demand Crypto Intelligence CA analysis for: %s", ca)
                 if analyze_contract_address_sync is not _DEFAULT_ANALYZE_SYNC:

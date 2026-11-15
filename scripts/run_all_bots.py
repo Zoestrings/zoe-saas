@@ -234,16 +234,74 @@ def ensure_knowledge_indexes(model: Optional[Any] = None) -> None:
             logger.info("Knowledge index exists and is up to date for project '%s' (%d bytes).", project_id, index_file.stat().st_size)
 
 
+def ensure_baseline_projects_seeded(data_dir: Path) -> None:
+    """Ensure baseline bot configs (Hummingbird/live_test and onelove) exist in persistent storage."""
+    import shutil
+    import yaml
+    from zoe.settings import load_project_secrets
+
+    persistent_cfg_dir = data_dir / "config" / "projects"
+    persistent_sec_dir = data_dir / "config" / "secrets"
+    persistent_cfg_dir.mkdir(parents=True, exist_ok=True)
+    persistent_sec_dir.mkdir(parents=True, exist_ok=True)
+
+    root = Path(__file__).resolve().parent.parent
+
+    # 1. Seed project YAMLs
+    for p_id in ("live_test", "onelove"):
+        target_yaml = persistent_cfg_dir / f"{p_id}.yaml"
+        if not target_yaml.exists():
+            candidates = [
+                Path("config/projects") / f"{p_id}.yaml",
+                root / "config/projects" / f"{p_id}.yaml",
+                Path("/app/config/projects") / f"{p_id}.yaml",
+            ]
+            for c in candidates:
+                if c.exists():
+                    try:
+                        shutil.copy2(c, target_yaml)
+                        logger.info("Auto-seeded persistent config for '%s' to %s", p_id, target_yaml)
+                        break
+                    except Exception as exc:
+                        logger.warning("Could not copy config %s: %s", c, exc)
+
+        # 2. Seed secrets YAMLs if token exists in env or local file
+        target_sec = persistent_sec_dir / f"{p_id}.secrets.yaml"
+        if not target_sec.exists():
+            try:
+                sec_data = load_project_secrets(p_id)
+                if sec_data.get("bot_token"):
+                    with open(target_sec, "w", encoding="utf-8") as f:
+                        yaml.dump(sec_data, f)
+                    try:
+                        os.chmod(target_sec, 0o600)
+                    except Exception:
+                        pass
+                    logger.info("Persisted secrets for '%s' to volume at %s", p_id, target_sec)
+            except Exception as sec_exc:
+                logger.warning("Could not seed persistent secrets for '%s': %s", p_id, sec_exc)
+
+
 def discover_projects(config_dir: str = "config/projects") -> List[str]:
-    """Scan directory for valid project configuration files."""
-    path = Path(config_dir)
-    if not path.exists():
-        return []
-    projects = []
-    for file in sorted(path.glob("*.yaml")):
-        project_id = file.stem
-        projects.append(project_id)
-    return projects
+    """Scan persistent volume and local directory for valid project configuration files."""
+    from zoe.settings import get_data_dir
+
+    data_dir = get_data_dir()
+    search_dirs = [
+        data_dir / "config" / "projects",
+        Path(config_dir),
+        Path(__file__).resolve().parent.parent / "config" / "projects",
+    ]
+
+    projects_set = set()
+    for d in search_dirs:
+        if d.exists():
+            for file in d.glob("*.yaml"):
+                project_id = file.stem
+                if not project_id.startswith("."):
+                    projects_set.add(project_id)
+
+    return sorted(list(projects_set))
 
 
 async def start_orchestrator(
@@ -264,6 +322,9 @@ async def start_orchestrator(
 
     # 0. Auto-initialize SQLite databases and apply schemas if missing
     ensure_databases_initialized(data_dir)
+
+    # 0b. Auto-seed and restore baseline bot configs (Hummingbird/live_test and onelove) to persistent volume
+    ensure_baseline_projects_seeded(data_dir)
 
     # 1. Discover all project configs
     all_projects = discover_projects(config_dir)

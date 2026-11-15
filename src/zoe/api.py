@@ -47,6 +47,7 @@ class SpawnBotRequest(BaseModel):
     token_symbol: Optional[str] = Field(None, description="Token ticker symbol, e.g. $TOKEN")
     name: Optional[str] = Field(None, description="Human readable project name")
     knowledge_base: Optional[str] = Field(None, description="Optional raw text facts for immediate RAG ingestion")
+    custom_instructions: Optional[str] = Field(None, description="Custom persona instructions and system prompt rules")
 
 
 class PatchBotRequest(BaseModel):
@@ -119,8 +120,9 @@ class BotManager:
         token_symbol: Optional[str] = None,
         name: Optional[str] = None,
         knowledge_base: Optional[str] = None,
+        custom_instructions: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Atomically configure and launch a supervised bot poller."""
+        """Atomically configure and launch a supervised bot poller, persisting to volume."""
         # 1. Validation
         if not PROJECT_ID_PATTERN.match(project_id):
             raise ValueError(f"Invalid project_id '{project_id}'. Must match ^[a-z0-9-]{{3,40}}$")
@@ -173,44 +175,62 @@ class BotManager:
             "groq_api_key": os.getenv("GROQ_API_KEY", ""),
         }
 
-        # 4. Atomic file creation (temp file + os.replace)
-        config_dir = Path("config/projects")
-        secrets_dir = Path("config/secrets")
-        config_dir.mkdir(parents=True, exist_ok=True)
-        secrets_dir.mkdir(parents=True, exist_ok=True)
+        # 4. Atomic file creation to PERSISTENT VOLUME (survives Railway restarts)
+        from zoe.settings import get_data_dir
+        data_dir = get_data_dir()
 
-        cfg_target = config_dir / f"{project_id}.yaml"
-        sec_target = secrets_dir / f"{project_id}.secrets.yaml"
+        persistent_cfg_dir = data_dir / "config" / "projects"
+        persistent_sec_dir = data_dir / "config" / "secrets"
+        persistent_cfg_dir.mkdir(parents=True, exist_ok=True)
+        persistent_sec_dir.mkdir(parents=True, exist_ok=True)
+
+        target_cfg_list = [persistent_cfg_dir / f"{project_id}.yaml"]
+        target_sec_list = [persistent_sec_dir / f"{project_id}.secrets.yaml"]
+
+        # Also mirror to local repo if different path
+        local_cfg_dir = Path("config/projects")
+        local_sec_dir = Path("config/secrets")
+        if local_cfg_dir.resolve() != persistent_cfg_dir.resolve():
+            local_cfg_dir.mkdir(parents=True, exist_ok=True)
+            target_cfg_list.append(local_cfg_dir / f"{project_id}.yaml")
+        if local_sec_dir.resolve() != persistent_sec_dir.resolve():
+            local_sec_dir.mkdir(parents=True, exist_ok=True)
+            target_sec_list.append(local_sec_dir / f"{project_id}.secrets.yaml")
 
         files_written = []
         try:
-            # Write config YAML atomically
-            with tempfile.NamedTemporaryFile("w", dir=config_dir, delete=False, encoding="utf-8") as tf:
-                yaml.dump(config_data, tf)
-                temp_cfg = Path(tf.name)
-            os.replace(temp_cfg, cfg_target)
-            files_written.append(cfg_target)
+            for cfg_target in target_cfg_list:
+                with tempfile.NamedTemporaryFile("w", dir=cfg_target.parent, delete=False, encoding="utf-8") as tf:
+                    yaml.dump(config_data, tf)
+                    temp_cfg = Path(tf.name)
+                os.replace(temp_cfg, cfg_target)
+                files_written.append(cfg_target)
 
-            # Write secrets YAML atomically with 0600 permissions
-            with tempfile.NamedTemporaryFile("w", dir=secrets_dir, delete=False, encoding="utf-8") as tf:
-                yaml.dump(secrets_data, tf)
-                temp_sec = Path(tf.name)
-            try:
-                os.chmod(temp_sec, 0o600)
-            except Exception:
-                pass
-            os.replace(temp_sec, sec_target)
-            files_written.append(sec_target)
+            for sec_target in target_sec_list:
+                with tempfile.NamedTemporaryFile("w", dir=sec_target.parent, delete=False, encoding="utf-8") as tf:
+                    yaml.dump(secrets_data, tf)
+                    temp_sec = Path(tf.name)
+                try:
+                    os.chmod(temp_sec, 0o600)
+                except Exception:
+                    pass
+                os.replace(temp_sec, sec_target)
+                files_written.append(sec_target)
         except Exception as write_err:
-            # Rollback any written files on disk failure
             for f in files_written:
                 if f.exists():
                     f.unlink()
             raise RuntimeError(f"Failed to atomically persist bot configs: {write_err}")
 
-        # 5. Handle optional Knowledge Base text (asynchronous ingestion)
-        from zoe.settings import get_data_dir
-        data_dir = get_data_dir()
+        # 5. Handle Custom Persona Instructions
+        if custom_instructions and custom_instructions.strip():
+            inst_dir = data_dir / "knowledge"
+            inst_dir.mkdir(parents=True, exist_ok=True)
+            inst_file = inst_dir / f"{project_id}_instructions.txt"
+            with open(inst_file, "w", encoding="utf-8") as f:
+                f.write(custom_instructions.strip())
+
+        # 6. Handle optional Knowledge Base text (asynchronous ingestion)
         if knowledge_base and knowledge_base.strip():
             kb_dir = data_dir / "knowledge"
             kb_dir.mkdir(parents=True, exist_ok=True)
@@ -221,7 +241,7 @@ class BotManager:
             self.ingestion_statuses[project_id] = "ingesting"
             asyncio.create_task(self._run_bg_ingest(project_id, kb_file))
 
-        # 6. Instantiate and Launch Supervised Poller
+        # 7. Instantiate and Launch Supervised Poller
         self.statuses[project_id] = "starting"
         self.errors[project_id] = None
         self.started_at[project_id] = datetime.now(timezone.utc).isoformat()
@@ -425,6 +445,7 @@ async def spawn_bot_endpoint(req: SpawnBotRequest) -> Dict[str, Any]:
             token_symbol=req.token_symbol,
             name=req.name,
             knowledge_base=req.knowledge_base,
+            custom_instructions=req.custom_instructions,
         )
         return res
     except ValueError as ve:
@@ -439,24 +460,43 @@ async def patch_bot_endpoint(project_id: str, req: PatchBotRequest) -> Dict[str,
     if not PROJECT_ID_PATTERN.match(project_id):
         raise HTTPException(status_code=400, detail="Invalid project_id pattern")
 
-    cfg_file = Path(f"config/projects/{project_id}.yaml")
-    sec_file = Path(f"config/secrets/{project_id}.secrets.yaml")
-    if not cfg_file.exists() or not sec_file.exists():
-        raise HTTPException(status_code=404, detail=f"Bot '{project_id}' not found")
+    from zoe.settings import get_data_dir, load_project_config, load_project_secrets
 
-    with open(cfg_file, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
-    with open(sec_file, "r", encoding="utf-8") as f:
-        sec = yaml.safe_load(f) or {}
+    data_dir = get_data_dir()
+    cfg_candidates = [
+        data_dir / "config" / "projects" / f"{project_id}.yaml",
+        Path(f"config/projects/{project_id}.yaml"),
+    ]
+    sec_candidates = [
+        data_dir / "config" / "secrets" / f"{project_id}.secrets.yaml",
+        Path(f"config/secrets/{project_id}.secrets.yaml"),
+    ]
+
+    cfg_file = next((p for p in cfg_candidates if p.exists()), None)
+    sec_file = next((p for p in sec_candidates if p.exists()), None)
+
+    if not cfg_file:
+        raise HTTPException(status_code=404, detail=f"Bot config for '{project_id}' not found")
+
+    try:
+        cfg = load_project_config(project_id)
+        sec = load_project_secrets(project_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail=f"Bot '{project_id}' error: {exc}")
 
     if req.group_id is not None:
         cfg.setdefault("telegram", {})["group_id"] = req.group_id.strip()
     if req.token_address is not None:
         cfg.setdefault("token", {})["address"] = req.token_address.strip()
 
-    # Re-save YAML
-    with open(cfg_file, "w", encoding="utf-8") as f:
-        yaml.dump(cfg, f)
+    # Re-save YAML to persistent volume and fallback
+    for target in [data_dir / "config" / "projects" / f"{project_id}.yaml", Path(f"config/projects/{project_id}.yaml")]:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "w", encoding="utf-8") as f:
+                yaml.dump(cfg, f)
+        except Exception:
+            pass
 
     # Spawn/restart bot with updated parameters
     res = await bot_manager.spawn_bot(
@@ -478,12 +518,19 @@ async def delete_bot_endpoint(project_id: str) -> Dict[str, Any]:
 
     await bot_manager.stop_bot(project_id)
 
+    from zoe.settings import get_data_dir
+    data_dir = get_data_dir()
+
     # Remove secrets to ensure safe decommissioning
-    sec_file = Path(f"config/secrets/{project_id}.secrets.yaml")
-    if sec_file.exists():
-        try:
-            sec_file.unlink()
-        except Exception:
-            pass
+    sec_targets = [
+        data_dir / "config" / "secrets" / f"{project_id}.secrets.yaml",
+        Path(f"config/secrets/{project_id}.secrets.yaml"),
+    ]
+    for sec_file in sec_targets:
+        if sec_file.exists():
+            try:
+                sec_file.unlink()
+            except Exception:
+                pass
 
     return {"project_id": project_id, "status": "stopped", "message": "Bot stopped and secrets purged"}

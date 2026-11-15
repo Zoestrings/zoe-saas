@@ -15,12 +15,19 @@ ALLOWED_TOP_LEVEL = {
     "safety",
     "escalation",
     "token_address",
+    "token",
     "modules",
     "display_name",
     "links",
 }
 
 ALLOWED_NESTED = {
+    "token": {
+        "address",
+        "symbol",
+        "chain",
+        "network",
+    },
     "links": {
         "website",
         "twitter",
@@ -207,11 +214,13 @@ def validate_config(config: Dict[str, Any], secrets: Dict[str, Any]) -> None:
 
 
 def load_project_config(project_id: str) -> Dict[str, Any]:
-    """Load and validate public project config from config/projects/{project_id}.yaml."""
+    """Load and validate public project config from persistent volume or local repo."""
     clean_id = project_id[:-5] if project_id.endswith(".yaml") else project_id
     filename = f"{clean_id}.yaml"
 
+    data_dir = get_data_dir()
     paths_to_try = [
+        data_dir / "config" / "projects" / filename,
         Path("config") / "projects" / filename,
         _get_project_root() / "config" / "projects" / filename,
     ]
@@ -238,7 +247,7 @@ def load_project_config(project_id: str) -> Dict[str, Any]:
 
 
 def load_project_secrets(project_id: str) -> Dict[str, Any]:
-    """Load project secrets from environment variables first, falling back to config/secrets/*.yaml."""
+    """Load project secrets from environment variables, persistent volume, or local fallback."""
     clean_id = project_id[:-5] if project_id.endswith(".yaml") else project_id
     data: Dict[str, Any] = {}
 
@@ -275,12 +284,17 @@ def load_project_secrets(project_id: str) -> Dict[str, Any]:
     if hmac_key and hmac_key.strip():
         data["hmac_key"] = hmac_key.strip()
 
-    # 2. If secrets still missing, fall back to reading local YAML file (for laptop dev)
+    # 2. Check persistent volume (DATA_DIR/config/secrets/) and local YAML files
     if not data.get("bot_token") or not data.get("groq_api_key"):
         filename = f"{clean_id}.secrets.yaml"
+        backup_filename = f"{clean_id}.backup.yaml"
+        data_dir = get_data_dir()
         paths_to_try = [
+            data_dir / "config" / "secrets" / filename,
             Path("config") / "secrets" / filename,
             _get_project_root() / "config" / "secrets" / filename,
+            data_dir / "config" / "secrets" / backup_filename,
+            Path("config") / "secrets" / backup_filename,
         ]
         for p in paths_to_try:
             if p.exists():
@@ -293,7 +307,8 @@ def load_project_secrets(project_id: str) -> Dict[str, Any]:
                                     data[k] = v
                 except Exception:
                     pass
-                break
+                if data.get("bot_token"):
+                    break
 
     if not data.get("hmac_key"):
         data["hmac_key"] = f"zoe_{clean_id}_hmac_secret_key_32_characters_minimum"

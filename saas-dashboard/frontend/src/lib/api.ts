@@ -37,6 +37,7 @@ export interface CreateProjectPayload {
   telegram_group_id?: string | null
   token_symbol?: string | null
   knowledge_base?: string | null
+  custom_instructions?: string | null
 }
 
 // --- Local Storage Helpers ---

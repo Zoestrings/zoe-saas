@@ -64,6 +64,7 @@ export default function ProjectsPage() {
   const [groupId, setGroupId] = useState("")
   const [tokenAddress, setTokenAddress] = useState("")
   const [tokenSymbol, setTokenSymbol] = useState("")
+  const [customInstructions, setCustomInstructions] = useState("")
 
   // Edit Group ID Dialog State
   const [editProject, setEditProject] = useState<Project | null>(null)
@@ -133,6 +134,7 @@ export default function ProjectsPage() {
         telegram_group_id: groupId.trim() || undefined,
         token_address: tokenAddress.trim(),
         token_symbol: tokenSymbol.trim() || undefined,
+        custom_instructions: customInstructions.trim() || undefined,
       })
 
       setProjectName("")
@@ -140,12 +142,24 @@ export default function ProjectsPage() {
       setGroupId("")
       setTokenAddress("")
       setTokenSymbol("")
+      setCustomInstructions("")
       setIsDialogOpen(false)
 
       showToast(`Project '${created.name}' successfully deployed to Zoe Engine!`)
       await fetchProjects()
     } catch (err: any) {
-      setFormError(err.message || "Failed to deploy project to Zoe Engine.")
+      const msg = err.message || ""
+      if (
+        msg.includes("offline") ||
+        msg.includes("502") ||
+        msg.includes("Unable to connect") ||
+        msg.includes("failed to connect") ||
+        msg.includes("NetworkError")
+      ) {
+        setFormError("Engine is offline. Please check Railway.")
+      } else {
+        setFormError(msg || "Failed to deploy project to Zoe Engine.")
+      }
     } finally {
       setSubmitting(false)
     }
@@ -424,6 +438,21 @@ export default function ProjectsPage() {
                   </p>
                 </div>
 
+                {/* Custom Instructions (Optional) */}
+                <div className="space-y-1">
+                  <Label htmlFor="customInstructions" className="text-xs font-medium text-slate-700">
+                    Custom Persona Instructions (Optional)
+                  </Label>
+                  <Input
+                    id="customInstructions"
+                    disabled={submitting}
+                    placeholder="e.g. You are Zoe, a warm and witty community host..."
+                    value={customInstructions}
+                    onChange={(e) => setCustomInstructions(e.target.value)}
+                    className="bg-white border-slate-200 text-slate-900 text-xs h-9 focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+
                 <DialogFooter className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                   <Button
                     type="button"
@@ -440,7 +469,7 @@ export default function ProjectsPage() {
                     className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 font-medium disabled:opacity-50 cursor-pointer"
                   >
                     {submitting && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-                    {submitting ? "Deploying..." : "Deploy Bot"}
+                    {submitting ? "Deploying Bot..." : "Deploy Bot"}
                   </Button>
                 </DialogFooter>
               </form>

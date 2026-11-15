@@ -289,6 +289,7 @@ class CreateProjectRequest(BaseModel):
     token_address: str
     token_symbol: Optional[str] = None
     knowledge_base: Optional[str] = None
+    custom_instructions: Optional[str] = None
 
     @field_validator("telegram_group_id", mode="before")
     def normalize_group_id(cls, v):
@@ -358,10 +359,10 @@ async def call_engine(method: str, path: str, payload: Optional[Dict[str, Any]] 
             if attempt == retries:
                 raise HTTPException(
                     status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Unable to connect to Zoe Engine at {ZOE_ENGINE_URL}: {str(exc)}",
+                    detail="Engine is offline. Please check Railway.",
                 )
             await asyncio.sleep(0.5 * (attempt + 1))
-    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Engine communication failed")
+    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Engine is offline. Please check Railway.")
 
 
 # --- Endpoints ---
@@ -575,6 +576,7 @@ async def create_project(
         "token_symbol": req.token_symbol,
         "name": req.name.strip(),
         "knowledge_base": req.knowledge_base,
+        "custom_instructions": req.custom_instructions,
     }
 
     try:

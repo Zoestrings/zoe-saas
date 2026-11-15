@@ -8,7 +8,7 @@ echo "=================================================="
 # Dispatch based on SERVICE_ROLE to prevent dual-polling conflicts
 if [ "$SERVICE_ROLE" = "worker" ]; then
     echo "Launching Multi-Bot Telegram Orchestrator (Worker Role)..."
-    exec python -u scripts/run_all_bots.py --projects live_test onelove
+    exec python -u scripts/run_all_bots.py
 else
     echo "Launching FastAPI REST API (Backend Role) on port ${PORT:-8000}..."
     cd saas-dashboard/backend

@@ -597,7 +597,11 @@ def process_message(
                 generated_text = (
                     "Here are the available commands:\n"
                     f"/ask — Ask {bot_display_name} about trending tokens, a ticker, or this community\n"
-                    "/investigate <CA> — Run an evidence-based security scan on any Solana token\n"
+                    "/investigate <CA> — Run a complete intelligence report on any token\n"
+                    "/contract <CA> — Security checks (Honeypot, Mint/Freeze Auth, Taxes)\n"
+                    "/holders <CA> — Holder concentration & Top 10 supply ratio\n"
+                    "/liquidity <CA> — Live market price, market cap & LP lock status\n"
+                    "/osint <CA> — Project web presence, founder & verified socials\n"
                     "/ca — Show this community's contract address\n"
                     "/setca — Admins: save this community's contract address\n"
                     "/price — Get live token price, market cap & liquidity\n"
@@ -632,6 +636,110 @@ def process_message(
                     generated_text = format_scan_report(scan_res)
                     inline_keyboard = generate_scanner_inline_keyboard(target_ca, scan_res)
                 intent = "command_investigate"
+
+            elif cmd == "contract":
+                from zoe.tools.scanner import (
+                    format_contract_report,
+                    generate_scanner_inline_keyboard,
+                    is_valid_solana_ca,
+                    scan_solana_token_sync,
+                )
+                target_ca = cmd_arg.strip() if cmd_arg else ""
+                if not target_ca:
+                    generated_text = (
+                        "🛡️ **Contract Security Scanner**\n\n"
+                        "Please provide a Solana contract address:\n"
+                        "`/contract <Solana_CA>`"
+                    )
+                elif not is_valid_solana_ca(target_ca):
+                    generated_text = (
+                        f"❌ **Invalid Solana Address**\n\n"
+                        f"`{target_ca}` is not a valid Solana contract address."
+                    )
+                else:
+                    logger.info("Triggered /contract for Solana CA %s", target_ca)
+                    scan_res = scan_solana_token_sync(target_ca)
+                    generated_text = format_contract_report(scan_res)
+                    inline_keyboard = generate_scanner_inline_keyboard(target_ca, scan_res)
+                intent = "command_contract"
+
+            elif cmd == "holders":
+                from zoe.tools.scanner import (
+                    format_holders_report,
+                    generate_scanner_inline_keyboard,
+                    is_valid_solana_ca,
+                    scan_solana_token_sync,
+                )
+                target_ca = cmd_arg.strip() if cmd_arg else ""
+                if not target_ca:
+                    generated_text = (
+                        "👥 **Holder Intelligence Scanner**\n\n"
+                        "Please provide a Solana contract address:\n"
+                        "`/holders <Solana_CA>`"
+                    )
+                elif not is_valid_solana_ca(target_ca):
+                    generated_text = (
+                        f"❌ **Invalid Solana Address**\n\n"
+                        f"`{target_ca}` is not a valid Solana contract address."
+                    )
+                else:
+                    logger.info("Triggered /holders for Solana CA %s", target_ca)
+                    scan_res = scan_solana_token_sync(target_ca)
+                    generated_text = format_holders_report(scan_res)
+                    inline_keyboard = generate_scanner_inline_keyboard(target_ca, scan_res)
+                intent = "command_holders"
+
+            elif cmd == "liquidity":
+                from zoe.tools.scanner import (
+                    format_liquidity_report,
+                    generate_scanner_inline_keyboard,
+                    is_valid_solana_ca,
+                    scan_solana_token_sync,
+                )
+                target_ca = cmd_arg.strip() if cmd_arg else ""
+                if not target_ca:
+                    generated_text = (
+                        "📊 **Liquidity & Market Scanner**\n\n"
+                        "Please provide a Solana contract address:\n"
+                        "`/liquidity <Solana_CA>`"
+                    )
+                elif not is_valid_solana_ca(target_ca):
+                    generated_text = (
+                        f"❌ **Invalid Solana Address**\n\n"
+                        f"`{target_ca}` is not a valid Solana contract address."
+                    )
+                else:
+                    logger.info("Triggered /liquidity for Solana CA %s", target_ca)
+                    scan_res = scan_solana_token_sync(target_ca)
+                    generated_text = format_liquidity_report(scan_res)
+                    inline_keyboard = generate_scanner_inline_keyboard(target_ca, scan_res)
+                intent = "command_liquidity"
+
+            elif cmd == "osint":
+                from zoe.tools.scanner import (
+                    format_osint_report,
+                    generate_scanner_inline_keyboard,
+                    is_valid_solana_ca,
+                    scan_solana_token_sync,
+                )
+                target_ca = cmd_arg.strip() if cmd_arg else ""
+                if not target_ca:
+                    generated_text = (
+                        "🌐 **Project OSINT Scanner**\n\n"
+                        "Please provide a Solana contract address:\n"
+                        "`/osint <Solana_CA>`"
+                    )
+                elif not is_valid_solana_ca(target_ca):
+                    generated_text = (
+                        f"❌ **Invalid Solana Address**\n\n"
+                        f"`{target_ca}` is not a valid Solana contract address."
+                    )
+                else:
+                    logger.info("Triggered /osint for Solana CA %s", target_ca)
+                    scan_res = scan_solana_token_sync(target_ca)
+                    generated_text = format_osint_report(scan_res)
+                    inline_keyboard = generate_scanner_inline_keyboard(target_ca, scan_res)
+                intent = "command_osint"
 
             elif cmd == "setca":
                 proj_title = get_project_name(norm_msg.project_id)
@@ -1165,7 +1273,7 @@ def process_message(
             except Exception:
                 pass
 
-        if intent == "command_investigate":
+        if intent in ("command_investigate", "command_contract", "command_holders", "command_liquidity", "command_osint"):
             try:
                 from urllib.parse import urlparse
                 from zoe.safety.validator import DEFAULT_APPROVED_DOMAINS
@@ -1173,7 +1281,7 @@ def process_message(
                     "dexscreener.com", "solscan.io", "etherscan.io", "gopluslabs.io", "rugcheck.xyz", "twitter.com", "x.com", "t.me"
                 ]
                 if 'scan_res' in locals() and isinstance(scan_res, dict):
-                    osint_res = scan_res.get("project_osint") or {}
+                    osint_res = scan_res.get("osint") or scan_res.get("project_osint") or {}
                     for u in [osint_res.get("website"), osint_res.get("twitter"), osint_res.get("telegram"), osint_res.get("discord")]:
                         if u:
                             netloc = urlparse(u).netloc.lower()

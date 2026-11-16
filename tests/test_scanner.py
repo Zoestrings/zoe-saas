@@ -3,6 +3,10 @@
 import pytest
 from zoe.tools.scanner import (
     evaluate_risk,
+    format_contract_report,
+    format_holders_report,
+    format_liquidity_report,
+    format_osint_report,
     format_scan_report,
     generate_scanner_inline_keyboard,
     investigate_project_osint,
@@ -254,6 +258,80 @@ def test_investigate_project_osint():
     assert fallback["website"] == "Unknown"
     assert fallback["founder"] == "Unverified"
     assert fallback["socials"] == {}
+
+
+def test_command_suite_formatters():
+    """Test individual command formatters (/contract, /holders, /liquidity, /osint)."""
+    mock_data = {
+        "valid": True,
+        "name": "Bonk",
+        "symbol": "BONK",
+        "ca": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+        "ca_short": "DezX...B263",
+        "chain": "Solana",
+        "market": {
+            "found": True,
+            "price_usd": 0.0000215,
+            "market_cap": 1_850_000_000,
+            "liquidity_usd": 220_000,
+        },
+        "security": {
+            "success": True,
+            "mint_revoked": True,
+            "freeze_revoked": True,
+            "is_honeypot": False,
+        },
+        "holder_intelligence": {
+            "top_10_percent": 41.2,
+            "holder_count": 684200,
+            "status": "Healthy",
+        },
+        "lp_intelligence": {
+            "is_locked": True,
+            "lock_percent": 99.8,
+            "status": "Locked (Safe)",
+        },
+        "dev_wallet_intelligence": {
+            "creator_address_short": "4G4R...xL8e",
+            "holds_percent": 0.0,
+            "status": "Low risk",
+        },
+        "osint": {
+            "has_official_website": True,
+            "website": "https://www.bonkcoin.com",
+            "twitter": "https://twitter.com/bonk_inu",
+            "founder": "Nom",
+        },
+        "risk": {
+            "level": "LOW",
+        },
+    }
+
+    # /contract
+    contract_rep = format_contract_report(mock_data)
+    assert "Security & Contract Checks" in contract_rep
+    assert "Mint Authority: Revoked (Safe)" in contract_rep
+    assert "Honeypot: ✅ No Honeypot Detected" in contract_rep
+
+    # /holders
+    holders_rep = format_holders_report(mock_data)
+    assert "Holder Concentration" in holders_rep
+    assert "Top 10 Holders: 41.2%" in holders_rep
+    assert "Developer Holding: 0.0%" in holders_rep
+
+    # /liquidity
+    liq_rep = format_liquidity_report(mock_data)
+    assert "Market & Liquidity" in liq_rep
+    assert "Price: $" in liq_rep
+    assert "Liquidity Pool: $220.00K" in liq_rep
+    assert "Locked (Safe)" in liq_rep
+
+    # /osint
+    osint_rep = format_osint_report(mock_data)
+    assert "Project OSINT" in osint_rep
+    assert "Website: https://www.bonkcoin.com" in osint_rep
+    assert "Twitter: https://twitter.com/bonk_inu" in osint_rep
+    assert "Founder: Nom" in osint_rep
 
 
 def test_generate_scanner_inline_keyboard():

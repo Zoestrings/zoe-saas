@@ -877,6 +877,126 @@ def format_scan_report(report_data: Dict[str, Any]) -> str:
     return report
 
 
+def format_contract_report(report_data: Dict[str, Any]) -> str:
+    """Format Security & Contract checks (Honeypot, Taxes, Mint/Freeze Auth)."""
+    if not report_data.get("valid", True):
+        return f"❌ **Investigation Error**\n\n{report_data.get('error', 'Invalid contract address.')}"
+
+    name = report_data.get("name") or "Unknown Token"
+    ca_short = report_data.get("ca_short") or shorten_ca(report_data.get("ca", ""))
+    chain = report_data.get("chain") or "Solana"
+    security = report_data.get("security", {})
+
+    mint_status = "Revoked (Safe)" if security.get("mint_revoked") is True else ("Active (High Risk)" if security.get("mint_revoked") is False else "Unknown")
+    freeze_status = "Revoked (Safe)" if security.get("freeze_revoked") is True else ("Active (High Risk)" if security.get("freeze_revoked") is False else "Unknown")
+    honeypot_status = "🚨 Honeypot Detected!" if security.get("is_honeypot") else "✅ No Honeypot Detected"
+
+    buy_tax = security.get("buy_tax")
+    sell_tax = security.get("sell_tax")
+    tax_str = f"{buy_tax}% / {sell_tax}%" if (buy_tax is not None and sell_tax is not None) else "0% / 0% (Standard)"
+
+    risk = report_data.get("risk", {})
+    risk_level = risk.get("level", "UNKNOWN")
+
+    return (
+        f"🛡️ **Security & Contract Checks: {name}**\n"
+        f"CA: `{ca_short}` · {chain}\n\n"
+        f"🚨 Risk: {risk_level}\n"
+        f"Honeypot: {honeypot_status}\n"
+        f"Mint Authority: {mint_status}\n"
+        f"Freeze Authority: {freeze_status}\n"
+        f"Taxes: {tax_str}\n"
+        f"Evidence Sources: GoPlus, RugCheck"
+    )
+
+
+def format_holders_report(report_data: Dict[str, Any]) -> str:
+    """Format Holder Concentration and Dev Wallet intelligence."""
+    if not report_data.get("valid", True):
+        return f"❌ **Investigation Error**\n\n{report_data.get('error', 'Invalid contract address.')}"
+
+    name = report_data.get("name") or "Unknown Token"
+    ca_short = report_data.get("ca_short") or shorten_ca(report_data.get("ca", ""))
+    chain = report_data.get("chain") or "Solana"
+    holder_intel = report_data.get("holder_intelligence", {})
+    top_10 = holder_intel.get("top_10_percent")
+    top_10_str = f"{top_10:.1f}% ({holder_intel.get('status', 'Unknown')})" if top_10 is not None else "N/A"
+    total_holders = holder_intel.get("holder_count")
+    total_holders_str = f"{total_holders:,}" if total_holders else "Unknown"
+
+    dev_intel = report_data.get("dev_wallet_intelligence", {})
+    dev_pct = dev_intel.get("holds_percent", 0.0)
+    dev_str = f"{dev_pct:.1f}% ({dev_intel.get('status', 'Low risk')})"
+    creator_addr = dev_intel.get("creator_address_short") or "Not detected"
+
+    return (
+        f"👥 **Holder Concentration: {name}**\n"
+        f"CA: `{ca_short}` · {chain}\n\n"
+        f"Top 10 Holders: {top_10_str}\n"
+        f"Total Unique Holders: {total_holders_str}\n"
+        f"Developer Holding: {dev_str}\n"
+        f"Creator Address: `{creator_addr}`\n"
+        f"Evidence Sources: Solana RPC / GoPlus"
+    )
+
+
+def format_liquidity_report(report_data: Dict[str, Any]) -> str:
+    """Format Market Data and Liquidity metrics."""
+    if not report_data.get("valid", True):
+        return f"❌ **Investigation Error**\n\n{report_data.get('error', 'Invalid contract address.')}"
+
+    name = report_data.get("name") or "Unknown Token"
+    ca_short = report_data.get("ca_short") or shorten_ca(report_data.get("ca", ""))
+    chain = report_data.get("chain") or "Solana"
+    market = report_data.get("market", {})
+    price_val = market.get("price_usd")
+    price_str = format_price(price_val)
+    mc_val = market.get("market_cap")
+    mc_str = format_currency(mc_val)
+    liq_val = market.get("liquidity_usd")
+    liq_str = format_currency(liq_val)
+
+    lp_intel = report_data.get("lp_intelligence", {})
+    lp_status_str = lp_intel.get("status", "Unlocked (Risky)")
+    lp_pct = lp_intel.get("lock_percent", 0.0)
+    lp_pct_str = f" ({lp_pct:.1f}% locked/burned)" if lp_pct > 0 else ""
+
+    return (
+        f"📊 **Market & Liquidity: {name}**\n"
+        f"CA: `{ca_short}` · {chain}\n\n"
+        f"Price: ${price_str}\n"
+        f"Market Cap: ${mc_str}\n"
+        f"Liquidity Pool: ${liq_str}\n"
+        f"LP Status: {lp_status_str}{lp_pct_str}\n"
+        f"Evidence Sources: DexScreener"
+    )
+
+
+def format_osint_report(report_data: Dict[str, Any]) -> str:
+    """Format Project OSINT and Founder Intelligence."""
+    if not report_data.get("valid", True):
+        return f"❌ **Investigation Error**\n\n{report_data.get('error', 'Invalid contract address.')}"
+
+    name = report_data.get("name") or "Unknown Token"
+    ca_short = report_data.get("ca_short") or shorten_ca(report_data.get("ca", ""))
+    chain = report_data.get("chain") or "Solana"
+    osint = report_data.get("osint") or report_data.get("project_osint") or {}
+    website_str = osint.get("website") or "Unknown"
+    twitter_str = osint.get("twitter") or "Unknown"
+    founder_str = osint.get("founder") or "Unverified"
+    sources = osint.get("evidence_sources", [])
+    sources_str = ", ".join(sources[:2]) if sources else "DuckDuckGo, DexScreener"
+
+    return (
+        f"🌐 **Project OSINT: {name}**\n"
+        f"CA: `{ca_short}` · {chain}\n\n"
+        f"Website: {website_str}\n"
+        f"Twitter: {twitter_str}\n"
+        f"Founder: {founder_str}\n"
+        f"Evidence Sources: {sources_str}"
+    )
+
+
 def generate_scanner_inline_keyboard(
     ca: str,
     report_data: Optional[Dict[str, Any]] = None,

@@ -39,6 +39,25 @@ export interface Project {
   created_at?: string | null
 }
 
+export interface ConversationLogItem {
+  id: number
+  project_id: string
+  user_message: string
+  bot_response?: string | null
+  intent?: string | null
+  category?: string | null
+  timestamp: string
+  pseudonymous_user_id?: string | null
+}
+
+export interface ProjectAnalytics {
+  project_id: string
+  total_messages: number
+  total_tokens: number
+  estimated_cost_usd: number
+  ca_scans: number
+}
+
 export interface CreateProjectPayload {
   name: string
   telegram_bot_token: string
@@ -438,6 +457,22 @@ export const api = {
 
   async getProjectStatus(id: string): Promise<any> {
     return apiRequest<any>(`/api/projects/${id}/status`, {
+      method: "GET",
+    })
+  },
+
+  async getProjectLogs(projectId: string, search?: string, limit?: number): Promise<ConversationLogItem[]> {
+    const params = new URLSearchParams()
+    if (search) params.set("search", search)
+    if (limit) params.set("limit", String(limit))
+    const query = params.toString() ? `?${params.toString()}` : ""
+    return apiRequest<ConversationLogItem[]>(`/api/projects/${projectId}/logs${query}`, {
+      method: "GET",
+    })
+  },
+
+  async getProjectAnalytics(projectId: string): Promise<ProjectAnalytics> {
+    return apiRequest<ProjectAnalytics>(`/api/projects/${projectId}/analytics`, {
       method: "GET",
     })
   },

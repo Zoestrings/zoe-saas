@@ -155,3 +155,45 @@ def test_knowledge_endpoints_enforce_owner_authorization():
     finally:
         app.dependency_overrides.clear()
 
+
+def test_unauthenticated_logs_and_analytics_returns_401():
+    """Verify that unauthenticated requests to logs and analytics return 401."""
+    res_logs = client.get("/api/projects/onelove/logs")
+    assert res_logs.status_code == 401
+
+    res_analytics = client.get("/api/projects/onelove/analytics")
+    assert res_analytics.status_code == 401
+
+
+def test_authenticated_get_project_logs():
+    """Verify authenticated project owner can fetch conversation logs."""
+    user = {"id": "owner-123", "email": "owner@example.com", "role": "super_admin"}
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    try:
+        res = client.get("/api/projects/onelove/logs")
+        assert res.status_code == 200
+        logs = res.json()
+        assert isinstance(logs, list)
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_authenticated_get_project_analytics():
+    """Verify authenticated project owner can fetch analytics metrics."""
+    user = {"id": "owner-123", "email": "owner@example.com", "role": "super_admin"}
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    try:
+        res = client.get("/api/projects/onelove/analytics")
+        assert res.status_code == 200
+        data = res.json()
+        assert "project_id" in data
+        assert "total_messages" in data
+        assert "total_tokens" in data
+        assert "estimated_cost_usd" in data
+        assert "ca_scans" in data
+    finally:
+        app.dependency_overrides.clear()
+
+

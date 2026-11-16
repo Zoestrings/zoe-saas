@@ -13,14 +13,18 @@ import {
   Layers,
   ShieldCheck,
   Sparkles,
-  Inbox
+  Inbox,
+  MessageSquare,
+  Cpu,
+  DollarSign
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { api, Project } from "@/lib/api"
+import { api, Project, ProjectAnalytics } from "@/lib/api"
 
 export default function OwnerDashboardPage() {
   const [projects, setProjects] = useState<Project[]>([])
+  const [analytics, setAnalytics] = useState<ProjectAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
   const [copiedCA, setCopiedCA] = useState<string | null>(null)
 
@@ -35,6 +39,14 @@ export default function OwnerDashboardPage() {
     try {
       const data = await api.getProjects()
       setProjects(data || [])
+      if (data && data.length > 0) {
+        try {
+          const stats = await api.getProjectAnalytics(data[0].id)
+          setAnalytics(stats)
+        } catch (statsErr) {
+          console.warn("Could not load project analytics:", statsErr)
+        }
+      }
     } catch (err) {
       console.warn("Notice: Backend service unavailable or not logged in yet:", err)
       setProjects([])
@@ -106,6 +118,57 @@ export default function OwnerDashboardPage() {
           <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
           Refresh Status
         </Button>
+      </div>
+
+      {/* Analytics Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Messages Handled */}
+        <Card className="bg-[#121212] border border-neutral-800 hover:border-[#00ff66]/30 transition-all rounded-2xl p-5 shadow-lg">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Messages Handled</span>
+            <div className="h-8 w-8 rounded-lg bg-[#00ff66]/10 border border-[#00ff66]/20 flex items-center justify-center text-[#00ff66]">
+              <MessageSquare className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-[#00ff66] tracking-tight">
+            {analytics ? analytics.total_messages.toLocaleString() : "..."}
+          </div>
+          <p className="text-[11px] text-neutral-500 mt-1">Community inquiries & automated replies</p>
+        </Card>
+
+        {/* Token Usage */}
+        <Card className="bg-[#121212] border border-neutral-800 hover:border-[#00ff66]/30 transition-all rounded-2xl p-5 shadow-lg">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Token Usage</span>
+            <div className="h-8 w-8 rounded-lg bg-[#00ff66]/10 border border-[#00ff66]/20 flex items-center justify-center text-[#00ff66]">
+              <Cpu className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-[#00ff66] tracking-tight">
+            {analytics
+              ? analytics.total_tokens >= 1_000_000
+                ? `${(analytics.total_tokens / 1_000_000).toFixed(1)}M`
+                : analytics.total_tokens >= 1_000
+                ? `${(analytics.total_tokens / 1_000).toFixed(1)}k`
+                : analytics.total_tokens.toLocaleString()
+              : "..."}
+          </div>
+          <p className="text-[11px] text-neutral-500 mt-1">Prompt & context generation tokens</p>
+        </Card>
+
+        {/* Est. API Cost */}
+        <Card className="bg-[#121212] border border-neutral-800 hover:border-[#00ff66]/30 transition-all rounded-2xl p-5 shadow-lg">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Est. API Cost</span>
+            <div className="h-8 w-8 rounded-lg bg-[#00ff66]/10 border border-[#00ff66]/20 flex items-center justify-center text-[#00ff66]">
+              <DollarSign className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-black text-[#00ff66] tracking-tight">
+            ${analytics ? analytics.estimated_cost_usd.toFixed(2) : "0.00"}
+          </div>
+          <p className="text-[11px] text-neutral-500 mt-1">Estimated model cost ($0.001 / 1k tokens)</p>
+        </Card>
       </div>
 
       {/* Projects Grid */}

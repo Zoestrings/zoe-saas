@@ -11,7 +11,8 @@ import {
   Loader2, 
   User as UserIcon,
   Sparkles,
-  Radar
+  Radar,
+  MessageSquare
 } from "lucide-react"
 import { getToken, getUser, removeToken, User } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -54,6 +55,7 @@ export default function OwnerLayout({
   const navItems = [
     { label: "My Bot", href: "/owner/dashboard", icon: Bot },
     { label: "Intelligence Scanner", href: "/investigate", icon: Radar },
+    { label: "Conversation Logs", href: "/owner/logs", icon: MessageSquare },
     { label: "Knowledge Base", href: "/owner/dashboard/knowledge", icon: BrainCircuit },
     { label: "Instructions", href: "/owner/dashboard/instructions", icon: FileCode },
   ]

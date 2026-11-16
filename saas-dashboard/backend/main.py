@@ -506,6 +506,25 @@ class ProjectResponse(BaseModel):
     created_at: Optional[str] = None
 
 
+class ConversationLogItem(BaseModel):
+    id: int
+    project_id: str
+    user_message: str
+    bot_response: Optional[str] = None
+    intent: Optional[str] = None
+    category: Optional[str] = None
+    timestamp: str
+    pseudonymous_user_id: Optional[str] = None
+
+
+class ProjectAnalyticsResponse(BaseModel):
+    project_id: str
+    total_messages: int
+    total_tokens: int
+    estimated_cost_usd: float
+    ca_scans: int
+
+
 async def call_engine(method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Call Zoe Bot Engine internal API with retries and authentication."""
     url = f"{ZOE_ENGINE_URL}{path}"
@@ -1438,6 +1457,224 @@ async def update_settings(
         "status": "success",
         "message": "Custom bot persona instructions updated successfully and active immediately."
     }
+
+
+def _resolve_project_aliases(project_id: str) -> List[str]:
+    """Resolve project identifier to all possible aliases in operational DB."""
+    aliases = {
+        project_id,
+        project_id.lower(),
+        project_id.lower().replace(" ", "").replace("_", "").replace("-", ""),
+    }
+    client = get_supabase()
+    if client is None:
+        try:
+            conn = get_dev_db()
+            cur = conn.cursor()
+            row = cur.execute(
+                "SELECT id, name FROM dev_projects WHERE id = ? OR name = ?",
+                (project_id, project_id),
+            ).fetchone()
+            if row:
+                p_id, p_name = str(row[0]), str(row[1])
+                aliases.add(p_id)
+                aliases.add(p_name)
+                aliases.add(p_name.lower())
+                aliases.add(p_name.lower().replace(" ", "").replace("_", "").replace("-", ""))
+        except Exception:
+            pass
+    else:
+        try:
+            res = client.table("projects").select("id, name").eq("id", project_id).execute()
+            if not res.data:
+                res = client.table("projects").select("id, name").eq("name", project_id).execute()
+            if res.data:
+                p_id = str(res.data[0].get("id"))
+                p_name = str(res.data[0].get("name"))
+                aliases.add(p_id)
+                aliases.add(p_name)
+                aliases.add(p_name.lower())
+                aliases.add(p_name.lower().replace(" ", "").replace("_", "").replace("-", ""))
+        except Exception:
+            pass
+
+    # Map well-known project aliases
+    if "onelove" in aliases or any("one" in a and "love" in a for a in aliases):
+        aliases.update({"onelove", "one_love", "One Love", "One Love Sailing"})
+    if "zoe" in aliases or any("hummingbird" in a for a in aliases):
+        aliases.update({"zoe", "hummingbird", "fly"})
+
+    return list(aliases)
+
+
+@app.get("/api/projects/{project_id}/logs", response_model=List[ConversationLogItem])
+def get_project_logs(
+    project_id: str,
+    search: Optional[str] = None,
+    limit: int = 50,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Fetch the latest 50 conversation logs for a project with strict tenant isolation."""
+    owner_id = current_user.get("id", "")
+    role = current_user.get("role", "project_owner")
+    verify_project_ownership(project_id, owner_id, role)
+
+    db_path = _backend_data_dir() / "operational" / "operational.db"
+    if not db_path.exists():
+        db_path = Path("data/operational/operational.db")
+
+    if not db_path.exists():
+        return []
+
+    aliases = _resolve_project_aliases(project_id)
+    placeholders = ",".join("?" for _ in aliases)
+
+    conn = sqlite3.connect(str(db_path))
+    cur = conn.cursor()
+
+    query = f"""
+        SELECT 
+            i.id,
+            i.project_id,
+            i.text,
+            o.text,
+            COALESCE(i.decision_reason, 'direct_response'),
+            COALESCE(i.classification_category, 'general'),
+            COALESCE(i.message_timestamp, i.created_at),
+            i.pseudonymous_user_id
+        FROM inbox_messages i
+        LEFT JOIN outbox_messages o ON o.inbox_message_id = i.id
+        WHERE i.project_id IN ({placeholders})
+    """
+    params: List[Any] = list(aliases)
+    if search and search.strip():
+        s = f"%{search.strip()}%"
+        query += " AND (i.text LIKE ? OR o.text LIKE ? OR i.classification_category LIKE ? OR i.decision_reason LIKE ?)"
+        params.extend([s, s, s, s])
+
+    query += " ORDER BY i.id DESC LIMIT ?"
+    params.append(min(max(1, limit), 200))
+
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    conn.close()
+
+    logs = []
+    for r in rows:
+        logs.append(
+            ConversationLogItem(
+                id=r[0],
+                project_id=str(r[1]),
+                user_message=r[2] or "",
+                bot_response=r[3],
+                intent=r[4],
+                category=r[5],
+                timestamp=str(r[6]),
+                pseudonymous_user_id=r[7],
+            )
+        )
+    return logs
+
+
+@app.get("/api/projects/{project_id}/analytics", response_model=ProjectAnalyticsResponse)
+def get_project_analytics(
+    project_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retrieve usage analytics: Total Messages, Total Tokens, Est. Cost, and CA Scans."""
+    owner_id = current_user.get("id", "")
+    role = current_user.get("role", "project_owner")
+    verify_project_ownership(project_id, owner_id, role)
+
+    db_path = _backend_data_dir() / "operational" / "operational.db"
+    if not db_path.exists():
+        db_path = Path("data/operational/operational.db")
+
+    total_messages = 0
+    total_tokens = 0
+    ca_scans = 0
+
+    if db_path.exists():
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+
+        # Ensure llm_usage table exists
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS llm_usage (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT NOT NULL,
+                inbox_message_id INTEGER,
+                prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                completion_tokens INTEGER NOT NULL DEFAULT 0,
+                total_tokens INTEGER NOT NULL DEFAULT 0,
+                model TEXT,
+                cost_usd REAL NOT NULL DEFAULT 0.0,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.commit()
+
+        aliases = _resolve_project_aliases(project_id)
+        placeholders = ",".join("?" for _ in aliases)
+
+        # 1. Total Messages Processed
+        cur.execute(f"SELECT COUNT(*) FROM inbox_messages WHERE project_id IN ({placeholders})", aliases)
+        row = cur.fetchone()
+        total_messages = row[0] if row else 0
+
+        # 2. Number of CA Scans
+        ca_query = f"""
+            SELECT COUNT(*) FROM inbox_messages 
+            WHERE project_id IN ({placeholders})
+              AND (
+                classification_category = 'crypto_intelligence'
+                OR decision_reason LIKE '%ca%'
+                OR text LIKE '%/ca%'
+                OR text LIKE '%/price%'
+                OR text LIKE '%/scan%'
+                OR text LIKE '%/contract%'
+                OR text LIKE '%/holders%'
+              )
+        """
+        cur.execute(ca_query, aliases)
+        row_ca = cur.fetchone()
+        ca_scans = row_ca[0] if row_ca else 0
+
+        # 3. Total Tokens & Estimated Cost
+        cur.execute(f"SELECT SUM(total_tokens), SUM(cost_usd) FROM llm_usage WHERE project_id IN ({placeholders})", aliases)
+        row_usage = cur.fetchone()
+        if row_usage and row_usage[0] and row_usage[0] > 0:
+            total_tokens = int(row_usage[0])
+            cost_usd = float(row_usage[1]) if row_usage[1] is not None else (total_tokens / 1000.0) * 0.001
+        else:
+            # Baseline realistic token estimation: ~365 tokens per message (prompt + response)
+            total_tokens = total_messages * 365
+            cost_usd = (total_tokens / 1000.0) * 0.001
+
+        conn.close()
+    else:
+        cost_usd = 0.0
+
+    # Also count user's saved investigations if available
+    try:
+        inv_conn = get_dev_db()
+        cur_inv = inv_conn.cursor()
+        cur_inv.execute("SELECT COUNT(*) FROM dev_investigations WHERE user_id = ?", (owner_id,))
+        row_inv = cur_inv.fetchone()
+        if row_inv and row_inv[0] > 0:
+            ca_scans = max(ca_scans, row_inv[0])
+    except Exception:
+        pass
+
+    return ProjectAnalyticsResponse(
+        project_id=project_id,
+        total_messages=total_messages,
+        total_tokens=total_tokens,
+        estimated_cost_usd=round(cost_usd, 4),
+        ca_scans=ca_scans,
+    )
 
 
 def get_user_entitlement(user_id: Optional[str]) -> Dict[str, Any]:

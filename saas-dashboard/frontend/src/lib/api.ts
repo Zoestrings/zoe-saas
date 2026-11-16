@@ -132,7 +132,25 @@ export interface InvestigationReport {
   ai_summary?: string
   is_pro?: boolean
   pro_locked?: boolean
+  wallet_trace?: WalletTrace
   timestamp_utc?: string
+}
+
+export interface WalletTrace {
+  traced: boolean
+  wallet_address: string
+  funding_source: string
+  funding_source_short?: string
+  funding_entity: string
+  is_cex_funded: boolean
+  is_fresh_funding_wallet: boolean
+  initial_funding_sol: number
+  first_tx_hash?: string | null
+  outflow_risk: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "UNKNOWN"
+  outflow_details: string
+  risk_level: "LOW" | "MEDIUM" | "HIGH" | "UNKNOWN"
+  risk_reason: string
+  total_tx_count: number
 }
 
 export interface Invoice {

@@ -534,3 +534,139 @@ def test_pipeline_investigate_command_interception(tmp_path):
     assert any("Live Chart" in btn["text"] for row in res_valid.inline_keyboard for btn in row)
     assert any("Explorer" in btn["text"] for row in res_valid.inline_keyboard for btn in row)
 
+
+def test_trace_wallet_untraced_and_cex():
+    """Test trace_wallet default handling and CEX hot wallet identification."""
+    import asyncio
+    from unittest.mock import patch, MagicMock, AsyncMock
+    from zoe.tools.scanner import trace_wallet, KNOWN_SOLANA_CEX_WALLETS
+
+    async def _run():
+        # 1. Invalid or empty wallet returns default untraced
+        res_empty = await trace_wallet("")
+        assert res_empty["traced"] is False
+        assert res_empty["funding_source"] == "Unknown"
+
+        # 2. Mock Solana RPC response where oldest tx was funded by Binance hot wallet
+        dev_wallet = "4C8deD4Tm8xuM5kkpkS8wn7shGgKejAMLyi6uwFkCkFA"
+        binance_wallet = "2OJv9BAiHUHGux3qWBKNmmukysAQGunTVGZm19U977Fi"
+        mock_sigs = [{"signature": "sig_oldest_1"}]
+        mock_tx_data = {
+            "result": {
+                "transaction": {
+                    "message": {
+                        "accountKeys": [{"pubkey": binance_wallet}, {"pubkey": dev_wallet}],
+                        "instructions": [
+                            {
+                                "program": "system",
+                                "parsed": {
+                                    "type": "transfer",
+                                    "info": {
+                                        "source": binance_wallet,
+                                        "destination": dev_wallet,
+                                        "lamports": 5_000_000_000, # 5 SOL
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                },
+                "meta": {"preBalances": [10000000000, 0], "postBalances": [5000000000, 5000000000]}
+            }
+        }
+
+        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_post.side_effect = [
+                MagicMock(status_code=200, json=lambda: {"result": mock_sigs}),
+                MagicMock(status_code=200, json=lambda: mock_tx_data),
+            ]
+
+            trace = await trace_wallet(dev_wallet)
+            assert trace["traced"] is True
+            assert trace["is_cex_funded"] is True
+            assert trace["funding_entity"] == "Binance Hot Wallet"
+            assert trace["initial_funding_sol"] == 5.0
+            assert trace["risk_level"] == "LOW"
+
+    asyncio.run(_run())
+
+
+def test_trace_wallet_fresh_and_outflow():
+    """Test trace_wallet flagging fresh burner wallet and large capital outflow."""
+    import asyncio
+    from unittest.mock import patch, MagicMock, AsyncMock
+    from zoe.tools.scanner import trace_wallet, evaluate_risk, calculate_safety_score
+
+    async def _run():
+        dev_wallet = "4C8deD4Tm8xuM5kkpkS8wn7shGgKejAMLyi6uwFkCkFA"
+        fresh_funder = "H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LgfgnpkAz9GWB" # non-CEX or custom address
+        mock_sigs = [{"signature": "sig_new_outflow"}, {"signature": "sig_genesis"}]
+
+        # Genesis tx
+        genesis_tx = {
+            "result": {
+                "transaction": {
+                    "message": {
+                        "accountKeys": [{"pubkey": "FreshBurnerWallet11111111111111111111111111"}, {"pubkey": dev_wallet}],
+                        "instructions": [
+                            {
+                                "program": "system",
+                                "parsed": {
+                                    "type": "transfer",
+                                    "info": {"source": "FreshBurnerWallet11111111111111111111111111", "destination": dev_wallet, "lamports": 10_000_000_000}
+                                }
+                            }
+                        ]
+                    }
+                },
+                "meta": {"preBalances": [20000000000, 0], "postBalances": [10000000000, 10000000000]}
+            }
+        }
+
+        # Outflow tx: dev wallet drained 8 SOL out
+        outflow_tx = {
+            "result": {
+                "transaction": {
+                    "message": {
+                        "accountKeys": [{"pubkey": dev_wallet}, {"pubkey": "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"}],
+                        "instructions": []
+                    }
+                },
+                "meta": {"preBalances": [10_000_000_000, 0], "postBalances": [2_000_000_000, 8_000_000_000]}
+            }
+        }
+
+        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_post.side_effect = [
+                MagicMock(status_code=200, json=lambda: {"result": mock_sigs}),
+                MagicMock(status_code=200, json=lambda: genesis_tx),
+                MagicMock(status_code=200, json=lambda: outflow_tx),
+            ]
+
+            trace = await trace_wallet(dev_wallet)
+            assert trace["traced"] is True
+            assert trace["is_fresh_funding_wallet"] is True
+            assert trace["outflow_risk"] == "HIGH"
+            assert "outflow of 8.00 SOL" in trace["outflow_details"]
+
+            # Test Risk Engine integration
+            market = {"found": True, "liquidity_usd": 100000.0}
+            security = {"success": True, "lp_locked": True, "mint_revoked": True, "freeze_revoked": True}
+            risk = evaluate_risk(market, security, wallet_trace=trace)
+            assert risk["level"] == "HIGH"
+            assert any("burner wallet" in r for r in risk["reasons"])
+            assert any("outflow alert" in r for r in risk["reasons"])
+
+            # Test Safety Score penalty
+            score = calculate_safety_score({
+                "security": security,
+                "lp_intelligence": {"is_locked": True},
+                "holder_intelligence": {"top_10_percent": 25.0},
+                "dev_wallet_intelligence": {"holds_percent": 2.0},
+                "wallet_trace": trace,
+            })
+            assert score <= 80
+
+    asyncio.run(_run())
+
+

@@ -10,6 +10,7 @@ Provides deterministic on-chain and market intelligence:
 
 import asyncio
 from datetime import datetime, timezone
+import os
 import re
 from typing import Any, Dict, List, Optional
 import httpx
@@ -345,6 +346,236 @@ async def fetch_rugcheck_fallback(
     return result
 
 
+# =========================================================================
+# Mega-Module 7: Deep Wallet Tracing & CEX Entity Identification
+# =========================================================================
+
+KNOWN_SOLANA_CEX_WALLETS: Dict[str, str] = {
+    "2OJv9BAiHUHGux3qWBKNmmukysAQGunTVGZm19U977Fi": "Binance",
+    "5tzFkiKscGBspauqncduazSyeWDVGsLvv7MttdTQDPjf": "Binance",
+    "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM": "Binance",
+    "H8sMJSCQxfKiFTCfDR3DUMLPwcRbM61LgfgnpkAz9GWB": "Coinbase",
+    "2AQdpHJ2JpcEgPiATUXjQxA8QmafFegfQwSLWSprPics": "Coinbase",
+    "GJRs4FwHtemZ5ZE9x3FNvJ8TMwitKTh21yxdRPgv7npb": "Coinbase",
+    "FWznbcNXWQuHTawe9RxvQ2LdJF2YmtV21TuGLZFMAz9G": "Kraken",
+    "5VCwKtCXgCJ6kit5FybXjvmsWgf6xVxAZT8xYT5GnyPM": "OKX",
+    "9un5wqE3q4oCvsStciNuuvnPzvgK9Hq2H5oQz6dDkmrG": "OKX",
+    "AC5RDfQFmDS1deWZos921qbhirGLCmEYSLgWAEmv246Q": "Bybit",
+    "BmFdpraQmgrBkAcSYurggVr84PmCtxuWGWPrTYqPMUeh": "KuCoin",
+    "ASTyfSima4LLAdDgoFGkgqoKowG1LZFDr9fAQrg7iaJZ": "MEXC",
+    "u6357Gm6WHhSbBvDqcwpnCLnWJ9GzJHdz8k1uC2xZ7n": "Gate.io",
+}
+
+
+async def trace_wallet(
+    wallet_address: Optional[str],
+    client: Optional[httpx.AsyncClient] = None,
+) -> Dict[str, Any]:
+    """Perform on-chain trace on Solana wallet to find funding source, CEX linkage, and outflow risk."""
+    default_res: Dict[str, Any] = {
+        "traced": False,
+        "wallet_address": wallet_address or "Unknown",
+        "funding_source": "Unknown",
+        "funding_source_short": "Unknown",
+        "funding_entity": "Unknown",
+        "is_cex_funded": False,
+        "is_fresh_funding_wallet": False,
+        "initial_funding_sol": 0.0,
+        "first_tx_hash": None,
+        "outflow_risk": "UNKNOWN",
+        "outflow_details": "No wallet activity traced.",
+        "risk_level": "UNKNOWN",
+        "risk_reason": "Unable to trace wallet history.",
+        "total_tx_count": 0,
+    }
+
+    if not wallet_address:
+        return default_res
+
+    clean_addr = wallet_address.strip()
+    default_res["wallet_address"] = clean_addr
+
+    if not is_valid_solana_ca(clean_addr):
+        return default_res
+
+    rpc_url = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com").strip()
+
+    # Step 1: Query getSignaturesForAddress
+    sig_payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "getSignaturesForAddress",
+        "params": [
+            clean_addr,
+            {"limit": 20}
+        ]
+    }
+
+    try:
+        if client:
+            resp = await client.post(rpc_url, json=sig_payload, timeout=8.0)
+        else:
+            async with httpx.AsyncClient(timeout=8.0) as local_client:
+                resp = await local_client.post(rpc_url, json=sig_payload)
+
+        if resp.status_code != 200:
+            return default_res
+
+        data = resp.json()
+        signatures = data.get("result") or []
+        if not signatures or not isinstance(signatures, list):
+            return default_res
+
+        total_tx = len(signatures)
+        default_res["total_tx_count"] = total_tx
+        default_res["traced"] = True
+
+        # Oldest signature in this batch (reverse chronological: last element is earliest)
+        oldest_sig_obj = signatures[-1]
+        oldest_sig = oldest_sig_obj.get("signature")
+        default_res["first_tx_hash"] = oldest_sig
+
+        # Step 2: Query getTransaction for oldest signature to find initial funder
+        tx_payload = {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "getTransaction",
+            "params": [
+                oldest_sig,
+                {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}
+            ]
+        }
+
+        if client:
+            tx_resp = await client.post(rpc_url, json=tx_payload, timeout=8.0)
+        else:
+            async with httpx.AsyncClient(timeout=8.0) as local_client:
+                tx_resp = await local_client.post(rpc_url, json=tx_payload)
+
+        funder = "Unknown"
+        funding_sol = 0.0
+
+        if tx_resp.status_code == 200:
+            tx_data = tx_resp.json()
+            tx_res = tx_data.get("result") or {}
+            meta = tx_res.get("meta") or {}
+            msg = tx_res.get("transaction", {}).get("message", {})
+            account_keys = msg.get("accountKeys") or []
+
+            # Find wallet index
+            wallet_idx = -1
+            for idx, ak in enumerate(account_keys):
+                pubkey = ak.get("pubkey") if isinstance(ak, dict) else str(ak)
+                if pubkey == clean_addr:
+                    wallet_idx = idx
+                    break
+
+            pre_balances = meta.get("preBalances") or []
+            post_balances = meta.get("postBalances") or []
+
+            if wallet_idx != -1 and wallet_idx < len(pre_balances) and wallet_idx < len(post_balances):
+                diff = post_balances[wallet_idx] - pre_balances[wallet_idx]
+                if diff > 0:
+                    funding_sol = round(diff / 1_000_000_000, 4)
+
+            # Senders: Check parsed instructions or signer account 0
+            instructions = msg.get("instructions") or []
+            found_funder = False
+            for ins in instructions:
+                if isinstance(ins, dict) and ins.get("program") == "system":
+                    parsed = ins.get("parsed") or {}
+                    if parsed.get("type") == "transfer":
+                        info = parsed.get("info") or {}
+                        dest = info.get("destination")
+                        source = info.get("source")
+                        if dest == clean_addr and source:
+                            funder = source
+                            found_funder = True
+                            if "lamports" in info:
+                                funding_sol = round(float(info["lamports"]) / 1_000_000_000, 4)
+                            break
+
+            if not found_funder and account_keys:
+                first_key = account_keys[0]
+                signer = first_key.get("pubkey") if isinstance(first_key, dict) else str(first_key)
+                if signer != clean_addr:
+                    funder = signer
+
+        default_res["funding_source"] = funder
+        default_res["funding_source_short"] = shorten_ca(funder)
+        default_res["initial_funding_sol"] = funding_sol
+
+        # Step 3: Check CEX or Fresh Wallet
+        if funder in KNOWN_SOLANA_CEX_WALLETS:
+            cex_name = KNOWN_SOLANA_CEX_WALLETS[funder]
+            default_res["funding_entity"] = f"{cex_name} Hot Wallet"
+            default_res["is_cex_funded"] = True
+            default_res["risk_level"] = "LOW"
+            default_res["risk_reason"] = f"Legitimately funded via {cex_name} exchange hot wallet."
+        elif total_tx <= 3:
+            default_res["funding_entity"] = "Fresh / Burner Wallet"
+            default_res["is_fresh_funding_wallet"] = True
+            default_res["risk_level"] = "HIGH"
+            default_res["risk_reason"] = "Funded by a fresh unverified wallet with no exchange trail (Sybil risk)."
+        elif funder != "Unknown":
+            default_res["funding_entity"] = "Private / Non-CEX Wallet"
+            default_res["risk_level"] = "MEDIUM"
+            default_res["risk_reason"] = "Funded by a private on-chain wallet."
+        else:
+            default_res["funding_entity"] = "Unknown"
+            default_res["risk_level"] = "UNKNOWN"
+            default_res["risk_reason"] = "Unable to resolve initial funder."
+
+        # Step 4: Outflow Risk (Check if dev has sent funds out recently)
+        default_res["outflow_risk"] = "LOW"
+        default_res["outflow_details"] = "No suspicious capital outflow detected from Dev Wallet."
+
+        if len(signatures) > 1:
+            recent_sig = signatures[0].get("signature")
+            if recent_sig and recent_sig != oldest_sig:
+                try:
+                    rec_payload = {
+                        "jsonrpc": "2.0",
+                        "id": 3,
+                        "method": "getTransaction",
+                        "params": [recent_sig, {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0}]
+                    }
+                    if client:
+                        rec_resp = await client.post(rpc_url, json=rec_payload, timeout=6.0)
+                    else:
+                        async with httpx.AsyncClient(timeout=6.0) as local_client:
+                            rec_resp = await local_client.post(rpc_url, json=rec_payload)
+
+                    if rec_resp.status_code == 200:
+                        rec_res = rec_resp.json().get("result") or {}
+                        rec_meta = rec_res.get("meta") or {}
+                        rec_msg = rec_res.get("transaction", {}).get("message", {})
+                        rec_keys = rec_msg.get("accountKeys") or []
+                        w_idx = -1
+                        for idx, ak in enumerate(rec_keys):
+                            pk = ak.get("pubkey") if isinstance(ak, dict) else str(ak)
+                            if pk == clean_addr:
+                                w_idx = idx
+                                break
+
+                        rec_pre = rec_meta.get("preBalances") or []
+                        rec_post = rec_meta.get("postBalances") or []
+                        if w_idx != -1 and w_idx < len(rec_pre) and w_idx < len(rec_post):
+                            diff = rec_pre[w_idx] - rec_post[w_idx]
+                            drain_sol = diff / 1_000_000_000
+                            if drain_sol > 5.0:
+                                default_res["outflow_risk"] = "HIGH"
+                                default_res["outflow_details"] = f"Recent outflow of {drain_sol:.2f} SOL from Dev Wallet detected."
+                                default_res["risk_level"] = "HIGH"
+                except Exception:
+                    pass
+
+    except Exception as exc:
+        logger.debug("Wallet tracing error for %s: %s", wallet_address, exc)
+
+    return default_res
+
+
 async def investigate_project_osint(
     token_name: str,
     symbol: Optional[str] = None,
@@ -528,8 +759,9 @@ def evaluate_risk(
     market: Dict[str, Any],
     security: Dict[str, Any],
     osint: Optional[Dict[str, Any]] = None,
+    wallet_trace: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Upgraded Risk Assessment Engine for Mega-Module 1 & 2.
+    """Upgraded Risk Assessment Engine for Mega-Module 1, 2 & 7.
     
     Deterministic Rules:
     - If Honeypot -> CRITICAL
@@ -538,6 +770,9 @@ def evaluate_risk(
     - If LP is NOT locked/renounced -> HIGH
     - If Mint Authority active -> HIGH
     - If Freeze Authority active -> HIGH
+    - If Dev Wallet funded by fresh unverified burner wallet -> HIGH
+    - If Dev Wallet actively moving funds out -> HIGH
+    - If Dev Wallet funded by known CEX -> LOW / MEDIUM
     - If No website found -> MEDIUM ("No official website found.")
     - If Founder anonymous -> UNKNOWN/INFO ("Founder identity is unverified.")
     - If LP is locked and Top 10 < 40% (and mint revoked, freeze revoked, dev <= 5%) -> LOW
@@ -634,6 +869,16 @@ def evaluate_risk(
         elif osint.get("founder") and osint.get("founder") not in ("Unverified", "Anonymous / Unverified"):
             low_reasons.append(f"Public founder identified: {osint.get('founder')}")
 
+    # 9. Deep Wallet Tracing Checks (Mega-Module 7)
+    if wallet_trace and isinstance(wallet_trace, dict):
+        if wallet_trace.get("is_fresh_funding_wallet"):
+            high_reasons.append("Dev Wallet funded by fresh burner wallet with no exchange history (High Sybil risk)")
+        elif wallet_trace.get("is_cex_funded"):
+            low_reasons.append(f"Dev Wallet funded by verified exchange hot wallet ({wallet_trace.get('funding_entity')})")
+
+        if wallet_trace.get("outflow_risk") == "HIGH":
+            high_reasons.append(f"Dev Wallet outflow alert: {wallet_trace.get('outflow_details')}")
+
     # Deterministic Risk Hierarchy
     if critical_reasons:
         level = "CRITICAL"
@@ -722,6 +967,16 @@ def calculate_safety_score(data: Dict[str, Any]) -> int:
     dev_pct = dev_intel.get("holds_percent") if dev_intel.get("holds_percent") is not None else security.get("dev_wallet_percent")
     if dev_pct is not None and dev_pct > 10.0:
         score -= 10
+
+    # Wallet Trace Intelligence (Mega-Module 7)
+    wallet_trace = data.get("wallet_trace", {})
+    if wallet_trace and isinstance(wallet_trace, dict):
+        if wallet_trace.get("is_fresh_funding_wallet"):
+            score -= 15
+        elif wallet_trace.get("is_cex_funded"):
+            score += 5
+        if wallet_trace.get("outflow_risk") == "HIGH":
+            score -= 20
 
     return max(0, min(100, score))
 
@@ -869,8 +1124,32 @@ async def scan_solana_token(
         except Exception as exc:
             logger.warning("Project OSINT investigation failed for %s: %s", token_name, exc)
 
-    # 4. Deterministic Risk Assessment (incorporating OSINT flags)
-    risk_assessment = evaluate_risk(market_data, security_data, osint=osint_data)
+    # 4. Mega-Module 7: Deep Wallet Tracing (CEX Linkage & Outflow Detection)
+    creator_addr = security_data.get("creator_address")
+    wallet_trace: Dict[str, Any] = {
+        "traced": False,
+        "wallet_address": creator_addr or "Unknown",
+        "funding_source": "Unknown",
+        "funding_source_short": "Unknown",
+        "funding_entity": "Unknown",
+        "is_cex_funded": False,
+        "is_fresh_funding_wallet": False,
+        "initial_funding_sol": 0.0,
+        "first_tx_hash": None,
+        "outflow_risk": "UNKNOWN",
+        "outflow_details": "No wallet activity traced.",
+        "risk_level": "UNKNOWN",
+        "risk_reason": "Unable to trace wallet history.",
+        "total_tx_count": 0,
+    }
+    if creator_addr and chain_type == "Solana":
+        try:
+            wallet_trace = await trace_wallet(creator_addr, client=client)
+        except Exception as exc:
+            logger.warning("Deep wallet trace failed for creator %s: %s", creator_addr, exc)
+
+    # 5. Deterministic Risk Assessment (incorporating OSINT and Wallet Trace flags)
+    risk_assessment = evaluate_risk(market_data, security_data, osint=osint_data, wallet_trace=wallet_trace)
 
     # Holder Concentration intelligence summary
     top_10 = security_data.get("top_10_holders_percent")
@@ -892,12 +1171,13 @@ async def scan_solana_token(
     dev_pct = security_data.get("dev_wallet_percent", 0.0)
     dev_status = "High risk" if dev_pct > 10.0 else ("Moderate risk" if dev_pct > 5.0 else "Low risk")
 
-    # 5. Mega-Module 4: Safety Score (0-100) & AI Analyst Summary
+    # 6. Mega-Module 4 & 7: Safety Score (0-100) & AI Analyst Summary
     score_data = {
         "security": security_data,
         "lp_intelligence": {"is_locked": lp_locked, "lock_percent": security_data.get("lp_lock_percent", 0.0)},
         "holder_intelligence": {"top_10_percent": top_10, "holder_count": security_data.get("holder_count")},
         "dev_wallet_intelligence": {"holds_percent": dev_pct},
+        "wallet_trace": wallet_trace,
     }
     safety_score = calculate_safety_score(score_data)
     ai_summary = await generate_ai_summary(
@@ -910,6 +1190,7 @@ async def scan_solana_token(
             "holder_intelligence": {"top_10_percent": top_10},
             "dev_wallet_intelligence": {"holds_percent": dev_pct},
             "osint": osint_data,
+            "wallet_trace": wallet_trace,
         },
         score=safety_score,
     )
@@ -939,6 +1220,7 @@ async def scan_solana_token(
             "holds_percent": dev_pct,
             "status": dev_status,
         },
+        "wallet_trace": wallet_trace,
         "osint": osint_data,
         "project_osint": osint_data,
         "risk": risk_assessment,
@@ -1018,6 +1300,11 @@ def format_scan_report(report_data: Dict[str, Any]) -> str:
     dev_pct_val = dev_intel.get("holds_percent", 0.0)
     dev_str = f"Holds {dev_pct_val:.1f}% ({dev_intel.get('status', 'Low risk')})"
 
+    wallet_trace = report_data.get("wallet_trace") or {}
+    funding_entity = wallet_trace.get("funding_entity") or "Unknown"
+    trace_risk = wallet_trace.get("risk_level") or "Unknown"
+    trace_line = f"🕵️ Wallet Trace: Funded by {funding_entity} (Risk: {trace_risk})"
+
     osint = report_data.get("osint") or report_data.get("project_osint") or {}
     website_str = osint.get("website") or "Unknown"
     twitter_str = osint.get("twitter") or "Unknown"
@@ -1046,6 +1333,7 @@ def format_scan_report(report_data: Dict[str, Any]) -> str:
         f"👥 Holder Concentration: Top 10 hold {top_10_str}\n"
         f"🔒 LP Lock: {lp_status_str}\n"
         f"🧑‍💻 Dev Wallet: {dev_str}\n"
+        f"{trace_line}\n"
         f"Mint Auth: {mint_status}\n"
         f"Freeze Auth: {freeze_status}\n\n"
         f"🌐 Project OSINT\n"
@@ -1111,6 +1399,10 @@ def format_holders_report(report_data: Dict[str, Any]) -> str:
     dev_str = f"{dev_pct:.1f}% ({dev_intel.get('status', 'Low risk')})"
     creator_addr = dev_intel.get("creator_address_short") or "Not detected"
 
+    wallet_trace = report_data.get("wallet_trace") or {}
+    funding_entity = wallet_trace.get("funding_entity") or "Unknown"
+    trace_risk = wallet_trace.get("risk_level") or "Unknown"
+
     return (
         f"👥 **Holder Concentration: {name}**\n"
         f"CA: `{ca_short}` · {chain}\n\n"
@@ -1118,6 +1410,7 @@ def format_holders_report(report_data: Dict[str, Any]) -> str:
         f"Total Unique Holders: {total_holders_str}\n"
         f"Developer Holding: {dev_str}\n"
         f"Creator Address: `{creator_addr}`\n"
+        f"🕵️ Wallet Trace: Funded by {funding_entity} (Risk: {trace_risk})\n"
         f"Evidence Sources: Solana RPC / GoPlus"
     )
 

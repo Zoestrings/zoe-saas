@@ -922,6 +922,146 @@ export default function InvestigatePage() {
             )
           })()}
 
+          {/* Mega-Module 7: Deep Wallet Intelligence & Capital Trace Card */}
+          {(() => {
+            const trace = report.wallet_trace
+            const creator = report.dev_wallet_intelligence?.creator_address || report.security?.creator_address || trace?.wallet_address
+            const creatorShort = creator && creator !== "Unknown" ? `${creator.slice(0, 4)}...${creator.slice(-4)}` : "Unknown"
+            const funder = trace?.funding_source || "Unknown"
+            const funderShort = funder && funder !== "Unknown" ? `${funder.slice(0, 4)}...${funder.slice(-4)}` : "Unknown"
+            const fundingEntity = trace?.funding_entity || "Unknown"
+            const isCex = trace?.is_cex_funded || false
+            const isFresh = trace?.is_fresh_funding_wallet || false
+            const outflowRisk = trace?.outflow_risk || "LOW"
+            const outflowDetails = trace?.outflow_details || "No suspicious capital drain detected."
+
+            return (
+              <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden">
+                <CardHeader className="p-6 border-b border-neutral-800 flex flex-row items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-xl bg-[#00ff66]/10 border border-[#00ff66]/20 flex items-center justify-center text-[#00ff66]">
+                      <Search className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+                        <span>Wallet Intelligence &amp; Capital Trace</span>
+                        <span className="text-[10px] bg-[#00ff66]/10 text-[#00ff66] px-2 py-0.5 rounded-full border border-[#00ff66]/30 font-mono">
+                          Solana On-Chain
+                        </span>
+                      </CardTitle>
+                    </div>
+                  </div>
+
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                    outflowRisk === "HIGH" || isFresh
+                      ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                      : isCex
+                        ? "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+                        : "bg-neutral-800 text-neutral-300 border-neutral-700"
+                  }`}>
+                    {isCex ? "CEX Verified" : isFresh ? "Sybil / Fresh Risk" : "Standard Wallet"}
+                  </span>
+                </CardHeader>
+
+                <CardContent className="p-6 space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* 1. Developer Address */}
+                    <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-2">
+                      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                        Developer Address
+                      </span>
+                      {creator && creator !== "Unknown" ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <a
+                            href={`https://solscan.io/account/${creator}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-mono text-xs font-bold text-[#00ff66] hover:underline truncate inline-flex items-center gap-1"
+                          >
+                            <span>{creatorShort}</span>
+                            <ExternalLink className="h-3 w-3 shrink-0" />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => copyCreatorToClipboard(creator)}
+                            className="text-neutral-500 hover:text-white transition-colors cursor-pointer p-1"
+                            title="Copy Dev Address"
+                          >
+                            {copiedCreator ? <Check className="h-3 w-3 text-[#00ff66]" /> : <Copy className="h-3 w-3" />}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-neutral-500 italic">Not detected</span>
+                      )}
+                    </div>
+
+                    {/* 2. Funding Source */}
+                    <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-2">
+                      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                        Initial Funding Source
+                      </span>
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <span className={`text-xs font-bold block ${
+                            isCex ? "text-[#00ff66]" : isFresh ? "text-rose-400" : "text-white"
+                          }`}>
+                            {fundingEntity}
+                          </span>
+                          {funder && funder !== "Unknown" && (
+                            <a
+                              href={`https://solscan.io/account/${funder}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-mono text-[10px] text-neutral-500 hover:text-neutral-300 inline-flex items-center gap-1 mt-0.5"
+                            >
+                              <span>{funderShort}</span>
+                              <ExternalLink className="h-2.5 w-2.5" />
+                            </a>
+                          )}
+                        </div>
+                        {trace?.initial_funding_sol ? (
+                          <span className="text-[11px] font-mono font-bold text-neutral-300 bg-neutral-800 px-2 py-0.5 rounded-md">
+                            +{trace.initial_funding_sol} SOL
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {/* 3. Outflow & Capital Extraction Risk */}
+                    <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-2">
+                      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                        Outflow Risk Assessment
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                          outflowRisk === "HIGH"
+                            ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                            : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+                        }`}>
+                          {outflowRisk} DUMP RISK
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-neutral-400 leading-tight">
+                        {outflowDetails}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Trace Analysis Banner */}
+                  <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800/80 flex items-start gap-3 text-xs">
+                    <Info className="h-4 w-4 text-[#00ff66] shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <span className="font-bold text-white">Detective Intelligence Summary:</span>
+                      <p className="text-neutral-400 text-[11px] leading-relaxed">
+                        {trace?.risk_reason || "Wallet ancestry traced via genesis transaction on Solana RPC. Provides transparency against Sybil deployments and sudden developer capital extraction."}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
+
           {/* Grid Cards: Market Data & Security Checks */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* 1. Market Data Card */}

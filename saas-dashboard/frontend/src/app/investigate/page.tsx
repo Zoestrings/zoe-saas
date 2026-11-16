@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import {
   Radar,
   Search,
@@ -28,7 +29,8 @@ import {
   Download,
   Bot,
   Bookmark,
-  BookmarkCheck
+  BookmarkCheck,
+  Crown
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -61,6 +63,9 @@ export default function InvestigatePage() {
   const [inWatchlist, setInWatchlist] = useState(false)
   const [watchlistSuccessMsg, setWatchlistSuccessMsg] = useState<string | null>(null)
 
+  // Subscription entitlement state (Mega-Module 6)
+  const [isProUser, setIsProUser] = useState(false)
+
   const loadHistory = async () => {
     setHistoryLoading(true)
     try {
@@ -70,6 +75,15 @@ export default function InvestigatePage() {
       console.warn("Notice: Failed to load investigation history:", err)
     } finally {
       setHistoryLoading(false)
+    }
+  }
+
+  const loadEntitlement = async () => {
+    try {
+      const ent = await api.getEntitlement()
+      setIsProUser(ent.is_pro)
+    } catch {
+      setIsProUser(false)
     }
   }
 
@@ -98,6 +112,7 @@ export default function InvestigatePage() {
 
   useEffect(() => {
     loadHistory()
+    loadEntitlement()
 
     // Auto-detect and scan CA passed via query parameter (e.g. from Watchlist page)
     if (typeof window !== "undefined") {
@@ -605,29 +620,58 @@ export default function InvestigatePage() {
               </div>
             </Card>
 
-            {/* AI Analyst Glassmorphism Card */}
-            <Card className="md:col-span-2 bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden p-6 flex flex-col justify-between">
-              <CardHeader className="p-0 pb-3 border-b border-neutral-800/80 flex flex-row items-center justify-between">
-                <CardTitle className="text-base font-bold text-white flex items-center gap-2">
-                  <Bot className="h-5 w-5 text-[#00ff66]" />
-                  <span>AI Analyst Intelligence</span>
-                </CardTitle>
-                <span className="text-[10px] font-semibold bg-[#00ff66]/10 text-[#00ff66] px-2.5 py-0.5 rounded-full border border-[#00ff66]/30">
-                  Groq LLM Verified
-                </span>
-              </CardHeader>
-              <CardContent className="p-0 pt-4 flex-1 flex flex-col justify-center space-y-3">
-                <div className="p-4 rounded-2xl bg-[#1a1a1a] border border-neutral-800">
-                  <p className="text-sm text-neutral-200 leading-relaxed font-medium">
-                    "{report.ai_summary || "Automated analysis indicates that token risk factors are actively monitored across on-chain security registries. Exercise due diligence before allocating capital."}"
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 text-[11px] text-neutral-500">
-                  <Info className="h-3.5 w-3.5 text-[#00ff66] shrink-0" />
-                  <span>Objective 2-sentence executive summary synthesized from raw DEX, contract & OSINT evidence.</span>
-                </div>
-              </CardContent>
-            </Card>
+            {/* AI Analyst Glassmorphism Card (Pro Gated) */}
+            {(() => {
+              const isPro = report.is_pro ?? isProUser
+              return (
+                <Card className="md:col-span-2 bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden p-6 flex flex-col justify-between relative">
+                  <CardHeader className="p-0 pb-3 border-b border-neutral-800/80 flex flex-row items-center justify-between">
+                    <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+                      <Bot className="h-5 w-5 text-[#00ff66]" />
+                      <span>AI Analyst Intelligence</span>
+                    </CardTitle>
+                    <span className="text-[10px] font-semibold bg-[#00ff66]/10 text-[#00ff66] px-2.5 py-0.5 rounded-full border border-[#00ff66]/30">
+                      Groq LLM Verified
+                    </span>
+                  </CardHeader>
+
+                  <div className="relative flex-1 flex flex-col justify-center min-h-[140px]">
+                    <CardContent className={`p-0 pt-4 flex-1 flex flex-col justify-center space-y-3 transition-all ${
+                      !isPro ? "filter blur-sm select-none pointer-events-none opacity-25" : ""
+                    }`}>
+                      <div className="p-4 rounded-2xl bg-[#1a1a1a] border border-neutral-800">
+                        <p className="text-sm text-neutral-200 leading-relaxed font-medium">
+                          "{report.ai_summary || "Automated analysis indicates that token risk factors are actively monitored across on-chain security registries. Exercise due diligence before allocating capital."}"
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-neutral-500">
+                        <Info className="h-3.5 w-3.5 text-[#00ff66] shrink-0" />
+                        <span>Objective 2-sentence executive summary synthesized from raw DEX, contract & OSINT evidence.</span>
+                      </div>
+                    </CardContent>
+
+                    {!isPro && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/75 backdrop-blur-[2px] rounded-2xl p-4 text-center space-y-2.5 z-10 border border-neutral-800">
+                        <div className="h-9 w-9 rounded-full bg-[#00ff66]/10 border border-[#00ff66]/30 flex items-center justify-center text-[#00ff66]">
+                          <Crown className="h-4 w-4" />
+                        </div>
+                        <div className="space-y-0.5 max-w-sm">
+                          <h4 className="text-xs font-bold text-white">🔒 Upgrade to Pro to unlock this intelligence</h4>
+                          <p className="text-[10px] text-neutral-400">
+                            AI executive health summaries are reserved for Pro subscribers ($20 USDT/mo).
+                          </p>
+                        </div>
+                        <Link href="/billing">
+                          <Button size="sm" className="h-8 px-4 rounded-full bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-[11px] cursor-pointer shadow-lg shadow-[#00ff66]/20">
+                            Upgrade to Pro
+                          </Button>
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              )
+            })()}
           </div>
 
           {/* Top Risk Assessment Banner */}
@@ -1040,8 +1084,9 @@ export default function InvestigatePage() {
             </Card>
           </div>
 
-          {/* Mega-Module 2: Project OSINT & Founder Research Card */}
+          {/* Mega-Module 2: Project OSINT & Founder Research Card (Pro Gated) */}
           {(() => {
+            const isPro = report.is_pro ?? isProUser
             const osintData = report.osint || report.project_osint
             const hasWebsite = Boolean(osintData?.website && osintData.website !== "Unknown" && osintData.has_official_website !== false)
             const hasTwitter = Boolean(osintData?.twitter && osintData.twitter !== "Unknown")
@@ -1049,7 +1094,7 @@ export default function InvestigatePage() {
             const isAnon = Boolean(osintData?.is_anonymous_founder || founderName === "Unverified" || founderName.includes("Anonymous"))
 
             return (
-              <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden">
+              <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden relative">
                 <CardHeader className="p-6 border-b border-neutral-800">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base font-bold text-white flex items-center gap-2">
@@ -1064,7 +1109,10 @@ export default function InvestigatePage() {
                     </span>
                   </div>
                 </CardHeader>
-                <CardContent className="p-6 space-y-6">
+                <div className="relative min-h-[180px]">
+                  <CardContent className={`p-6 space-y-6 transition-all ${
+                    !isPro ? "filter blur-sm select-none pointer-events-none opacity-25" : ""
+                  }`}>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {/* 1. Official Website */}
                     <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-2">
@@ -1179,6 +1227,26 @@ export default function InvestigatePage() {
                     )}
                   </div>
                 </CardContent>
+
+                {!isPro && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/75 backdrop-blur-[2px] rounded-b-3xl p-6 text-center space-y-3 z-10 border-t border-neutral-800">
+                    <div className="h-10 w-10 rounded-full bg-[#00ff66]/10 border border-[#00ff66]/30 flex items-center justify-center text-[#00ff66]">
+                      <Crown className="h-5 w-5" />
+                    </div>
+                    <div className="space-y-1 max-w-md">
+                      <h4 className="text-sm font-bold text-white">🔒 Upgrade to Pro to unlock this intelligence</h4>
+                      <p className="text-xs text-neutral-400">
+                        Automated website scraping, social media verification, and founder identity OSINT are reserved for Pro subscribers ($20 USDT/mo).
+                      </p>
+                    </div>
+                    <Link href="/billing">
+                      <Button size="sm" className="h-9 px-5 rounded-full bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs cursor-pointer shadow-lg shadow-[#00ff66]/20">
+                        Upgrade to Pro
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+                </div>
               </Card>
             )
           })()}

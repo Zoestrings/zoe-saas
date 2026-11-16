@@ -12,7 +12,8 @@ import {
   Layers,
   ShieldCheck,
   Radar,
-  Bookmark
+  Bookmark,
+  Crown
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { logout } from "@/lib/api"
@@ -37,6 +38,11 @@ const adminNav = [
     name: "Watchlist", 
     href: "/watchlist", 
     icon: Bookmark,
+  },
+  { 
+    name: "Upgrade Plan", 
+    href: "/billing", 
+    icon: Crown,
   },
   { 
     name: "Settings", 

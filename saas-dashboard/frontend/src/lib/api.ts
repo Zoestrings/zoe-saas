@@ -130,7 +130,40 @@ export interface InvestigationReport {
   }
   safety_score?: number
   ai_summary?: string
+  is_pro?: boolean
+  pro_locked?: boolean
   timestamp_utc?: string
+}
+
+export interface Invoice {
+  id: string
+  user_id: string
+  amount_usdt: number
+  status: "pending" | "paid" | "expired"
+  tx_hash?: string | null
+  created_at: string
+}
+
+export interface CreateInvoiceResponse {
+  invoice_id: string
+  amount_usdt: number
+  receiving_wallet: string
+  status: string
+  created_at: string
+}
+
+export interface VerifyPaymentResponse {
+  success: boolean
+  message: string
+  plan: string
+  expires_at?: string | null
+}
+
+export interface EntitlementResponse {
+  plan: "free" | "pro"
+  is_pro: boolean
+  expires_at?: string | null
+  receiving_wallet: string
 }
 
 export interface SavedInvestigation {
@@ -410,6 +443,32 @@ export const api = {
   async triggerWatchlistCheck(): Promise<{ status: string; message: string; alerts_count: number; alerts: SecurityAlert[] }> {
     return apiRequest<{ status: string; message: string; alerts_count: number; alerts: SecurityAlert[] }>("/api/watchlist/check-now", {
       method: "POST",
+    })
+  },
+
+  // Billing & Entitlements (Mega-Module 6)
+  async getEntitlement(): Promise<EntitlementResponse> {
+    return apiRequest<EntitlementResponse>("/api/billing/entitlement", {
+      method: "GET",
+    })
+  },
+
+  async createInvoice(): Promise<CreateInvoiceResponse> {
+    return apiRequest<CreateInvoiceResponse>("/api/billing/create-invoice", {
+      method: "POST",
+    })
+  },
+
+  async verifyPayment(invoiceId: string, txHash: string): Promise<VerifyPaymentResponse> {
+    return apiRequest<VerifyPaymentResponse>("/api/billing/verify-payment", {
+      method: "POST",
+      body: JSON.stringify({ invoice_id: invoiceId, tx_hash: txHash }),
+    })
+  },
+
+  async getInvoices(): Promise<Invoice[]> {
+    return apiRequest<Invoice[]>("/api/billing/invoices", {
+      method: "GET",
     })
   },
 }

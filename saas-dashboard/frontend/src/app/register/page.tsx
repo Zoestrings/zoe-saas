@@ -37,7 +37,11 @@ export default function RegisterPage() {
     try {
       const res = await api.register(email.trim(), password)
       if (res.access_token) {
-        router.push("/dashboard")
+        if (res.user?.role === "super_admin") {
+          router.push("/admin/overview")
+        } else {
+          router.push("/owner/dashboard")
+        }
       } else {
         // In case email verification is enabled by Supabase
         router.push("/login?registered=true")

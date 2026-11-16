@@ -66,6 +66,29 @@ CREATE TABLE IF NOT EXISTS public.keepalive (
 INSERT INTO public.keepalive (status)
 SELECT 'alive'
 WHERE NOT EXISTS (SELECT 1 FROM public.keepalive);
+
+-- Role-Based Access Control (RBAC) users table
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT,
+    role TEXT DEFAULT 'project_owner' CHECK (role IN ('super_admin', 'project_owner'))
+);
+
+-- Trigger to automatically assign default role 'project_owner' on auth signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+    INSERT INTO public.users (id, email, role)
+    VALUES (new.id, new.email, 'project_owner')
+    ON CONFLICT (id) DO NOTHING;
+    RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
 """
 
 
@@ -82,6 +105,7 @@ def init_sqlite_dev_db(db_path: Optional[Path] = None) -> None:
                 id TEXT PRIMARY KEY,
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT NOT NULL,
+                role TEXT DEFAULT 'project_owner',
                 created_at TEXT NOT NULL
             )
             """
@@ -106,6 +130,14 @@ def init_sqlite_dev_db(db_path: Optional[Path] = None) -> None:
 
         # Check and add missing columns dynamically
         cur = conn.cursor()
+        existing_user_cols = {row[1] for row in cur.execute("PRAGMA table_info(dev_users)").fetchall()}
+        if "role" not in existing_user_cols:
+            try:
+                conn.execute("ALTER TABLE dev_users ADD COLUMN role TEXT DEFAULT 'project_owner'")
+                conn.commit()
+            except Exception:
+                pass
+
         existing_cols = {row[1] for row in cur.execute("PRAGMA table_info(dev_projects)").fetchall()}
         for col_name, col_type in PROJECTS_REQUIRED_COLUMNS:
             if col_name not in existing_cols and col_name != "id":

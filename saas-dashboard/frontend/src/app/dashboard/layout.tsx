@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
-import { getToken } from "@/lib/api"
+import { getToken, getUser } from "@/lib/api"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 
@@ -17,8 +17,11 @@ export default function DashboardLayout({
 
   useEffect(() => {
     const token = getToken()
+    const user = getUser()
     if (!token) {
       router.replace("/login")
+    } else if (user && user.role !== "super_admin") {
+      router.replace("/owner/dashboard")
     } else {
       setIsAuthenticated(true)
     }

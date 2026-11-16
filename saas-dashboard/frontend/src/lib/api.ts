@@ -11,6 +11,12 @@ const USER_KEY = "zoe_auth_user"
 export interface User {
   id: string
   email: string
+  role?: "super_admin" | "project_owner" | string
+}
+
+export function isSuperAdmin(user?: User | null): boolean {
+  const u = user || getUser()
+  return u?.role === "super_admin"
 }
 
 export interface AuthResponse {
@@ -25,6 +31,7 @@ export interface Project {
   name: string
   telegram_group_id?: string | null
   token_address?: string | null
+  custom_instructions?: string | null
   status?: string | null
   status_error?: string | null
   created_at?: string | null
@@ -186,6 +193,12 @@ export const api = {
   // Projects
   async getProjects(): Promise<Project[]> {
     return apiRequest<Project[]>("/api/projects", {
+      method: "GET",
+    })
+  },
+
+  async getProject(id: string): Promise<Project> {
+    return apiRequest<Project>(`/api/projects/${id}`, {
       method: "GET",
     })
   },

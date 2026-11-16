@@ -1,0 +1,233 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { 
+  Bot, 
+  BrainCircuit, 
+  FileCode, 
+  Copy, 
+  Check, 
+  ExternalLink, 
+  RefreshCw, 
+  Layers, 
+  ShieldCheck, 
+  Sparkles,
+  Inbox
+} from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { api, Project } from "@/lib/api"
+
+export default function OwnerDashboardPage() {
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+  const [copiedCA, setCopiedCA] = useState<string | null>(null)
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedCA(text)
+    setTimeout(() => setCopiedCA(null), 2000)
+  }
+
+  const loadProjects = async () => {
+    setLoading(true)
+    try {
+      const data = await api.getProjects()
+      setProjects(data || [])
+    } catch (err) {
+      console.error("Failed to fetch owner projects:", err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadProjects()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-3">
+        <RefreshCw className="h-6 w-6 animate-spin text-cyan-400" />
+        <p className="text-xs font-medium">Loading your bot profile...</p>
+      </div>
+    )
+  }
+
+  // Zero-state condition
+  if (projects.length === 0) {
+    return (
+      <div className="py-20 max-w-xl mx-auto text-center space-y-5">
+        <div className="h-16 w-16 mx-auto rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-center text-slate-500 shadow-xl">
+          <Inbox className="h-8 w-8 text-slate-400" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-white">No Assigned Bot</h2>
+          <p className="text-sm text-slate-400 leading-relaxed">
+            You don&apos;t have any projects assigned yet. Please contact the Zoe platform admin to deploy your bot.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadProjects}
+            className="border-slate-800 bg-slate-900/50 hover:bg-slate-800 text-slate-300 text-xs h-9"
+          >
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Check Again
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-slate-800/80">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
+            <Bot className="h-6 w-6 text-cyan-400" />
+            My Deployed Agents
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Manage your autonomous Telegram community assistant, custom facts, and response persona.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={loadProjects}
+          className="border-slate-800 bg-slate-900/60 hover:bg-slate-800 text-slate-300 text-xs h-9 cursor-pointer w-fit"
+        >
+          <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+          Refresh Status
+        </Button>
+      </div>
+
+      {/* Projects Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {projects.map((proj) => {
+          const isHealthy = !proj.status || proj.status === "active" || proj.status === "online"
+          const isDeploying = proj.status === "deploying"
+          const isError = proj.status === "error"
+
+          return (
+            <Card
+              key={proj.id}
+              className="bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden backdrop-blur-sm shadow-xl flex flex-col justify-between"
+            >
+              <CardHeader className="p-6 border-b border-slate-800/60 pb-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-base font-bold text-white tracking-tight">
+                        {proj.name}
+                      </CardTitle>
+                      {isHealthy && (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-full">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Online
+                        </span>
+                      )}
+                      {isDeploying && (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2 py-0.5 rounded-full">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
+                          Deploying
+                        </span>
+                      )}
+                      {isError && (
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-rose-400 bg-rose-950/60 border border-rose-800/60 px-2 py-0.5 rounded-full">
+                          <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
+                          Error
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1 font-mono">
+                      ID: {proj.id}
+                    </p>
+                  </div>
+
+                  <div className="h-9 w-9 rounded-lg bg-cyan-950/60 border border-cyan-800/50 flex items-center justify-center text-cyan-400">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-6 space-y-5 flex-1 flex flex-col justify-between">
+                <div className="space-y-4">
+                  {/* Token Address Row */}
+                  {proj.token_address ? (
+                    <div>
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
+                        Token Contract Address
+                      </span>
+                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80">
+                        <span className="font-mono text-xs text-slate-300 truncate max-w-[260px]">
+                          {proj.token_address}
+                        </span>
+                        <button
+                          onClick={() => copyToClipboard(proj.token_address!)}
+                          className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800/60 hover:bg-slate-800 transition-colors cursor-pointer"
+                        >
+                          {copiedCA === proj.token_address ? (
+                            <Check className="h-3 w-3 text-emerald-400" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                          <span>{copiedCA === proj.token_address ? "Copied" : "Copy"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Telegram Group */}
+                  {proj.telegram_group_id && (
+                    <div className="flex items-center justify-between text-xs py-1.5 border-b border-slate-800/40">
+                      <span className="text-slate-400">Telegram Group ID</span>
+                      <span className="font-mono text-slate-300">{proj.telegram_group_id}</span>
+                    </div>
+                  )}
+
+                  {/* Custom Instructions Snippet */}
+                  {proj.custom_instructions && (
+                    <div className="text-xs space-y-1">
+                      <span className="text-slate-400 font-medium">Custom Persona</span>
+                      <p className="text-slate-300 bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/50 text-[11px] line-clamp-2 italic">
+                        &quot;{proj.custom_instructions}&quot;
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick Actions */}
+                <div className="pt-4 border-t border-slate-800/60 grid grid-cols-2 gap-3">
+                  <Link href="/owner/dashboard/knowledge" className="w-full">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-center border-slate-800 bg-slate-800/50 hover:bg-slate-800 hover:text-cyan-400 text-slate-200 text-xs h-9 cursor-pointer"
+                    >
+                      <BrainCircuit className="h-3.5 w-3.5 mr-1.5 text-cyan-400" />
+                      Knowledge Base
+                    </Button>
+                  </Link>
+                  <Link href="/owner/dashboard/instructions" className="w-full">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-center border-slate-800 bg-slate-800/50 hover:bg-slate-800 hover:text-indigo-400 text-slate-200 text-xs h-9 cursor-pointer"
+                    >
+                      <FileCode className="h-3.5 w-3.5 mr-1.5 text-indigo-400" />
+                      Instructions
+                    </Button>
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

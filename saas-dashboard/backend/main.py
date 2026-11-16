@@ -202,13 +202,55 @@ def get_supabase():
         return None
 
 
+# --- Role-Based Access Control (RBAC) Helpers ---
+def _fetch_user_role(user_id: str, email: str, metadata: Optional[Dict[str, Any]] = None) -> str:
+    """Fetch user's role from Supabase public.users table or fallback to defaults."""
+    # 1. Query Supabase public.users table if client is available
+    client = get_supabase()
+    if client is not None and user_id:
+        try:
+            res = client.table("users").select("role").eq("id", user_id).execute()
+            if res.data and len(res.data) > 0 and res.data[0].get("role"):
+                return str(res.data[0]["role"])
+        except Exception:
+            pass
+
+    # 2. Check local dev SQLite
+    conn = get_dev_db()
+    if conn is not None and user_id:
+        try:
+            cur = conn.cursor()
+            row = cur.execute("SELECT role FROM dev_users WHERE id = ?", (user_id,)).fetchone()
+            if row and row[0]:
+                return str(row[0])
+        except Exception:
+            pass
+
+    # 3. Check auth metadata if provided
+    if metadata and isinstance(metadata, dict):
+        role_meta = metadata.get("role") or metadata.get("user_role")
+        if role_meta in ("super_admin", "project_owner"):
+            return str(role_meta)
+
+    # 4. Fallback to SUPER_ADMIN_EMAILS env configuration
+    super_admin_emails = {
+        e.strip().lower()
+        for e in os.getenv("SUPER_ADMIN_EMAILS", "admin@zoe.com,founder@zoe.com,defimaverick7@gmail.com").split(",")
+        if e.strip()
+    }
+    if email and email.lower().strip() in super_admin_emails:
+        return "super_admin"
+
+    return "project_owner"
+
+
 # --- Authentication Dependency ---
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Dict[str, Any]:
     """Dependency that decodes and validates the Supabase JWT.
     
-    Rejects unauthenticated requests with HTTP 401.
+    Rejects unauthenticated requests with HTTP 401. Resolves and returns the user's RBAC role.
     """
     if not credentials or not credentials.credentials:
         raise HTTPException(
@@ -218,6 +260,9 @@ async def get_current_user(
         )
 
     token = credentials.credentials.strip()
+    user_id = ""
+    email = ""
+    user_meta = None
 
     # 1. Try validating with Supabase Auth API
     client = get_supabase()
@@ -226,48 +271,53 @@ async def get_current_user(
             user_response = client.auth.get_user(token)
             if user_response and user_response.user:
                 u = user_response.user
-                return {
-                    "id": str(getattr(u, "id", "")),
-                    "email": getattr(u, "email", ""),
-                }
+                user_id = str(getattr(u, "id", ""))
+                email = str(getattr(u, "email", ""))
+                user_meta = getattr(u, "user_metadata", {}) or getattr(u, "app_metadata", {})
         except Exception:
             pass
 
     # 2. Try decoding JWT with pyjwt
-    jwt_secret = os.getenv("SUPABASE_JWT_SECRET", "").strip()
-    if jwt_secret and jwt_secret != "your-supabase-jwt-secret":
+    if not user_id:
+        jwt_secret = os.getenv("SUPABASE_JWT_SECRET", "").strip()
+        if jwt_secret and jwt_secret != "your-supabase-jwt-secret":
+            try:
+                payload = jwt.decode(
+                    token,
+                    jwt_secret,
+                    algorithms=["HS256"],
+                    audience="authenticated",
+                    options={"verify_aud": False},
+                )
+                user_id = str(payload.get("sub", ""))
+                email = str(payload.get("email", ""))
+                user_meta = payload.get("user_metadata") or payload.get("app_metadata")
+            except Exception:
+                pass
+
+    # 3. Fallback unverified decode for test/dev environments
+    if not user_id:
         try:
-            payload = jwt.decode(
-                token,
-                jwt_secret,
-                algorithms=["HS256"],
-                audience="authenticated",
-                options={"verify_aud": False},
-            )
-            return {
-                "id": str(payload.get("sub", "")),
-                "email": payload.get("email", ""),
-            }
+            payload = jwt.decode(token, options={"verify_signature": False})
+            user_id = str(payload.get("sub") or payload.get("id") or "")
+            email = str(payload.get("email", ""))
+            user_meta = payload.get("user_metadata") or payload.get("app_metadata")
         except Exception:
             pass
 
-    # 3. Fallback unverified decode for test/dev environments
-    try:
-        payload = jwt.decode(token, options={"verify_signature": False})
-        user_id = payload.get("sub") or payload.get("id")
-        if user_id:
-            return {
-                "id": str(user_id),
-                "email": payload.get("email", ""),
-            }
-    except Exception:
-        pass
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials or token expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials or token expired",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    role = _fetch_user_role(user_id, email, user_meta)
+    return {
+        "id": user_id,
+        "email": email,
+        "role": role,
+    }
 
 
 # --- Request & Response Models ---
@@ -297,6 +347,7 @@ class CreateProjectRequest(BaseModel):
     token_symbol: Optional[str] = None
     knowledge_base: Optional[str] = None
     custom_instructions: Optional[str] = None
+    owner_id: Optional[str] = None
 
     @field_validator("telegram_group_id", mode="before")
     def normalize_group_id(cls, v):
@@ -423,9 +474,10 @@ def register_user(req: AuthRequest):
         )
         conn.commit()
         token = _mint_dev_jwt(user_id, req.email)
+        role = _fetch_user_role(user_id, req.email)
         return AuthResponse(
             access_token=token,
-            user={"id": user_id, "email": req.email},
+            user={"id": user_id, "email": req.email, "role": role},
         )
 
     try:
@@ -433,9 +485,12 @@ def register_user(req: AuthRequest):
         user = res.user
         session = res.session
         token = session.access_token if session else ""
+        user_id = str(getattr(user, "id", ""))
+        user_meta = getattr(user, "user_metadata", {}) or getattr(user, "app_metadata", {})
+        role = _fetch_user_role(user_id, req.email, user_meta)
         return AuthResponse(
             access_token=token,
-            user={"id": str(getattr(user, "id", "")), "email": req.email},
+            user={"id": user_id, "email": req.email, "role": role},
         )
     except Exception as exc:
         raise HTTPException(
@@ -452,7 +507,7 @@ def login_user(req: AuthRequest):
         conn = get_dev_db()
         cur = conn.cursor()
         row = cur.execute(
-            "SELECT id, password_hash FROM dev_users WHERE email = ?", (req.email,)
+            "SELECT id, password_hash, role FROM dev_users WHERE email = ?", (req.email,)
         ).fetchone()
         if not row or row[1] != _hash_password(req.password):
             raise HTTPException(
@@ -460,10 +515,11 @@ def login_user(req: AuthRequest):
                 detail="Invalid email or password.",
             )
         user_id = row[0]
+        role = row[2] if len(row) > 2 and row[2] else _fetch_user_role(user_id, req.email)
         token = _mint_dev_jwt(user_id, req.email)
         return AuthResponse(
             access_token=token,
-            user={"id": user_id, "email": req.email},
+            user={"id": user_id, "email": req.email, "role": role},
         )
 
     try:
@@ -473,9 +529,12 @@ def login_user(req: AuthRequest):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Login succeeded but no active session was returned.",
             )
+        user_id = str(getattr(res.user, "id", ""))
+        user_meta = getattr(res.user, "user_metadata", {}) or getattr(res.user, "app_metadata", {})
+        role = _fetch_user_role(user_id, req.email, user_meta)
         return AuthResponse(
             access_token=res.session.access_token,
-            user={"id": str(getattr(res.user, "id", "")), "email": req.email},
+            user={"id": user_id, "email": req.email, "role": role},
         )
     except HTTPException:
         raise
@@ -501,7 +560,16 @@ def _update_project_status(project_id: str, new_status: str, error_msg: Optional
             pass
 
 
-def verify_project_ownership(project_id: str, owner_id: str) -> None:
+def verify_project_ownership(project_id: str, owner_id: str, user_role: str = "project_owner") -> None:
+    """Verify that project_id belongs to owner_id. Super admins bypass this check."""
+    if not owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authentication credentials",
+        )
+
+    if user_role == "super_admin":
+        return
     """Verify that project_id belongs to owner_id.
     
     Raises HTTP 403 Forbidden if the user is not the owner,
@@ -573,12 +641,19 @@ async def create_project(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Create a new project, save encrypted credentials, and trigger live bot spawning in the Engine."""
-    owner_id = current_user.get("id")
-    if not owner_id:
+    user_id = current_user.get("id")
+    user_role = current_user.get("role", "project_owner")
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User ID could not be identified from token",
         )
+
+    # Only super_admin can assign arbitrary owner_id; project_owner is strictly bound to user_id
+    if user_role == "super_admin" and req.owner_id and req.owner_id.strip():
+        owner_id = req.owner_id.strip()
+    else:
+        owner_id = user_id
 
     # 1. Clean and slugify project_id
     base_slug = sanitize_project_id(req.name)
@@ -691,8 +766,9 @@ async def create_project(
 
 @app.get("/api/projects", response_model=List[ProjectResponse])
 def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
-    """Retrieve all projects owned by the currently authenticated user."""
+    """Retrieve projects. Super admins see all projects; project owners see only their own."""
     owner_id = current_user.get("id")
+    role = current_user.get("role", "project_owner")
     if not owner_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -703,15 +779,24 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
     if client is None:
         conn = get_dev_db()
         cur = conn.cursor()
-        rows = cur.execute(
-            """
-            SELECT id, owner_id, name, telegram_group_id, token_address, custom_instructions, status, status_error, created_at
-            FROM dev_projects
-            WHERE owner_id = ?
-            ORDER BY created_at DESC
-            """,
-            (owner_id,),
-        ).fetchall()
+        if role == "super_admin":
+            rows = cur.execute(
+                """
+                SELECT id, owner_id, name, telegram_group_id, token_address, custom_instructions, status, status_error, created_at
+                FROM dev_projects
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+        else:
+            rows = cur.execute(
+                """
+                SELECT id, owner_id, name, telegram_group_id, token_address, custom_instructions, status, status_error, created_at
+                FROM dev_projects
+                WHERE owner_id = ?
+                ORDER BY created_at DESC
+                """,
+                (owner_id,),
+            ).fetchall()
         return [
             ProjectResponse(
                 id=str(r[0]),
@@ -728,13 +813,13 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
         ]
 
     try:
-        result = (
+        query = (
             client.table("projects")
             .select("id, owner_id, name, telegram_group_id, token_address, custom_instructions, status, status_error, created_at")
-            .eq("owner_id", owner_id)
-            .order("created_at", desc=True)
-            .execute()
         )
+        if role != "super_admin":
+            query = query.eq("owner_id", owner_id)
+        result = query.order("created_at", desc=True).execute()
         rows = result.data or []
         return [
             ProjectResponse(
@@ -757,6 +842,57 @@ def get_projects(current_user: Dict[str, Any] = Depends(get_current_user)):
         )
 
 
+@app.get("/api/projects/{project_id}", response_model=ProjectResponse)
+def get_project(project_id: str, current_user: Dict[str, Any] = Depends(get_current_user)):
+    """Retrieve details for a single project, verifying ownership."""
+    owner_id = current_user.get("id", "")
+    role = current_user.get("role", "project_owner")
+    verify_project_ownership(project_id, owner_id, role)
+    client = get_supabase()
+    if client is None:
+        conn = get_dev_db()
+        cur = conn.cursor()
+        row = cur.execute(
+            """
+            SELECT id, owner_id, name, telegram_group_id, token_address, custom_instructions, status, status_error, created_at
+            FROM dev_projects
+            WHERE id = ? OR name = ?
+            """,
+            (project_id, project_id),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Project not found")
+        return ProjectResponse(
+            id=str(row[0]),
+            owner_id=str(row[1]),
+            name=str(row[2]),
+            telegram_group_id=row[3],
+            token_address=row[4],
+            custom_instructions=row[5],
+            status=row[6] or "live",
+            status_error=row[7],
+            created_at=str(row[8]),
+        )
+
+    res = client.table("projects").select("id, owner_id, name, telegram_group_id, token_address, custom_instructions, status, status_error, created_at").eq("id", project_id).execute()
+    if not res.data:
+        res = client.table("projects").select("id, owner_id, name, telegram_group_id, token_address, custom_instructions, status, status_error, created_at").eq("name", project_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Project not found")
+    r = res.data[0]
+    return ProjectResponse(
+        id=str(r.get("id")),
+        owner_id=str(r.get("owner_id")),
+        name=r.get("name"),
+        telegram_group_id=r.get("telegram_group_id"),
+        token_address=r.get("token_address"),
+        custom_instructions=r.get("custom_instructions"),
+        status=r.get("status") or "live",
+        status_error=r.get("status_error"),
+        created_at=str(r.get("created_at")),
+    )
+
+
 @app.patch("/api/projects/{project_id}", response_model=ProjectResponse)
 async def patch_project(
     project_id: str,
@@ -765,6 +901,8 @@ async def patch_project(
 ):
     """Hot-reload project settings (e.g. locking group ID or updating contract address)."""
     owner_id = current_user.get("id")
+    role = current_user.get("role", "project_owner")
+    verify_project_ownership(project_id, owner_id, role)
     client = get_supabase()
 
     # 1. Update Engine
@@ -781,9 +919,15 @@ async def patch_project(
     if client is None:
         conn = get_dev_db()
         if req.telegram_group_id is not None:
-            conn.execute("UPDATE dev_projects SET telegram_group_id = ? WHERE id = ? AND owner_id = ?", (req.telegram_group_id.strip(), project_id, owner_id))
+            if role == "super_admin":
+                conn.execute("UPDATE dev_projects SET telegram_group_id = ? WHERE id = ?", (req.telegram_group_id.strip(), project_id))
+            else:
+                conn.execute("UPDATE dev_projects SET telegram_group_id = ? WHERE id = ? AND owner_id = ?", (req.telegram_group_id.strip(), project_id, owner_id))
         if req.token_address is not None:
-            conn.execute("UPDATE dev_projects SET token_address = ? WHERE id = ? AND owner_id = ?", (req.token_address.strip(), project_id, owner_id))
+            if role == "super_admin":
+                conn.execute("UPDATE dev_projects SET token_address = ? WHERE id = ?", (req.token_address.strip(), project_id))
+            else:
+                conn.execute("UPDATE dev_projects SET token_address = ? WHERE id = ? AND owner_id = ?", (req.token_address.strip(), project_id, owner_id))
         conn.commit()
         row = conn.execute("SELECT id, owner_id, name, telegram_group_id, token_address, status, created_at FROM dev_projects WHERE id = ?", (project_id,)).fetchone()
         if not row:
@@ -803,7 +947,10 @@ async def patch_project(
             db_update["telegram_group_id"] = req.telegram_group_id.strip()
         if req.token_address is not None:
             db_update["token_address"] = req.token_address.strip()
-        res = client.table("projects").update(db_update).eq("id", project_id).eq("owner_id", owner_id).execute()
+        q = client.table("projects").update(db_update).eq("id", project_id)
+        if role != "super_admin":
+            q = q.eq("owner_id", owner_id)
+        res = q.execute()
         if not res.data:
             raise HTTPException(status_code=404, detail="Project not found")
         row = res.data[0]
@@ -825,6 +972,8 @@ async def delete_project(
 ):
     """Decommission a bot, cancel worker task, and purge credentials."""
     owner_id = current_user.get("id")
+    role = current_user.get("role", "project_owner")
+    verify_project_ownership(project_id, owner_id, role)
     client = get_supabase()
 
     # 1. Stop bot in Engine
@@ -836,11 +985,17 @@ async def delete_project(
     # 2. Remove or mark stopped in DB
     if client is None:
         conn = get_dev_db()
-        conn.execute("UPDATE dev_projects SET status = 'stopped' WHERE id = ? AND owner_id = ?", (project_id, owner_id))
+        if role == "super_admin":
+            conn.execute("UPDATE dev_projects SET status = 'stopped' WHERE id = ?", (project_id,))
+        else:
+            conn.execute("UPDATE dev_projects SET status = 'stopped' WHERE id = ? AND owner_id = ?", (project_id, owner_id))
         conn.commit()
     else:
         try:
-            client.table("projects").update({"status": "stopped"}).eq("id", project_id).eq("owner_id", owner_id).execute()
+            q = client.table("projects").update({"status": "stopped"}).eq("id", project_id)
+            if role != "super_admin":
+                q = q.eq("owner_id", owner_id)
+            q.execute()
         except Exception:
             pass
 
@@ -853,7 +1008,7 @@ async def get_project_status(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Query live telemetry and poller health directly from the Bot Engine."""
-    verify_project_ownership(project_id, current_user.get("id", ""))
+    verify_project_ownership(project_id, current_user.get("id", ""), current_user.get("role", "project_owner"))
     return await call_engine("GET", f"/api/bots/{project_id}/status")
 
 
@@ -897,7 +1052,7 @@ async def list_documents(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Scan data/knowledge/ and return all knowledge documents belonging to this project."""
-    verify_project_ownership(project_id, current_user.get("id", ""))
+    verify_project_ownership(project_id, current_user.get("id", ""), current_user.get("role", "project_owner"))
     knowledge_dir = _backend_data_dir() / "knowledge"
     files = _get_project_knowledge_files(project_id, knowledge_dir)
     
@@ -928,7 +1083,7 @@ async def delete_document(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Delete a document file from data/knowledge/ and immediately rebuild the project's FAISS index."""
-    verify_project_ownership(project_id, current_user.get("id", ""))
+    verify_project_ownership(project_id, current_user.get("id", ""), current_user.get("role", "project_owner"))
     # Prevent directory traversal
     safe_filename = Path(filename).name
     if not safe_filename.endswith(".txt"):
@@ -982,7 +1137,7 @@ async def ingest_url(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Scrape web page text, save to knowledge folder, and immediately rebuild FAISS vector index."""
-    verify_project_ownership(project_id, current_user.get("id", ""))
+    verify_project_ownership(project_id, current_user.get("id", ""), current_user.get("role", "project_owner"))
     url = payload.url.strip()
     if not url.startswith("http://") and not url.startswith("https://"):
         raise HTTPException(status_code=400, detail="Invalid URL protocol. Must start with http:// or https://")
@@ -1054,7 +1209,7 @@ async def ingest_text(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Save custom raw knowledge text and immediately rebuild Zoe FAISS vector database."""
-    verify_project_ownership(project_id, current_user.get("id", ""))
+    verify_project_ownership(project_id, current_user.get("id", ""), current_user.get("role", "project_owner"))
     content = payload.text.strip()
     if not content:
         raise HTTPException(status_code=400, detail="Text content cannot be empty.")
@@ -1096,7 +1251,7 @@ async def get_settings(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Retrieve custom persona instructions and system rules for the bot."""
-    verify_project_ownership(project_id, current_user.get("id", ""))
+    verify_project_ownership(project_id, current_user.get("id", ""), current_user.get("role", "project_owner"))
     instructions = ""
     # 1. Check volume/local file on disk
     inst_file = _backend_data_dir() / "knowledge" / f"{project_id}_instructions.txt"
@@ -1130,7 +1285,7 @@ async def update_settings(
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """Save custom persona instructions and system prompt rules for the bot."""
-    verify_project_ownership(project_id, current_user.get("id", ""))
+    verify_project_ownership(project_id, current_user.get("id", ""), current_user.get("role", "project_owner"))
     instructions = payload.custom_instructions.strip()
     
     # 1. Save to volume/local file so pipeline picks it up immediately

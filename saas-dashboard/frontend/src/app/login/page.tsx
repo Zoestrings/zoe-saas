@@ -23,8 +23,12 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      await api.login(email.trim(), password)
-      router.push("/dashboard")
+      const res = await api.login(email.trim(), password)
+      if (res.user?.role === "super_admin") {
+        router.push("/admin/overview")
+      } else {
+        router.push("/owner/dashboard")
+      }
     } catch (err: any) {
       setError(err.message || "Failed to sign in. Please verify your credentials.")
     } finally {

@@ -15,7 +15,7 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { api, Project, getUser } from "@/lib/api"
+import { api, Project, getUser, isSuperAdmin } from "@/lib/api"
 
 export default function DashboardOverviewPage() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -93,14 +93,16 @@ export default function DashboardOverviewPage() {
             Real-time status of your active AI agents, knowledge bases, and community activity.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Link href="/dashboard/projects">
-            <Button className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 rounded-md font-medium cursor-pointer">
-              <Plus className="h-3.5 w-3.5 mr-1.5" />
-              Add Project
-            </Button>
-          </Link>
-        </div>
+        {isSuperAdmin() && (
+          <div className="flex items-center gap-3">
+            <Link href="/dashboard/projects">
+              <Button className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 rounded-md font-medium cursor-pointer">
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                Add Project
+              </Button>
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* 4 Metric Cards */}

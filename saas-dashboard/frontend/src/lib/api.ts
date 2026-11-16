@@ -131,10 +131,28 @@ export async function apiRequest<T>(
 
   const url = `${API_BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  })
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    })
+  } catch (err) {
+    // If local backend is not running, automatically failover to live Railway backend
+    if (url.includes("localhost:8000")) {
+      const fallbackUrl = url.replace("http://localhost:8000", "https://zoe-saas-production.up.railway.app")
+      try {
+        response = await fetch(fallbackUrl, {
+          ...options,
+          headers,
+        })
+      } catch {
+        throw new Error("Unable to connect to backend service. Please check your network or start the local server.")
+      }
+    } else {
+      throw new Error("Unable to connect to backend service. Please check your network connection.")
+    }
+  }
 
   // Try parsing JSON response
   let data: any = null

@@ -13,7 +13,8 @@ import {
   ShieldCheck,
   Radar,
   Bookmark,
-  Crown
+  Crown,
+  DollarSign
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { logout } from "@/lib/api"
@@ -23,6 +24,11 @@ const adminNav = [
     name: "Overview", 
     href: "/admin/overview", 
     icon: LayoutDashboard,
+  },
+  { 
+    name: "Revenue", 
+    href: "/admin/revenue", 
+    icon: DollarSign,
   },
   { 
     name: "Projects", 

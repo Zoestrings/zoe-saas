@@ -110,3 +110,60 @@ def test_verify_solana_usdt_dev_signature():
         assert "Invalid" in msg_short
 
     asyncio.run(_run())
+
+def test_admin_revenue_endpoint(tmp_path):
+    from fastapi import HTTPException
+    from main import get_admin_revenue
+
+    # 1. Non-super admin should raise 403 Forbidden
+    with pytest.raises(HTTPException) as exc_info:
+        get_admin_revenue(current_user={"id": "u1", "role": "project_owner"})
+    assert exc_info.value.status_code == 403
+
+    # 2. Super admin gets revenue summary and invoices
+    db_path = str(tmp_path / "test_rev.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE dev_invoices (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            amount_usdt REAL NOT NULL DEFAULT 20.0,
+            status TEXT DEFAULT 'pending',
+            tx_hash TEXT,
+            created_at TEXT NOT NULL
+        );
+    """)
+    conn.execute("""
+        CREATE TABLE dev_users (
+            id TEXT PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+    """)
+    conn.execute("""
+        CREATE TABLE dev_entitlements (
+            user_id TEXT PRIMARY KEY,
+            plan TEXT DEFAULT 'free',
+            expires_at TEXT,
+            updated_at TEXT NOT NULL
+        );
+    """)
+    conn.execute("INSERT INTO dev_users (id, email, password_hash, created_at) VALUES ('u_admin', 'buyer@zoe.network', 'hash', '2026-11-16')")
+    conn.execute("INSERT INTO dev_invoices (id, user_id, amount_usdt, status, tx_hash, created_at) VALUES ('inv_1', 'u_admin', 20.0, 'paid', '5K7eZ...', '2026-11-16')")
+    conn.execute("INSERT INTO dev_invoices (id, user_id, amount_usdt, status, tx_hash, created_at) VALUES ('inv_2', 'u_admin', 20.0, 'pending', NULL, '2026-11-16')")
+    conn.execute("INSERT INTO dev_entitlements (user_id, plan, expires_at, updated_at) VALUES ('u_admin', 'pro', '2027-01-01T00:00:00+00:00', '2026-11-16')")
+    conn.commit()
+    conn.close()
+
+    with patch("main.get_dev_db", side_effect=lambda: sqlite3.connect(db_path)), \
+         patch("main.get_supabase_admin", return_value=None):
+        res = get_admin_revenue(current_user={"id": "admin_user", "role": "super_admin"})
+        assert "summary" in res
+        assert "invoices" in res
+        assert res["summary"]["total_revenue"] == 20.0
+        assert res["summary"]["paid_invoices_count"] == 1
+        assert res["summary"]["pending_invoices_count"] == 1
+        assert res["summary"]["active_pro_subscribers"] == 1
+        assert len(res["invoices"]) == 2
+        assert res["invoices"][0]["email"] == "buyer@zoe.network"

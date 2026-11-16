@@ -166,6 +166,29 @@ export interface EntitlementResponse {
   receiving_wallet: string
 }
 
+export interface AdminRevenueInvoice {
+  id: string
+  user_id: string
+  email: string
+  amount_usdt: number
+  status: "paid" | "pending" | "expired"
+  tx_hash?: string | null
+  created_at: string
+}
+
+export interface AdminRevenueSummary {
+  total_revenue: number
+  paid_invoices_count: number
+  pending_invoices_count: number
+  active_pro_subscribers: number
+  monthly_run_rate: number
+}
+
+export interface AdminRevenueResponse {
+  summary: AdminRevenueSummary
+  invoices: AdminRevenueInvoice[]
+}
+
 export interface SavedInvestigation {
   id: string
   user_id: string
@@ -468,6 +491,12 @@ export const api = {
 
   async getInvoices(): Promise<Invoice[]> {
     return apiRequest<Invoice[]>("/api/billing/invoices", {
+      method: "GET",
+    })
+  },
+
+  async getAdminRevenue(): Promise<AdminRevenueResponse> {
+    return apiRequest<AdminRevenueResponse>("/api/admin/revenue", {
       method: "GET",
     })
   },

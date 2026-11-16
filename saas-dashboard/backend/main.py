@@ -278,6 +278,19 @@ def get_supabase():
         return None
 
 
+def get_supabase_admin():
+    """Return Supabase client with service_role key to bypass RLS for super admin queries."""
+    url = os.getenv("SUPABASE_URL", "").strip()
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_KEY", "")).strip()
+    if not url or "your-project" in url or not key:
+        return None
+    try:
+        from supabase import create_client
+        return create_client(url, key)
+    except Exception:
+        return None
+
+
 # --- Role-Based Access Control (RBAC) Helpers ---
 def _fetch_user_role(user_id: str, email: str, metadata: Optional[Dict[str, Any]] = None) -> str:
     """Fetch user's role from Supabase public.users table or fallback to defaults."""
@@ -2136,6 +2149,124 @@ def get_user_invoices(
         ]
     except Exception:
         return []
+
+
+@app.get("/api/admin/revenue", response_model=Dict[str, Any])
+def get_admin_revenue(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retrieve platform-wide revenue analytics and subscription invoices. Restricted to super_admin."""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Super Admin role required.",
+        )
+
+    invoices: List[Dict[str, Any]] = []
+    user_email_map: Dict[str, str] = {}
+
+    admin_client = get_supabase_admin()
+    if admin_client:
+        try:
+            # Query all profiles/users for email mapping
+            try:
+                prof_res = admin_client.table("profiles").select("id, email").execute()
+                if prof_res.data:
+                    for p in prof_res.data:
+                        user_email_map[str(p.get("id"))] = p.get("email") or ""
+            except Exception:
+                pass
+
+            inv_res = admin_client.table("invoices").select("*").order("created_at", desc=True).execute()
+            if inv_res.data:
+                for inv in inv_res.data:
+                    u_id = str(inv.get("user_id") or "")
+                    invoices.append({
+                        "id": str(inv.get("id")),
+                        "user_id": u_id,
+                        "email": user_email_map.get(u_id) or "user@zoe.network",
+                        "amount_usdt": float(inv.get("amount_usdt") or 20.0),
+                        "status": inv.get("status") or "pending",
+                        "tx_hash": inv.get("tx_hash"),
+                        "created_at": str(inv.get("created_at")),
+                    })
+        except Exception as exc:
+            print(f"[WARNING] Failed to fetch admin invoices from Supabase: {exc}")
+
+    if not invoices:
+        try:
+            conn = get_dev_db()
+            cur = conn.execute(
+                """
+                SELECT i.id, i.user_id, COALESCE(u.email, 'dev_user@zoe.network'), i.amount_usdt, i.status, i.tx_hash, i.created_at
+                FROM dev_invoices i
+                LEFT JOIN dev_users u ON i.user_id = u.id
+                ORDER BY i.created_at DESC
+                """
+            )
+            rows = cur.fetchall()
+            for r in rows:
+                invoices.append({
+                    "id": r[0],
+                    "user_id": r[1],
+                    "email": r[2],
+                    "amount_usdt": float(r[3] or 20.0),
+                    "status": r[4],
+                    "tx_hash": r[5],
+                    "created_at": r[6],
+                })
+        except Exception as exc:
+            print(f"[WARNING] Failed to fetch admin invoices from dev DB: {exc}")
+
+    # Compute summary analytics
+    total_rev = sum(inv["amount_usdt"] for inv in invoices if inv["status"] == "paid")
+    paid_count = sum(1 for inv in invoices if inv["status"] == "paid")
+    pending_count = sum(1 for inv in invoices if inv["status"] == "pending")
+
+    # Count active pro subscribers
+    active_pro = 0
+    if admin_client:
+        try:
+            ent_res = admin_client.table("entitlements").select("user_id, plan, expires_at").eq("plan", "pro").execute()
+            if ent_res.data:
+                now_dt = datetime.now(timezone.utc)
+                for ent in ent_res.data:
+                    exp = ent.get("expires_at")
+                    if not exp:
+                        active_pro += 1
+                    else:
+                        try:
+                            clean_exp = str(exp).replace("Z", "+00:00")
+                            if datetime.fromisoformat(clean_exp) > now_dt:
+                                active_pro += 1
+                        except Exception:
+                            active_pro += 1
+        except Exception:
+            pass
+
+    if active_pro == 0:
+        try:
+            conn = get_dev_db()
+            cur = conn.execute("SELECT COUNT(*) FROM dev_entitlements WHERE plan = 'pro'")
+            row = cur.fetchone()
+            if row:
+                active_pro = int(row[0])
+        except Exception:
+            pass
+
+    if active_pro == 0 and paid_count > 0:
+        active_pro = len(set(inv["user_id"] for inv in invoices if inv["status"] == "paid"))
+
+    return {
+        "summary": {
+            "total_revenue": total_rev,
+            "paid_invoices_count": paid_count,
+            "pending_invoices_count": pending_count,
+            "active_pro_subscribers": active_pro,
+            "monthly_run_rate": active_pro * 20.0,
+        },
+        "invoices": invoices,
+    }
 
 
 @app.on_event("startup")

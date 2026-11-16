@@ -597,6 +597,7 @@ def process_message(
                 generated_text = (
                     "Here are the available commands:\n"
                     f"/ask — Ask {bot_display_name} about trending tokens, a ticker, or this community\n"
+                    "/investigate <CA> — Run an evidence-based security scan on any Solana token\n"
                     "/ca — Show this community's contract address\n"
                     "/setca — Admins: save this community's contract address\n"
                     "/price — Get live token price, market cap & liquidity\n"
@@ -604,6 +605,33 @@ def process_message(
                     "/help — Show all commands"
                 )
                 intent = "command_help"
+
+            elif cmd in ("investigate", "scan"):
+                from zoe.tools.scanner import (
+                    format_scan_report,
+                    generate_scanner_inline_keyboard,
+                    is_valid_solana_ca,
+                    scan_solana_token_sync,
+                )
+                target_ca = cmd_arg.strip() if cmd_arg else ""
+                if not target_ca:
+                    generated_text = (
+                        "🔍 **Zoe Intelligence Scanner**\n\n"
+                        "Please provide a Solana contract address to investigate:\n"
+                        "`/investigate <Solana_CA>`"
+                    )
+                elif not is_valid_solana_ca(target_ca):
+                    generated_text = (
+                        f"❌ **Invalid Solana Address**\n\n"
+                        f"`{target_ca}` is not a valid Solana contract address. "
+                        f"Solana CAs must be 32 to 44 base58 characters."
+                    )
+                else:
+                    logger.info("Triggered /investigate for Solana CA %s", target_ca)
+                    scan_res = scan_solana_token_sync(target_ca)
+                    generated_text = format_scan_report(scan_res)
+                    inline_keyboard = generate_scanner_inline_keyboard(target_ca, scan_res)
+                intent = "command_investigate"
 
             elif cmd == "setca":
                 proj_title = get_project_name(norm_msg.project_id)

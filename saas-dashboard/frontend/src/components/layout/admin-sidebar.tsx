@@ -11,7 +11,8 @@ import {
   Activity,
   Layers,
   ShieldCheck,
-  Radar
+  Radar,
+  Bookmark
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { logout } from "@/lib/api"
@@ -31,6 +32,11 @@ const adminNav = [
     name: "Intelligence Scanner", 
     href: "/investigate", 
     icon: Radar,
+  },
+  { 
+    name: "Watchlist", 
+    href: "/watchlist", 
+    icon: Bookmark,
   },
   { 
     name: "Settings", 

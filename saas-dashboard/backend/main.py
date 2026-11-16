@@ -89,6 +89,36 @@ def get_dev_db() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dev_watchlists (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            contract_address TEXT NOT NULL,
+            token_name TEXT,
+            initial_liquidity REAL,
+            initial_price REAL,
+            last_checked_at TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(user_id, contract_address)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dev_alerts (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            contract_address TEXT NOT NULL,
+            token_name TEXT,
+            alert_type TEXT NOT NULL,
+            message TEXT NOT NULL,
+            old_value REAL,
+            new_value REAL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
     conn.commit()
 
     # Graceful migration for existing local dev databases
@@ -387,6 +417,11 @@ class PatchProjectRequest(BaseModel):
 
 class InvestigateRequest(BaseModel):
     contract_address: str
+
+
+class WatchlistCreateRequest(BaseModel):
+    contract_address: str
+    token_name: Optional[str] = None
 
 
 class ProjectResponse(BaseModel):
@@ -1460,6 +1495,231 @@ def get_investigations(
     except Exception as exc:
         print(f"[WARNING] Failed to fetch dev investigations: {exc}")
         return []
+
+
+# --- Watchlist & Continuous Monitoring Endpoints (Mega-Module 5) ---
+
+@app.post("/api/watchlist", response_model=Dict[str, Any])
+async def add_to_watchlist(
+    payload: WatchlistCreateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Add a token contract address to the user's watchlist with initial liquidity and price baseline."""
+    user_id = current_user.get("id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not authenticated.")
+
+    ca = payload.contract_address.strip()
+    if not ca:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contract address cannot be empty.")
+
+    from zoe.tools.scanner import fetch_dexscreener_market_data
+    market_data = await fetch_dexscreener_market_data(ca)
+
+    token_name = payload.token_name or market_data.get("name") or "Unknown Token"
+    initial_liquidity = market_data.get("liquidity_usd")
+    initial_price = market_data.get("price_usd")
+
+    item_id = str(uuid.uuid4())
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    record = {
+        "id": item_id,
+        "user_id": str(user_id),
+        "contract_address": ca,
+        "token_name": token_name,
+        "initial_liquidity": initial_liquidity,
+        "initial_price": initial_price,
+        "last_checked_at": now_iso,
+        "created_at": now_iso,
+    }
+
+    client = get_supabase()
+    saved = False
+    if client:
+        try:
+            res = client.table("watchlists").upsert(record, on_conflict="user_id,contract_address").execute()
+            saved = True
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+        except Exception as exc:
+            print(f"[WARNING] Supabase watchlist insert error: {exc}")
+
+    if not saved:
+        try:
+            conn = get_dev_db()
+            conn.execute(
+                """
+                INSERT INTO dev_watchlists (id, user_id, contract_address, token_name, initial_liquidity, initial_price, last_checked_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, contract_address) DO UPDATE SET
+                    token_name = excluded.token_name,
+                    initial_liquidity = excluded.initial_liquidity,
+                    initial_price = excluded.initial_price,
+                    last_checked_at = excluded.last_checked_at
+                """,
+                (item_id, str(user_id), ca, token_name, initial_liquidity, initial_price, now_iso, now_iso),
+            )
+            conn.commit()
+        except Exception as exc:
+            print(f"[WARNING] Dev DB watchlist insert error: {exc}")
+
+    return record
+
+
+@app.get("/api/watchlist", response_model=List[Dict[str, Any]])
+def get_watchlist(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retrieve all watchlisted tokens for the authenticated user."""
+    user_id = current_user.get("id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not authenticated.")
+
+    client = get_supabase()
+    if client:
+        try:
+            res = (
+                client.table("watchlists")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            if res.data is not None and len(res.data) > 0:
+                return res.data
+        except Exception as exc:
+            print(f"[WARNING] Supabase get_watchlist error: {exc}")
+
+    try:
+        conn = get_dev_db()
+        cur = conn.execute(
+            """
+            SELECT id, user_id, contract_address, token_name, initial_liquidity, initial_price, last_checked_at, created_at
+            FROM dev_watchlists
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            """,
+            (str(user_id),),
+        )
+        rows = cur.fetchall()
+        return [
+            {
+                "id": r[0],
+                "user_id": r[1],
+                "contract_address": r[2],
+                "token_name": r[3],
+                "initial_liquidity": r[4],
+                "initial_price": r[5],
+                "last_checked_at": r[6],
+                "created_at": r[7],
+            }
+            for r in rows
+        ]
+    except Exception as exc:
+        print(f"[WARNING] Dev DB get_watchlist error: {exc}")
+        return []
+
+
+@app.delete("/api/watchlist/{watchlist_id}", response_model=Dict[str, Any])
+def remove_from_watchlist(
+    watchlist_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Remove a watched token by its ID."""
+    user_id = current_user.get("id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not authenticated.")
+
+    client = get_supabase()
+    if client:
+        try:
+            client.table("watchlists").delete().eq("id", watchlist_id).eq("user_id", user_id).execute()
+        except Exception as exc:
+            print(f"[WARNING] Supabase delete watchlist error: {exc}")
+
+    try:
+        conn = get_dev_db()
+        conn.execute("DELETE FROM dev_watchlists WHERE id = ? AND user_id = ?", (watchlist_id, str(user_id)))
+        conn.commit()
+    except Exception as exc:
+        print(f"[WARNING] Dev DB delete watchlist error: {exc}")
+
+    return {"status": "deleted", "id": watchlist_id}
+
+
+@app.get("/api/alerts", response_model=List[Dict[str, Any]])
+def get_user_alerts(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retrieve security monitoring alerts for the current user."""
+    user_id = current_user.get("id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not authenticated.")
+
+    client = get_supabase()
+    if client:
+        try:
+            res = client.table("alerts").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
+            if res.data is not None and len(res.data) > 0:
+                return res.data
+        except Exception:
+            pass
+
+    try:
+        conn = get_dev_db()
+        cur = conn.execute(
+            """
+            SELECT id, user_id, contract_address, token_name, alert_type, message, old_value, new_value, created_at
+            FROM dev_alerts
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT 20
+            """,
+            (str(user_id),),
+        )
+        rows = cur.fetchall()
+        return [
+            {
+                "id": r[0],
+                "user_id": r[1],
+                "contract_address": r[2],
+                "token_name": r[3],
+                "alert_type": r[4],
+                "message": r[5],
+                "old_value": r[6],
+                "new_value": r[7],
+                "created_at": r[8],
+            }
+            for r in rows
+        ]
+    except Exception:
+        return []
+
+
+@app.post("/api/watchlist/check-now", response_model=Dict[str, Any])
+async def trigger_watchlist_check_now(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Manually trigger an immediate continuous monitoring scan for watchlisted tokens."""
+    from zoe.monitor import check_watchlist_tokens
+    try:
+        alerts = await check_watchlist_tokens()
+        return {
+            "status": "success",
+            "message": f"Watchlist check complete. {len(alerts)} alerts triggered.",
+            "alerts_count": len(alerts),
+            "alerts": alerts,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+
+@app.on_event("startup")
+async def start_background_monitoring():
+    """Start continuous background monitoring worker on app boot."""
+    from zoe.monitor import run_monitoring_loop
+    asyncio.create_task(run_monitoring_loop(interval_seconds=900))
 
 
 

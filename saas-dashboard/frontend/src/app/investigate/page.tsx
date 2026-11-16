@@ -26,7 +26,9 @@ import {
   User,
   Share2,
   Download,
-  Bot
+  Bot,
+  Bookmark,
+  BookmarkCheck
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,6 +56,11 @@ export default function InvestigatePage() {
   const [history, setHistory] = useState<SavedInvestigation[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
+  // Watchlist state (Mega-Module 5)
+  const [addingToWatchlist, setAddingToWatchlist] = useState(false)
+  const [inWatchlist, setInWatchlist] = useState(false)
+  const [watchlistSuccessMsg, setWatchlistSuccessMsg] = useState<string | null>(null)
+
   const loadHistory = async () => {
     setHistoryLoading(true)
     try {
@@ -66,6 +73,23 @@ export default function InvestigatePage() {
     }
   }
 
+  const handleAddToWatchlist = async () => {
+    if (!report || !report.ca) return
+    setAddingToWatchlist(true)
+    setWatchlistSuccessMsg(null)
+    try {
+      await api.addToWatchlist(report.ca, report.name || "Unknown Token")
+      setInWatchlist(true)
+      setWatchlistSuccessMsg("Added to Watchlist")
+      setTimeout(() => setWatchlistSuccessMsg(null), 3000)
+    } catch (err: any) {
+      setWatchlistSuccessMsg(err.message || "Failed to add to watchlist")
+      setTimeout(() => setWatchlistSuccessMsg(null), 3000)
+    } finally {
+      setAddingToWatchlist(false)
+    }
+  }
+
   const copyCreatorToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
     setCopiedCreator(true)
@@ -74,6 +98,17 @@ export default function InvestigatePage() {
 
   useEffect(() => {
     loadHistory()
+
+    // Auto-detect and scan CA passed via query parameter (e.g. from Watchlist page)
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search)
+      const caParam = urlParams.get("ca")
+      if (caParam && caParam.trim()) {
+        const cleanCa = caParam.trim()
+        setCaInput(cleanCa)
+        handleScan(cleanCa)
+      }
+    }
   }, [])
 
   const handleScan = async (targetCa?: string) => {
@@ -86,6 +121,8 @@ export default function InvestigatePage() {
     setLoading(true)
     setError(null)
     setReport(null)
+    setInWatchlist(false)
+    setWatchlistSuccessMsg(null)
 
     try {
       const data = await api.investigate(addressToScan)
@@ -107,6 +144,8 @@ export default function InvestigatePage() {
     setError(null)
     setReport(item.report_json)
     setCaInput(item.contract_address)
+    setInWatchlist(false)
+    setWatchlistSuccessMsg(null)
     // Smooth scroll to report view
     setTimeout(() => {
       const el = document.getElementById("investigation-report")
@@ -561,8 +600,8 @@ export default function InvestigatePage() {
                 {score >= 70
                   ? "Verified contract hygiene & healthy tokenomics"
                   : score >= 40
-                  ? "Moderate risk factors detected on-chain"
-                  : "Extreme caution advised — high vulnerability signals"}
+                    ? "Moderate risk factors detected on-chain"
+                    : "Extreme caution advised — high vulnerability signals"}
               </div>
             </Card>
 
@@ -619,12 +658,29 @@ export default function InvestigatePage() {
                 </div>
               </div>
 
-              {/* Large Risk Badge & PDF Download */}
+              {/* Large Risk Badge, Watchlist & PDF Download */}
               <div className="flex flex-wrap items-center gap-3">
                 <div className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border text-sm font-black tracking-wider ${riskMeta.pill}`}>
                   <RiskIcon className="h-5 w-5" />
                   <span>RISK LEVEL: {riskLevel}</span>
                 </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleAddToWatchlist}
+                  disabled={addingToWatchlist || inWatchlist}
+                  className="h-11 px-4 rounded-2xl border-neutral-700 bg-neutral-900 hover:bg-[#00ff66] hover:text-black hover:border-[#00ff66] text-white text-xs font-bold cursor-pointer transition-all flex items-center gap-2 no-print shadow-lg"
+                >
+                  {addingToWatchlist ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-[#00ff66]" />
+                  ) : inWatchlist ? (
+                    <BookmarkCheck className="h-4 w-4 text-[#00ff66]" />
+                  ) : (
+                    <Bookmark className="h-4 w-4" />
+                  )}
+                  <span>{inWatchlist ? "Watching" : watchlistSuccessMsg || "Add to Watchlist"}</span>
+                </Button>
 
                 <Button
                   type="button"
@@ -686,10 +742,10 @@ export default function InvestigatePage() {
                         <span>Holder Concentration</span>
                       </CardTitle>
                       <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${top10 !== null && top10 > 80
-                          ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
-                          : top10 !== null && top10 > 40
-                            ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                            : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+                        ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                        : top10 !== null && top10 > 40
+                          ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                          : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
                         }`}>
                         {holderStatus}
                       </span>
@@ -707,10 +763,10 @@ export default function InvestigatePage() {
                     <div className="w-full bg-neutral-900 rounded-full h-2 overflow-hidden border border-neutral-800">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${top10 !== null && top10 > 80
-                            ? "bg-rose-500"
-                            : top10 !== null && top10 > 40
-                              ? "bg-amber-400"
-                              : "bg-[#00ff66]"
+                          ? "bg-rose-500"
+                          : top10 !== null && top10 > 40
+                            ? "bg-amber-400"
+                            : "bg-[#00ff66]"
                           }`}
                         style={{ width: `${Math.min(top10 || 0, 100)}%` }}
                       />
@@ -775,10 +831,10 @@ export default function InvestigatePage() {
                         <span>Dev Wallet</span>
                       </CardTitle>
                       <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${devPct > 10
-                          ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
-                          : devPct > 5
-                            ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                            : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+                        ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                        : devPct > 5
+                          ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                          : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
                         }`}>
                         {devStatus}
                       </span>
@@ -1001,8 +1057,8 @@ export default function InvestigatePage() {
                       <span>Project OSINT</span>
                     </CardTitle>
                     <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${hasWebsite
-                        ? "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
-                        : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                      ? "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+                      : "bg-amber-500/10 text-amber-400 border-amber-500/30"
                       }`}>
                       {hasWebsite ? "Web Presence Verified" : "Unverified Web Presence"}
                     </span>

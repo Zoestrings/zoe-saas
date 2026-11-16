@@ -143,6 +143,31 @@ export interface SavedInvestigation {
   created_at: string
 }
 
+export interface WatchlistItem {
+  id: string
+  user_id: string
+  contract_address: string
+  token_name?: string | null
+  initial_liquidity?: number | null
+  initial_price?: number | null
+  current_liquidity?: number | null
+  current_price?: number | null
+  last_checked_at?: string | null
+  created_at: string
+}
+
+export interface SecurityAlert {
+  id: string
+  user_id?: string
+  contract_address: string
+  token_name?: string | null
+  alert_type: string
+  message: string
+  old_value?: number | null
+  new_value?: number | null
+  created_at: string
+}
+
 // --- Local Storage Helpers ---
 
 export function getToken(): string | null {
@@ -353,6 +378,38 @@ export const api = {
   async getInvestigations(): Promise<SavedInvestigation[]> {
     return apiRequest<SavedInvestigation[]>("/api/investigations", {
       method: "GET",
+    })
+  },
+
+  // Watchlist & Monitoring (Mega-Module 5)
+  async getWatchlist(): Promise<WatchlistItem[]> {
+    return apiRequest<WatchlistItem[]>("/api/watchlist", {
+      method: "GET",
+    })
+  },
+
+  async addToWatchlist(contractAddress: string, tokenName?: string): Promise<WatchlistItem> {
+    return apiRequest<WatchlistItem>("/api/watchlist", {
+      method: "POST",
+      body: JSON.stringify({ contract_address: contractAddress, token_name: tokenName }),
+    })
+  },
+
+  async removeFromWatchlist(id: string): Promise<{ status: string; id: string }> {
+    return apiRequest<{ status: string; id: string }>(`/api/watchlist/${id}`, {
+      method: "DELETE",
+    })
+  },
+
+  async getAlerts(): Promise<SecurityAlert[]> {
+    return apiRequest<SecurityAlert[]>("/api/alerts", {
+      method: "GET",
+    })
+  },
+
+  async triggerWatchlistCheck(): Promise<{ status: string; message: string; alerts_count: number; alerts: SecurityAlert[] }> {
+    return apiRequest<{ status: string; message: string; alerts_count: number; alerts: SecurityAlert[] }>("/api/watchlist/check-now", {
+      method: "POST",
     })
   },
 }

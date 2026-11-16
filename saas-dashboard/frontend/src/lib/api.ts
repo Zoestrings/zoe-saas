@@ -84,6 +84,16 @@ export interface InvestigationReport {
   timestamp_utc?: string
 }
 
+export interface SavedInvestigation {
+  id: string
+  user_id: string
+  contract_address: string
+  token_name?: string | null
+  risk_level?: string | null
+  report_json: InvestigationReport
+  created_at: string
+}
+
 // --- Local Storage Helpers ---
 
 export function getToken(): string | null {
@@ -288,6 +298,12 @@ export const api = {
     return apiRequest<InvestigationReport>("/api/investigate", {
       method: "POST",
       body: JSON.stringify({ contract_address: contractAddress }),
+    })
+  },
+
+  async getInvestigations(): Promise<SavedInvestigation[]> {
+    return apiRequest<SavedInvestigation[]>("/api/investigations", {
+      method: "GET",
     })
   },
 }

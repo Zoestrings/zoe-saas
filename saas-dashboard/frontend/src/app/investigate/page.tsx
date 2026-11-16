@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { 
   Radar, 
   Search, 
@@ -9,23 +9,31 @@ import {
   ShieldCheck, 
   ShieldAlert, 
   AlertTriangle, 
-  CheckCircle2, 
   ExternalLink, 
   Copy, 
   Check, 
   TrendingUp, 
-  DollarSign, 
-  Activity, 
   Lock, 
   Unlock, 
   Users, 
-  Sparkles,
-  Info
+  Info,
+  Clock,
+  Eye,
+  RefreshCw,
+  FileSearch
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { api, InvestigationReport } from "@/lib/api"
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table"
+import { api, InvestigationReport, SavedInvestigation } from "@/lib/api"
 
 export default function InvestigatePage() {
   const [caInput, setCaInput] = useState("")
@@ -33,6 +41,27 @@ export default function InvestigatePage() {
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<InvestigationReport | null>(null)
   const [copied, setCopied] = useState(false)
+  const [copiedHistoryId, setCopiedHistoryId] = useState<string | null>(null)
+
+  // Investigation History state
+  const [history, setHistory] = useState<SavedInvestigation[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  const loadHistory = async () => {
+    setHistoryLoading(true)
+    try {
+      const data = await api.getInvestigations()
+      setHistory(data || [])
+    } catch (err) {
+      console.error("Failed to load investigation history:", err)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadHistory()
+  }, [])
 
   const handleScan = async (targetCa?: string) => {
     const addressToScan = (targetCa || caInput).trim()
@@ -51,6 +80,8 @@ export default function InvestigatePage() {
         setError(data.error || "Invalid Solana contract address.")
       } else {
         setReport(data)
+        // Auto-refresh history so newest scan appears at the top
+        loadHistory()
       }
     } catch (err: any) {
       setError(err.message || "Failed to complete investigation scan.")
@@ -59,10 +90,24 @@ export default function InvestigatePage() {
     }
   }
 
+  const handleViewSavedReport = (item: SavedInvestigation) => {
+    setError(null)
+    setReport(item.report_json)
+    setCaInput(item.contract_address)
+    // Smooth scroll to report view
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  const copyHistoryCa = (ca: string, id: string) => {
+    navigator.clipboard.writeText(ca)
+    setCopiedHistoryId(id)
+    setTimeout(() => setCopiedHistoryId(null), 2000)
   }
 
   const formatNumber = (num?: number | null, decimals = 2) => {
@@ -84,6 +129,21 @@ export default function InvestigatePage() {
     return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return "Just now"
+    try {
+      const d = new Date(dateStr)
+      return d.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    } catch {
+      return dateStr
+    }
+  }
+
   // Sample tokens for instant 1-click testing
   const sampleTokens = [
     { name: "BONK", ca: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" },
@@ -92,7 +152,7 @@ export default function InvestigatePage() {
   ]
 
   const riskLevel = report?.risk?.level || "UNKNOWN"
-  const getRiskColor = (level: string) => {
+  const getRiskColor = (level?: string | null) => {
     switch (level) {
       case "CRITICAL":
         return {
@@ -136,7 +196,7 @@ export default function InvestigatePage() {
       <div className="space-y-2">
         <div className="inline-flex items-center gap-2 bg-[#00ff66]/10 border border-[#00ff66]/30 px-3 py-1 rounded-full text-xs font-bold text-[#00ff66]">
           <Radar className="h-3.5 w-3.5 animate-pulse" />
-          Zoe Intelligence Terminal · Milestone 2
+          Zoe Intelligence Terminal · Milestone 3
         </div>
         <h1 className="text-3xl font-black tracking-tight text-white">
           Intelligence Scanner
@@ -464,7 +524,152 @@ export default function InvestigatePage() {
           </div>
         </div>
       )}
+
+      {/* Section 3: Recent Investigations Table */}
+      <div className="space-y-4 pt-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-[#00ff66]" />
+            <h2 className="text-lg font-bold text-white tracking-tight">Recent Investigations</h2>
+            <span className="text-xs bg-neutral-900 text-neutral-400 px-2 py-0.5 rounded-full border border-neutral-800">
+              {history.length} Saved
+            </span>
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadHistory}
+            disabled={historyLoading}
+            className="border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-white text-xs h-8 px-3 rounded-full cursor-pointer"
+          >
+            <RefreshCw className={`h-3 w-3 mr-1.5 ${historyLoading ? "animate-spin text-[#00ff66]" : ""}`} />
+            Refresh History
+          </Button>
+        </div>
+
+        <div className="rounded-3xl border border-neutral-800 bg-[#121212] overflow-hidden shadow-2xl">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-b border-neutral-800 hover:bg-transparent">
+                <TableHead className="text-neutral-400 text-xs py-3.5 px-5 font-bold uppercase tracking-wider">
+                  Token Name
+                </TableHead>
+                <TableHead className="text-neutral-400 text-xs py-3.5 px-5 font-bold uppercase tracking-wider">
+                  Contract Address
+                </TableHead>
+                <TableHead className="text-neutral-400 text-xs py-3.5 px-5 font-bold uppercase tracking-wider">
+                  Risk Level
+                </TableHead>
+                <TableHead className="text-neutral-400 text-xs py-3.5 px-5 font-bold uppercase tracking-wider">
+                  Scanned At
+                </TableHead>
+                <TableHead className="text-neutral-400 text-xs py-3.5 px-5 font-bold uppercase tracking-wider text-right">
+                  Action
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+
+            <TableBody>
+              {historyLoading && history.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-32 text-center text-neutral-500">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Loader2 className="h-5 w-5 animate-spin text-[#00ff66]" />
+                      <span className="text-xs">Loading investigation history...</span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : history.length > 0 ? (
+                history.map((item) => {
+                  const itemRiskMeta = getRiskColor(item.risk_level)
+                  const ItemRiskIcon = itemRiskMeta.icon
+                  const shortCa = `${item.contract_address.slice(0, 4)}...${item.contract_address.slice(-4)}`
+
+                  return (
+                    <TableRow
+                      key={item.id}
+                      className="border-b border-neutral-800/60 hover:bg-neutral-900/60 transition-colors"
+                    >
+                      {/* Token Name */}
+                      <TableCell className="py-3.5 px-5 text-xs">
+                        <div className="flex items-center gap-2">
+                          <div className="h-7 w-7 rounded-full bg-[#00ff66]/10 border border-[#00ff66]/20 flex items-center justify-center text-[#00ff66] font-bold text-xs">
+                            {item.token_name ? item.token_name[0] : "T"}
+                          </div>
+                          <div>
+                            <span className="font-bold text-white block">
+                              {item.token_name || "Unknown Token"}
+                            </span>
+                            <span className="text-[10px] text-neutral-500 uppercase">Solana</span>
+                          </div>
+                        </div>
+                      </TableCell>
+
+                      {/* Contract Address */}
+                      <TableCell className="py-3.5 px-5 text-xs font-mono">
+                        <div className="inline-flex items-center gap-1.5 bg-neutral-900 border border-neutral-800 px-2.5 py-1 rounded-full text-neutral-300">
+                          <span>{shortCa}</span>
+                          <button
+                            type="button"
+                            onClick={() => copyHistoryCa(item.contract_address, item.id)}
+                            className="text-neutral-500 hover:text-[#00ff66] transition-colors cursor-pointer"
+                          >
+                            {copiedHistoryId === item.id ? (
+                              <Check className="h-3 w-3 text-[#00ff66]" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </button>
+                        </div>
+                      </TableCell>
+
+                      {/* Risk Level Badge */}
+                      <TableCell className="py-3.5 px-5 text-xs">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${itemRiskMeta.pill}`}
+                        >
+                          <ItemRiskIcon className="h-3 w-3" />
+                          {item.risk_level || "UNKNOWN"}
+                        </span>
+                      </TableCell>
+
+                      {/* Date */}
+                      <TableCell className="py-3.5 px-5 text-xs text-neutral-400">
+                        {formatDate(item.created_at)}
+                      </TableCell>
+
+                      {/* View Report Action */}
+                      <TableCell className="py-3.5 px-5 text-xs text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleViewSavedReport(item)}
+                          className="h-8 px-3 rounded-full border-neutral-700 bg-neutral-900 hover:bg-[#00ff66] hover:text-black hover:border-[#00ff66] text-white text-xs font-semibold cursor-pointer transition-all"
+                        >
+                          <Eye className="h-3.5 w-3.5 mr-1" />
+                          View Report
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-28 text-center text-neutral-500 text-xs">
+                    <div className="space-y-1">
+                      <p className="font-semibold text-neutral-400">No saved investigations yet</p>
+                      <p className="text-[11px] text-neutral-600">
+                        Scanned tokens will automatically appear in this history log.
+                      </p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
     </div>
   )
 }
-

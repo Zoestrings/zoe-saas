@@ -5,6 +5,7 @@ Provides user authentication and encrypted project management via Supabase.
 
 from datetime import datetime, timezone
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -71,6 +72,19 @@ def get_dev_db() -> sqlite3.Connection:
             custom_instructions TEXT,
             status TEXT DEFAULT 'live',
             status_error TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dev_investigations (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            contract_address TEXT NOT NULL,
+            token_name TEXT,
+            risk_level TEXT,
+            report_json TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
         """
@@ -1326,7 +1340,7 @@ async def investigate_token(
     payload: InvestigateRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Execute on-chain intelligence investigation scan on a Solana contract address."""
+    """Execute on-chain intelligence investigation scan on a Solana contract address and auto-save."""
     ca = payload.contract_address.strip()
     if not ca:
         raise HTTPException(
@@ -1337,12 +1351,115 @@ async def investigate_token(
     from zoe.tools.scanner import scan_solana_token
     try:
         report = await scan_solana_token(ca)
-        return report
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Investigation scan failed: {str(exc)}",
         )
+
+    # If valid scan, persist to investigations table for history
+    if report.get("valid"):
+        user_id = current_user.get("id")
+        inv_id = str(uuid.uuid4())
+        token_name = report.get("name") or "Unknown"
+        risk_level = report.get("risk", {}).get("level") or "UNKNOWN"
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        client = get_supabase()
+        saved = False
+        if client:
+            try:
+                client.table("investigations").insert({
+                    "id": inv_id,
+                    "user_id": user_id,
+                    "contract_address": ca,
+                    "token_name": token_name,
+                    "risk_level": risk_level,
+                    "report_json": report,
+                    "created_at": now_iso,
+                }).execute()
+                saved = True
+            except Exception as exc:
+                print(f"[WARNING] Failed to persist investigation to Supabase: {exc}")
+        if not saved:
+            try:
+                conn = get_dev_db()
+                conn.execute(
+                    """
+                    INSERT INTO dev_investigations (id, user_id, contract_address, token_name, risk_level, report_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (inv_id, str(user_id), ca, token_name, risk_level, json.dumps(report), now_iso),
+                )
+                conn.commit()
+            except Exception as exc:
+                print(f"[WARNING] Failed to persist investigation to dev db: {exc}")
+
+    return report
+
+
+@app.get("/api/investigations", response_model=List[Dict[str, Any]])
+def get_investigations(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retrieve the 10 most recent investigations for the authenticated user."""
+    user_id = current_user.get("id")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User ID not found in session token.",
+        )
+
+    client = get_supabase()
+    if client:
+        try:
+            res = (
+                client.table("investigations")
+                .select("id, user_id, contract_address, token_name, risk_level, report_json, created_at")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(10)
+                .execute()
+            )
+            if res.data is not None and len(res.data) > 0:
+                return res.data
+        except Exception as exc:
+            print(f"[WARNING] Failed to fetch investigations from Supabase: {exc}")
+
+    # Local SQLite Fallback
+    try:
+        conn = get_dev_db()
+        cursor = conn.execute(
+            """
+            SELECT id, user_id, contract_address, token_name, risk_level, report_json, created_at
+            FROM dev_investigations
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT 10
+            """,
+            (str(user_id),),
+        )
+        rows = cursor.fetchall()
+        investigations = []
+        for r in rows:
+            rep = None
+            try:
+                rep = json.loads(r[5])
+            except Exception:
+                rep = {}
+            investigations.append({
+                "id": r[0],
+                "user_id": r[1],
+                "contract_address": r[2],
+                "token_name": r[3],
+                "risk_level": r[4],
+                "report_json": rep,
+                "created_at": r[6],
+            })
+        return investigations
+    except Exception as exc:
+        print(f"[WARNING] Failed to fetch dev investigations: {exc}")
+        return []
 
 
 

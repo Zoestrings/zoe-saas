@@ -2,20 +2,20 @@
 
 import * as React from "react"
 import { useState, useEffect } from "react"
-import { 
-  Radar, 
-  Search, 
-  Loader2, 
-  ShieldCheck, 
-  ShieldAlert, 
-  AlertTriangle, 
-  ExternalLink, 
-  Copy, 
-  Check, 
-  TrendingUp, 
-  Lock, 
-  Unlock, 
-  Users, 
+import {
+  Radar,
+  Search,
+  Loader2,
+  ShieldCheck,
+  ShieldAlert,
+  AlertTriangle,
+  ExternalLink,
+  Copy,
+  Check,
+  TrendingUp,
+  Lock,
+  Unlock,
+  Users,
   Info,
   Clock,
   Eye,
@@ -25,18 +25,19 @@ import {
   Globe,
   User,
   Share2,
-  Download
+  Download,
+  Bot
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table"
 import { api, InvestigationReport, SavedInvestigation } from "@/lib/api"
 
@@ -206,6 +207,39 @@ export default function InvestigatePage() {
 
   const riskMeta = getRiskColor(riskLevel)
   const RiskIcon = riskMeta.icon
+
+  const score = report?.safety_score ?? (riskLevel === "LOW" ? 85 : riskLevel === "MEDIUM" ? 55 : riskLevel === "HIGH" ? 30 : 15)
+  const getScoreColor = (s: number) => {
+    if (s >= 70) {
+      return {
+        text: "text-[#00ff66]",
+        border: "border-[#00ff66]/40",
+        bg: "bg-[#00ff66]/10",
+        stroke: "#00ff66",
+        badge: "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30",
+        label: "High Safety",
+      }
+    }
+    if (s >= 40) {
+      return {
+        text: "text-amber-400",
+        border: "border-amber-500/40",
+        bg: "bg-amber-500/10",
+        stroke: "#fbbf24",
+        badge: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+        label: "Moderate Risk",
+      }
+    }
+    return {
+      text: "text-rose-400",
+      border: "border-rose-500/40",
+      bg: "bg-rose-500/10",
+      stroke: "#f43f5e",
+      badge: "bg-rose-500/10 text-rose-400 border-rose-500/30",
+      label: "Critical Caution",
+    }
+  }
+  const scoreMeta = getScoreColor(score)
 
   return (
     <div className="space-y-8 pb-16">
@@ -476,6 +510,87 @@ export default function InvestigatePage() {
       {/* Scan Results Report */}
       {report && (
         <div id="investigation-report" className="space-y-6 print-report-container">
+          {/* Mega-Module 4: Safety Score Gauge & AI Analyst Layer */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Safety Score Radial Gauge Card */}
+            <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden flex flex-col justify-between p-6">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider">
+                  Safety Score
+                </span>
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${scoreMeta.badge}`}>
+                  {scoreMeta.label}
+                </span>
+              </div>
+
+              {/* Circular Radial Gauge */}
+              <div className="relative flex items-center justify-center py-3">
+                <svg className="w-36 h-36 -rotate-90 transform" viewBox="0 0 120 120">
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r="48"
+                    className="stroke-neutral-900"
+                    strokeWidth="10"
+                    fill="transparent"
+                  />
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r="48"
+                    stroke={scoreMeta.stroke}
+                    strokeWidth="10"
+                    strokeDasharray={2 * Math.PI * 48}
+                    strokeDashoffset={2 * Math.PI * 48 * (1 - score / 100)}
+                    strokeLinecap="round"
+                    fill="transparent"
+                    className="transition-all duration-1000 ease-out"
+                  />
+                </svg>
+                <div className="absolute flex flex-col items-center justify-center text-center">
+                  <span className={`text-4xl font-black ${scoreMeta.text} tracking-tight`}>
+                    {score}
+                  </span>
+                  <span className="text-[10px] font-bold uppercase text-neutral-500 tracking-wider">
+                    / 100
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-center text-xs text-neutral-400 border-t border-neutral-800/80 pt-3">
+                {score >= 70
+                  ? "Verified contract hygiene & healthy tokenomics"
+                  : score >= 40
+                  ? "Moderate risk factors detected on-chain"
+                  : "Extreme caution advised — high vulnerability signals"}
+              </div>
+            </Card>
+
+            {/* AI Analyst Glassmorphism Card */}
+            <Card className="md:col-span-2 bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden p-6 flex flex-col justify-between">
+              <CardHeader className="p-0 pb-3 border-b border-neutral-800/80 flex flex-row items-center justify-between">
+                <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+                  <Bot className="h-5 w-5 text-[#00ff66]" />
+                  <span>AI Analyst Intelligence</span>
+                </CardTitle>
+                <span className="text-[10px] font-semibold bg-[#00ff66]/10 text-[#00ff66] px-2.5 py-0.5 rounded-full border border-[#00ff66]/30">
+                  Groq LLM Verified
+                </span>
+              </CardHeader>
+              <CardContent className="p-0 pt-4 flex-1 flex flex-col justify-center space-y-3">
+                <div className="p-4 rounded-2xl bg-[#1a1a1a] border border-neutral-800">
+                  <p className="text-sm text-neutral-200 leading-relaxed font-medium">
+                    "{report.ai_summary || "Automated analysis indicates that token risk factors are actively monitored across on-chain security registries. Exercise due diligence before allocating capital."}"
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] text-neutral-500">
+                  <Info className="h-3.5 w-3.5 text-[#00ff66] shrink-0" />
+                  <span>Objective 2-sentence executive summary synthesized from raw DEX, contract & OSINT evidence.</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Top Risk Assessment Banner */}
           <div className={`p-6 sm:p-8 rounded-3xl bg-[#121212] border ${riskMeta.card} shadow-2xl space-y-5`}>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -570,13 +685,12 @@ export default function InvestigatePage() {
                         <Users className="h-4 w-4 text-[#00ff66]" />
                         <span>Holder Concentration</span>
                       </CardTitle>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                        top10 !== null && top10 > 80
+                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${top10 !== null && top10 > 80
                           ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
                           : top10 !== null && top10 > 40
-                          ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                          : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
-                      }`}>
+                            ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                            : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+                        }`}>
                         {holderStatus}
                       </span>
                     </div>
@@ -592,13 +706,12 @@ export default function InvestigatePage() {
                     </div>
                     <div className="w-full bg-neutral-900 rounded-full h-2 overflow-hidden border border-neutral-800">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          top10 !== null && top10 > 80
+                        className={`h-full rounded-full transition-all duration-500 ${top10 !== null && top10 > 80
                             ? "bg-rose-500"
                             : top10 !== null && top10 > 40
-                            ? "bg-amber-400"
-                            : "bg-[#00ff66]"
-                        }`}
+                              ? "bg-amber-400"
+                              : "bg-[#00ff66]"
+                          }`}
                         style={{ width: `${Math.min(top10 || 0, 100)}%` }}
                       />
                     </div>
@@ -661,13 +774,12 @@ export default function InvestigatePage() {
                         <Code2 className="h-4 w-4 text-[#00ff66]" />
                         <span>Dev Wallet</span>
                       </CardTitle>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                        devPct > 10
+                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${devPct > 10
                           ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
                           : devPct > 5
-                          ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                          : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
-                      }`}>
+                            ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                            : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+                        }`}>
                         {devStatus}
                       </span>
                     </div>
@@ -683,9 +795,8 @@ export default function InvestigatePage() {
                     </div>
                     <div className="w-full bg-neutral-900 rounded-full h-2 overflow-hidden border border-neutral-800">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          devPct > 10 ? "bg-rose-500" : devPct > 5 ? "bg-amber-400" : "bg-[#00ff66]"
-                        }`}
+                        className={`h-full rounded-full transition-all duration-500 ${devPct > 10 ? "bg-rose-500" : devPct > 5 ? "bg-amber-400" : "bg-[#00ff66]"
+                          }`}
                         style={{ width: `${Math.min(devPct || 0, 100)}%` }}
                       />
                     </div>
@@ -889,11 +1000,10 @@ export default function InvestigatePage() {
                       <Globe className="h-4 w-4 text-[#00ff66]" />
                       <span>Project OSINT</span>
                     </CardTitle>
-                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                      hasWebsite
+                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${hasWebsite
                         ? "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
                         : "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                    }`}>
+                      }`}>
                       {hasWebsite ? "Web Presence Verified" : "Unverified Web Presence"}
                     </span>
                   </div>

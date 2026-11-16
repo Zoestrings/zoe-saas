@@ -128,6 +128,8 @@ export interface InvestigationReport {
     reasons: string[]
     risk_score?: number
   }
+  safety_score?: number
+  ai_summary?: string
   timestamp_utc?: string
 }
 

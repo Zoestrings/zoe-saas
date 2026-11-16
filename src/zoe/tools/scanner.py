@@ -660,6 +660,159 @@ def evaluate_risk(
     }
 
 
+def calculate_safety_score(data: Dict[str, Any]) -> int:
+    """Calculate a quantified Safety Score (0-100) based on deterministic scanner signals.
+    
+    Scoring Rules:
+    - Base score: 50
+    - +20 if Liquidity is Locked
+    - +20 if No Honeypot detected
+    - +10 if Contract is Open Source / Verified (or Mint & Freeze Authorities both revoked)
+    - +10 if Top 10 Holders < 30%
+    - -30 if Honeypot detected
+    - -20 if Top 10 Holders > 80%
+    - -15 if Buy Tax > 10% or Sell Tax > 10%
+    - -10 if Dev Wallet holds > 10%
+    - Clamped strictly between 0 and 100
+    """
+    score = 50
+    security = data.get("security", {})
+    lp_intel = data.get("lp_intelligence", {})
+    holder_intel = data.get("holder_intelligence", {})
+    dev_intel = data.get("dev_wallet_intelligence", {})
+
+    is_honeypot = security.get("is_honeypot", False)
+    if is_honeypot:
+        score -= 30
+    else:
+        score += 20
+
+    # Liquidity Lock
+    lp_locked = lp_intel.get("is_locked") if "is_locked" in lp_intel else security.get("lp_locked", False)
+    if lp_locked:
+        score += 20
+
+    # Open Source / Verified (Solana: mint & freeze revoked)
+    is_open_source = security.get("is_open_source")
+    mint_revoked = security.get("mint_revoked")
+    freeze_revoked = security.get("freeze_revoked")
+    if is_open_source is True or (mint_revoked is True and freeze_revoked is True):
+        score += 10
+
+    # Top 10 Holders
+    top_10 = holder_intel.get("top_10_percent") if holder_intel.get("top_10_percent") is not None else security.get("top_10_holders_percent")
+    if top_10 is not None:
+        if top_10 < 30.0:
+            score += 10
+        elif top_10 > 80.0:
+            score -= 20
+
+    # Buy / Sell Tax
+    buy_tax = security.get("buy_tax")
+    sell_tax = security.get("sell_tax")
+    try:
+        bt = float(buy_tax) if buy_tax is not None else 0.0
+        st = float(sell_tax) if sell_tax is not None else 0.0
+        if bt > 10.0 or st > 10.0:
+            score -= 15
+    except (ValueError, TypeError):
+        pass
+
+    # Dev Wallet holding
+    dev_pct = dev_intel.get("holds_percent") if dev_intel.get("holds_percent") is not None else security.get("dev_wallet_percent")
+    if dev_pct is not None and dev_pct > 10.0:
+        score -= 10
+
+    return max(0, min(100, score))
+
+
+def _generate_fallback_summary(data: Dict[str, Any], score: int) -> str:
+    """Generate deterministic 2-sentence risk summary if Groq LLM is unavailable."""
+    name = data.get("name") or "This token"
+    security = data.get("security", {})
+    lp_intel = data.get("lp_intelligence", {})
+    holder_intel = data.get("holder_intelligence", {})
+    is_honeypot = security.get("is_honeypot", False)
+    lp_locked = lp_intel.get("is_locked", False)
+    top_10 = holder_intel.get("top_10_percent")
+
+    if score < 30 or is_honeypot:
+        return (
+            f"{name} exhibits critical risk flags including active security threats and extreme centralization; extreme caution is advised. "
+            "High probability of capital loss exists without independent contract verification."
+        )
+    elif score >= 70:
+        lp_desc = "locked liquidity" if lp_locked else "active liquidity"
+        holder_desc = f"a decentralized top 10 supply distribution ({top_10:.1f}%)" if top_10 and top_10 < 40 else "healthy contract parameters"
+        return (
+            f"{name} demonstrates a solid risk profile supported by {lp_desc} and {holder_desc}. "
+            "No honeypot mechanisms or critical vulnerabilities were detected, though market risks remain present."
+        )
+    else:
+        return (
+            f"{name} reflects a moderate risk profile with mixed signals across its liquidity security and token distribution. "
+            "Traders should exercise heightened diligence and review developer holdings before committing capital."
+        )
+
+
+async def generate_ai_summary(data: Dict[str, Any], score: int) -> str:
+    """Generate a concise, 2-sentence AI security analyst summary using Groq LLM."""
+    import os
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    if not groq_key or "YOUR_GROQ_API_KEY" in groq_key:
+        return _generate_fallback_summary(data, score)
+
+    summary_context = {
+        "token_name": data.get("name"),
+        "symbol": data.get("symbol"),
+        "chain": data.get("chain"),
+        "safety_score": score,
+        "is_honeypot": data.get("security", {}).get("is_honeypot", False),
+        "mint_revoked": data.get("security", {}).get("mint_revoked"),
+        "freeze_revoked": data.get("security", {}).get("freeze_revoked"),
+        "lp_locked": data.get("lp_intelligence", {}).get("is_locked"),
+        "top_10_holders_percent": data.get("holder_intelligence", {}).get("top_10_percent"),
+        "dev_wallet_percent": data.get("dev_wallet_intelligence", {}).get("holds_percent"),
+        "website": (data.get("osint") or data.get("project_osint") or {}).get("website"),
+        "founder": (data.get("osint") or data.get("project_osint") or {}).get("founder"),
+    }
+
+    system_prompt = (
+        "You are a Senior Web3 Security Analyst. Based on the following scanner data, "
+        "write a 2-sentence summary of the token's risk profile. Be objective. "
+        "Do not give financial advice. If the score is below 30, state that extreme caution is advised."
+    )
+    user_prompt = f"Scanner Data:\n{json.dumps(summary_context, indent=2)}\nSafety Score: {score}/100"
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 120,
+                },
+            )
+            if resp.status_code == 200:
+                res_json = resp.json()
+                content = res_json.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                if content:
+                    return content
+    except Exception as exc:
+        logger.debug("Groq AI summary generation exception: %s", exc)
+
+    return _generate_fallback_summary(data, score)
+
+
 async def scan_solana_token(
     ca: str,
     client: Optional[httpx.AsyncClient] = None,
@@ -739,6 +892,28 @@ async def scan_solana_token(
     dev_pct = security_data.get("dev_wallet_percent", 0.0)
     dev_status = "High risk" if dev_pct > 10.0 else ("Moderate risk" if dev_pct > 5.0 else "Low risk")
 
+    # 5. Mega-Module 4: Safety Score (0-100) & AI Analyst Summary
+    score_data = {
+        "security": security_data,
+        "lp_intelligence": {"is_locked": lp_locked, "lock_percent": security_data.get("lp_lock_percent", 0.0)},
+        "holder_intelligence": {"top_10_percent": top_10, "holder_count": security_data.get("holder_count")},
+        "dev_wallet_intelligence": {"holds_percent": dev_pct},
+    }
+    safety_score = calculate_safety_score(score_data)
+    ai_summary = await generate_ai_summary(
+        {
+            "name": token_name,
+            "symbol": symbol,
+            "chain": chain_type,
+            "security": security_data,
+            "lp_intelligence": {"is_locked": lp_locked},
+            "holder_intelligence": {"top_10_percent": top_10},
+            "dev_wallet_intelligence": {"holds_percent": dev_pct},
+            "osint": osint_data,
+        },
+        score=safety_score,
+    )
+
     return {
         "valid": True,
         "ca": clean_ca,
@@ -767,6 +942,8 @@ async def scan_solana_token(
         "osint": osint_data,
         "project_osint": osint_data,
         "risk": risk_assessment,
+        "safety_score": safety_score,
+        "ai_summary": ai_summary,
         "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     }
 
@@ -851,9 +1028,14 @@ def format_scan_report(report_data: Dict[str, Any]) -> str:
     # Format risk reasons
     reasons_block = "\n".join(f"- {r}" for r in reasons[:3]) if reasons else "- No critical risk flags detected"
 
+    score = report_data.get("safety_score", 50)
+    ai_summary = report_data.get("ai_summary", "")
+    ai_block = f"🛡️ Safety Score: {score}/100\n🤖 AI Analyst: {ai_summary}\n\n" if ai_summary else f"🛡️ Safety Score: {score}/100\n\n"
+
     report = (
         f"🔍 Zoe Intelligence Report\n"
         f"**{name}** (CA: {ca_short}) · {chain}\n\n"
+        f"{ai_block}"
         f"🚨 Risk Assessment: {risk_level}\n"
         f"{reasons_block}\n\n"
         f"📊 Market Data\n"

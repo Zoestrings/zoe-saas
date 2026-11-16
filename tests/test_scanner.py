@@ -2,12 +2,14 @@
 
 import pytest
 from zoe.tools.scanner import (
+    calculate_safety_score,
     evaluate_risk,
     format_contract_report,
     format_holders_report,
     format_liquidity_report,
     format_osint_report,
     format_scan_report,
+    generate_ai_summary,
     generate_scanner_inline_keyboard,
     investigate_project_osint,
     is_valid_solana_ca,
@@ -332,6 +334,66 @@ def test_command_suite_formatters():
     assert "Website: https://www.bonkcoin.com" in osint_rep
     assert "Twitter: https://twitter.com/bonk_inu" in osint_rep
     assert "Founder: Nom" in osint_rep
+
+
+def test_calculate_safety_score_rules():
+    """Test safety score calculator rules and clamping."""
+    # 1. High safety token (clamped at 100)
+    safe_data = {
+        "security": {
+            "is_honeypot": False,
+            "mint_revoked": True,
+            "freeze_revoked": True,
+            "buy_tax": 0.0,
+            "sell_tax": 0.0,
+        },
+        "lp_intelligence": {"is_locked": True},
+        "holder_intelligence": {"top_10_percent": 25.0},
+        "dev_wallet_intelligence": {"holds_percent": 1.0},
+    }
+    # 50 + 20 (no honeypot) + 20 (lp locked) + 10 (revoked) + 10 (top 10 < 30) = 110 -> 100
+    assert calculate_safety_score(safe_data) == 100
+
+    # 2. Critical danger token (clamped at 0)
+    danger_data = {
+        "security": {
+            "is_honeypot": True,
+            "mint_revoked": False,
+            "freeze_revoked": False,
+            "buy_tax": 15.0,
+            "sell_tax": 20.0,
+        },
+        "lp_intelligence": {"is_locked": False},
+        "holder_intelligence": {"top_10_percent": 90.0},
+        "dev_wallet_intelligence": {"holds_percent": 25.0},
+    }
+    # 50 - 30 (honeypot) - 20 (top 10 > 80) - 15 (tax > 10) - 10 (dev > 10) = -25 -> 0
+    assert calculate_safety_score(danger_data) == 0
+
+    # 3. Intermediate moderate token
+    moderate_data = {
+        "security": {
+            "is_honeypot": False,
+            "mint_revoked": True,
+            "freeze_revoked": False,
+        },
+        "lp_intelligence": {"is_locked": False},
+        "holder_intelligence": {"top_10_percent": 45.0},
+        "dev_wallet_intelligence": {"holds_percent": 2.0},
+    }
+    # 50 + 20 (no honeypot) = 70
+    assert calculate_safety_score(moderate_data) == 70
+
+
+def test_generate_ai_summary():
+    """Test AI analyst summary generation and safety caution threshold."""
+    import asyncio
+    summary_critical = asyncio.run(generate_ai_summary({"name": "ScamCoin"}, score=20))
+    assert "extreme caution is advised" in summary_critical.lower()
+
+    summary_safe = asyncio.run(generate_ai_summary({"name": "SafeCoin"}, score=85))
+    assert len(summary_safe) > 20
+    assert "extreme caution" not in summary_safe.lower()
 
 
 def test_generate_scanner_inline_keyboard():

@@ -313,170 +313,168 @@ export default function ProjectsPage() {
             Refresh
           </Button>
 
-          {/* Add Project Modal - Super Admin Only */}
-          {isSuperAdmin() && (
-            <Dialog 
-              open={isDialogOpen} 
-              onOpenChange={(open) => {
-                // Prevent modal dismissal mid-request
-                if (!submitting) {
-                  setIsDialogOpen(open)
-                  if (!open) setFormError(null)
-                }
-              }}
+          {/* Add Project Modal */}
+          <Dialog 
+            open={isDialogOpen} 
+            onOpenChange={(open) => {
+              // Prevent modal dismissal mid-request
+              if (!submitting) {
+                setIsDialogOpen(open)
+                if (!open) setFormError(null)
+              }
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 rounded-md font-medium cursor-pointer">
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                Add Project
+              </Button>
+            </DialogTrigger>
+            <DialogContent 
+              aria-busy={submitting}
+              className="sm:max-w-[500px] bg-white border border-slate-200 text-slate-900 shadow-xl rounded-lg"
             >
-              <DialogTrigger asChild>
-                <Button className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 rounded-md font-medium cursor-pointer">
-                  <Plus className="h-3.5 w-3.5 mr-1.5" />
-                  Add Project
-                </Button>
-              </DialogTrigger>
-              <DialogContent 
-                aria-busy={submitting}
-                className="sm:max-w-[500px] bg-white border border-slate-200 text-slate-900 shadow-xl rounded-lg"
-              >
-                <DialogHeader>
-                  <DialogTitle className="text-lg font-semibold text-slate-900">
-                    Deploy New Bot to Zoe Engine
-                  </DialogTitle>
-                  <DialogDescription className="text-xs text-slate-500">
-                    Register your Telegram credentials and token contract. The bot poller starts automatically.
-                  </DialogDescription>
-                </DialogHeader>
+              <DialogHeader>
+                <DialogTitle className="text-lg font-semibold text-slate-900">
+                  Deploy New Bot to Zoe Engine
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-500">
+                  Register your Telegram credentials and token contract. The bot poller starts automatically.
+                </DialogDescription>
+              </DialogHeader>
 
-                {formError && (
-                  <div className="p-3 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 shrink-0" />
-                    <span>{formError}</span>
-                  </div>
-                )}
+              {formError && (
+                <div className="p-3 rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
 
-                <form onSubmit={handleCreateProject} className="space-y-3.5 pt-2">
-                  {/* Project Name */}
-                  <div className="space-y-1">
-                    <Label htmlFor="projectName" className="text-xs font-medium text-slate-700 flex items-center justify-between">
-                      <span>Project Name <span className="text-rose-500">*</span></span>
-                      {projectName && !isNameValid && (
-                        <span className="text-[11px] text-rose-500 font-normal">Min 2 characters</span>
-                      )}
-                    </Label>
+              <form onSubmit={handleCreateProject} className="space-y-3.5 pt-2">
+                {/* Project Name */}
+                <div className="space-y-1">
+                  <Label htmlFor="projectName" className="text-xs font-medium text-slate-700 flex items-center justify-between">
+                    <span>Project Name <span className="text-rose-500">*</span></span>
+                    {projectName && !isNameValid && (
+                      <span className="text-[11px] text-rose-500 font-normal">Min 2 characters</span>
+                    )}
+                  </Label>
+                  <Input
+                    id="projectName"
+                    disabled={submitting}
+                    placeholder="e.g. Nexus Community AI"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    required
+                    className="bg-white border-slate-200 text-slate-900 text-xs h-9 focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+
+                {/* Bot Token with Show/Hide Toggle */}
+                <div className="space-y-1">
+                  <Label htmlFor="botToken" className="text-xs font-medium text-slate-700 flex items-center justify-between">
+                    <span>Telegram Bot Token <span className="text-rose-500">*</span></span>
+                    {botToken && !isTokenValid && (
+                      <span className="text-[11px] text-rose-500 font-normal">Format: 123456789:ABC...</span>
+                    )}
+                  </Label>
+                  <div className="relative">
                     <Input
-                      id="projectName"
+                      id="botToken"
                       disabled={submitting}
-                      placeholder="e.g. Nexus Community AI"
-                      value={projectName}
-                      onChange={(e) => setProjectName(e.target.value)}
+                      type={showToken ? "text" : "password"}
+                      placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                      value={botToken}
+                      onChange={(e) => setBotToken(e.target.value)}
                       required
-                      className="bg-white border-slate-200 text-slate-900 text-xs h-9 focus:ring-1 focus:ring-slate-400"
+                      className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 pr-9 focus:ring-1 focus:ring-slate-400"
                     />
-                  </div>
-
-                  {/* Bot Token with Show/Hide Toggle */}
-                  <div className="space-y-1">
-                    <Label htmlFor="botToken" className="text-xs font-medium text-slate-700 flex items-center justify-between">
-                      <span>Telegram Bot Token <span className="text-rose-500">*</span></span>
-                      {botToken && !isTokenValid && (
-                        <span className="text-[11px] text-rose-500 font-normal">Format: 123456789:ABC...</span>
-                      )}
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="botToken"
-                        disabled={submitting}
-                        type={showToken ? "text" : "password"}
-                        placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
-                        value={botToken}
-                        onChange={(e) => setBotToken(e.target.value)}
-                        required
-                        className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 pr-9 focus:ring-1 focus:ring-slate-400"
-                      />
-                      <button
-                        type="button"
-                        disabled={submitting}
-                        onClick={() => setShowToken(!showToken)}
-                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 focus:outline-none"
-                        title={showToken ? "Hide token" : "Show token"}
-                      >
-                        {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Token Contract Address */}
-                  <div className="space-y-1">
-                    <Label htmlFor="tokenAddress" className="text-xs font-medium text-slate-700 flex items-center justify-between">
-                      <span>Token Contract Address <span className="text-rose-500">*</span></span>
-                      {tokenAddress && !isAddressValid && (
-                        <span className="text-[11px] text-rose-500 font-normal">Valid Solana or EVM address</span>
-                      )}
-                    </Label>
-                    <Input
-                      id="tokenAddress"
-                      disabled={submitting}
-                      placeholder="e.g. 0x... or Solana base58 address"
-                      value={tokenAddress}
-                      onChange={(e) => setTokenAddress(e.target.value)}
-                      required
-                      className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 focus:ring-1 focus:ring-slate-400"
-                    />
-                  </div>
-
-                  {/* Group ID (Optional) */}
-                  <div className="space-y-1">
-                    <Label htmlFor="groupId" className="text-xs font-medium text-slate-700">
-                      Group ID (Optional)
-                    </Label>
-                    <Input
-                      id="groupId"
-                      disabled={submitting}
-                      placeholder="e.g. -1001234567890"
-                      value={groupId}
-                      onChange={(e) => setGroupId(e.target.value)}
-                      className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 focus:ring-1 focus:ring-slate-400"
-                    />
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Leave blank to deploy to DMs or assign a group later.
-                    </p>
-                  </div>
-
-                  {/* Custom Instructions (Optional) */}
-                  <div className="space-y-1">
-                    <Label htmlFor="customInstructions" className="text-xs font-medium text-slate-700">
-                      Custom Persona Instructions (Optional)
-                    </Label>
-                    <Input
-                      id="customInstructions"
-                      disabled={submitting}
-                      placeholder="e.g. You are Zoe, a warm and witty community host..."
-                      value={customInstructions}
-                      onChange={(e) => setCustomInstructions(e.target.value)}
-                      className="bg-white border-slate-200 text-slate-900 text-xs h-9 focus:ring-1 focus:ring-slate-400"
-                    />
-                  </div>
-
-                  <DialogFooter className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                    <Button
+                    <button
                       type="button"
-                      variant="outline"
                       disabled={submitting}
-                      onClick={() => setIsDialogOpen(false)}
-                      className="border-slate-200 text-slate-700 text-xs h-9"
+                      onClick={() => setShowToken(!showToken)}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 focus:outline-none"
+                      title={showToken ? "Hide token" : "Show token"}
                     >
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={submitting || !isFormValid}
-                      className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 font-medium disabled:opacity-50 cursor-pointer"
-                    >
-                      {submitting && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
-                      {submitting ? "Deploying Bot..." : "Deploy Bot"}
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
-          )}
+                      {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Token Contract Address */}
+                <div className="space-y-1">
+                  <Label htmlFor="tokenAddress" className="text-xs font-medium text-slate-700 flex items-center justify-between">
+                    <span>Token Contract Address <span className="text-rose-500">*</span></span>
+                    {tokenAddress && !isAddressValid && (
+                      <span className="text-[11px] text-rose-500 font-normal">Valid Solana or EVM address</span>
+                    )}
+                  </Label>
+                  <Input
+                    id="tokenAddress"
+                    disabled={submitting}
+                    placeholder="e.g. 0x... or Solana base58 address"
+                    value={tokenAddress}
+                    onChange={(e) => setTokenAddress(e.target.value)}
+                    required
+                    className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+
+                {/* Group ID (Optional) */}
+                <div className="space-y-1">
+                  <Label htmlFor="groupId" className="text-xs font-medium text-slate-700">
+                    Group ID (Optional)
+                  </Label>
+                  <Input
+                    id="groupId"
+                    disabled={submitting}
+                    placeholder="e.g. -1001234567890"
+                    value={groupId}
+                    onChange={(e) => setGroupId(e.target.value)}
+                    className="bg-white border-slate-200 text-slate-900 font-mono text-xs h-9 focus:ring-1 focus:ring-slate-400"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Leave blank to deploy to DMs or assign a group later.
+                  </p>
+                </div>
+
+                {/* Custom Instructions (Optional) */}
+                <div className="space-y-1">
+                  <Label htmlFor="customInstructions" className="text-xs font-medium text-slate-700">
+                    Custom Persona Instructions (Optional)
+                  </Label>
+                  <Input
+                    id="customInstructions"
+                    disabled={submitting}
+                    placeholder="e.g. You are Zoe, a warm and witty community host..."
+                    value={customInstructions}
+                    onChange={(e) => setCustomInstructions(e.target.value)}
+                    className="bg-white border-slate-200 text-slate-900 text-xs h-9 focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+
+                <DialogFooter className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={submitting}
+                    onClick={() => setIsDialogOpen(false)}
+                    className="border-slate-200 text-slate-700 text-xs h-9"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={submitting || !isFormValid}
+                    className="bg-slate-900 hover:bg-slate-800 text-white text-xs h-9 px-4 font-medium disabled:opacity-50 cursor-pointer"
+                  >
+                    {submitting && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                    {submitting ? "Deploying Bot..." : "Deploy Bot"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

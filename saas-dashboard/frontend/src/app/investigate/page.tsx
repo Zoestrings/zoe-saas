@@ -689,138 +689,148 @@ export default function InvestigatePage() {
           </div>
 
           {/* Mega-Module 2: Project OSINT & Founder Research Card */}
-          <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden">
-            <CardHeader className="p-6 border-b border-neutral-800">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-bold text-white flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-[#00ff66]" />
-                  <span>Project OSINT & Founder Intelligence</span>
-                </CardTitle>
-                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                  report.project_osint?.has_official_website
-                    ? "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
-                    : "bg-amber-500/10 text-amber-400 border-amber-500/30"
-                }`}>
-                  {report.project_osint?.has_official_website ? "Web Presence Verified" : "Unverified Web Presence"}
-                </span>
-              </div>
-            </CardHeader>
-            <CardContent className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* 1. Official Website */}
-                <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-2">
-                  <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
-                    Official Website
-                  </span>
-                  {report.project_osint?.website ? (
-                    <a
-                      href={report.project_osint.website}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-sm font-bold text-[#00ff66] hover:underline truncate max-w-full"
-                    >
-                      <Globe className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{report.project_osint.website.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
-                      <ExternalLink className="h-3.5 w-3.5 shrink-0" />
-                    </a>
-                  ) : (
-                    <div className="text-xs text-neutral-400 italic flex items-center gap-1.5">
-                      <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
-                      <span>No official website found</span>
-                    </div>
-                  )}
-                </div>
+          {(() => {
+            const osintData = report.osint || report.project_osint
+            const hasWebsite = Boolean(osintData?.website && osintData.website !== "Unknown" && osintData.has_official_website !== false)
+            const hasTwitter = Boolean(osintData?.twitter && osintData.twitter !== "Unknown")
+            const founderName = osintData?.founder && osintData.founder !== "Unknown" ? osintData.founder : "Unverified"
+            const isAnon = Boolean(osintData?.is_anonymous_founder || founderName === "Unverified" || founderName.includes("Anonymous"))
 
-                {/* 2. Official Twitter / X */}
-                <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-2">
-                  <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
-                    Official Twitter / X
-                  </span>
-                  {report.project_osint?.twitter ? (
-                    <a
-                      href={report.project_osint.twitter}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 text-sm font-bold text-white hover:text-[#00ff66] transition-colors truncate max-w-full"
-                    >
-                      <Share2 className="h-4 w-4 text-[#00ff66] shrink-0" />
-                      <span className="truncate">{report.project_osint.twitter.replace(/^https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\//, "@")}</span>
-                      <ExternalLink className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
-                    </a>
-                  ) : (
-                    <div className="text-xs text-neutral-400 italic">No official Twitter/X detected</div>
-                  )}
-                </div>
-
-                {/* 3. Founder / CEO Identification */}
-                <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-2">
-                  <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
-                    Founder / Executive
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <User className="h-4 w-4 text-[#00ff66] shrink-0" />
-                    <span className="text-sm font-bold text-white">
-                      {report.project_osint?.founder || "Anonymous / Unverified"}
+            return (
+              <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden">
+                <CardHeader className="p-6 border-b border-neutral-800">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+                      <Globe className="h-4 w-4 text-[#00ff66]" />
+                      <span>Project OSINT</span>
+                    </CardTitle>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                      hasWebsite
+                        ? "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+                        : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                    }`}>
+                      {hasWebsite ? "Web Presence Verified" : "Unverified Web Presence"}
                     </span>
-                    {report.project_osint?.is_anonymous_founder && (
-                      <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full border border-neutral-700">
-                        Anon Team
+                  </div>
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* 1. Official Website */}
+                    <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-2">
+                      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                        Website
                       </span>
+                      {hasWebsite && osintData?.website ? (
+                        <a
+                          href={osintData.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-sm font-bold text-[#00ff66] hover:underline truncate max-w-full"
+                        >
+                          <Globe className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{osintData.website.replace(/^https?:\/\//, "").replace(/\/$/, "")}</span>
+                          <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                        </a>
+                      ) : (
+                        <div className="text-xs text-neutral-400 italic flex items-center gap-1.5">
+                          <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                          <span>No official website found</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 2. Official Twitter / X */}
+                    <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-2">
+                      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                        Twitter / X
+                      </span>
+                      {hasTwitter && osintData?.twitter ? (
+                        <a
+                          href={osintData.twitter}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-sm font-bold text-white hover:text-[#00ff66] transition-colors truncate max-w-full"
+                        >
+                          <Share2 className="h-4 w-4 text-[#00ff66] shrink-0" />
+                          <span className="truncate">{osintData.twitter.replace(/^https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\//, "@")}</span>
+                          <ExternalLink className="h-3.5 w-3.5 shrink-0 text-neutral-500" />
+                        </a>
+                      ) : (
+                        <div className="text-xs text-neutral-400 italic">No official Twitter/X detected</div>
+                      )}
+                    </div>
+
+                    {/* 3. Founder / CEO Identification */}
+                    <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-2">
+                      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                        Founder / Executive
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4 text-[#00ff66] shrink-0" />
+                        <span className="text-sm font-bold text-white">
+                          {founderName}
+                        </span>
+                        {isAnon && (
+                          <span className="text-[10px] bg-neutral-800 text-neutral-400 px-2 py-0.5 rounded-full border border-neutral-700">
+                            Anon Team
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Additional Social Links & OSINT Evidence Sources */}
+                  <div className="pt-2 border-t border-neutral-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    {/* Social Chips */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-neutral-500 font-semibold">Community:</span>
+                      {osintData?.telegram && (
+                        <a
+                          href={osintData.telegram}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 text-[11px] font-medium transition-colors"
+                        >
+                          Telegram <ExternalLink className="h-2.5 w-2.5" />
+                        </a>
+                      )}
+                      {osintData?.discord && (
+                        <a
+                          href={osintData.discord}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 text-[11px] font-medium transition-colors"
+                        >
+                          Discord <ExternalLink className="h-2.5 w-2.5" />
+                        </a>
+                      )}
+                      {osintData?.github && (
+                        <a
+                          href={osintData.github}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 text-[11px] font-medium transition-colors"
+                        >
+                          GitHub <ExternalLink className="h-2.5 w-2.5" />
+                        </a>
+                      )}
+                      {!osintData?.telegram && !osintData?.discord && !osintData?.github && (
+                        <span className="text-neutral-500 italic">No secondary socials discovered</span>
+                      )}
+                    </div>
+
+                    {/* Evidence Sources */}
+                    {osintData?.evidence_sources && osintData.evidence_sources.length > 0 && (
+                      <div className="flex items-center gap-1.5 text-neutral-400 text-[11px]">
+                        <span className="text-neutral-500">Sources:</span>
+                        <span>{osintData.evidence_sources.slice(0, 3).join(", ")}</span>
+                      </div>
                     )}
                   </div>
-                </div>
-              </div>
-
-              {/* Additional Social Links & OSINT Evidence Sources */}
-              <div className="pt-2 border-t border-neutral-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                {/* Social Chips */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-neutral-500 font-semibold">Community:</span>
-                  {report.project_osint?.telegram && (
-                    <a
-                      href={report.project_osint.telegram}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 text-[11px] font-medium transition-colors"
-                    >
-                      Telegram <ExternalLink className="h-2.5 w-2.5" />
-                    </a>
-                  )}
-                  {report.project_osint?.discord && (
-                    <a
-                      href={report.project_osint.discord}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 text-[11px] font-medium transition-colors"
-                    >
-                      Discord <ExternalLink className="h-2.5 w-2.5" />
-                    </a>
-                  )}
-                  {report.project_osint?.github && (
-                    <a
-                      href={report.project_osint.github}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-neutral-900 hover:bg-neutral-800 text-neutral-300 border border-neutral-800 text-[11px] font-medium transition-colors"
-                    >
-                      GitHub <ExternalLink className="h-2.5 w-2.5" />
-                    </a>
-                  )}
-                  {!report.project_osint?.telegram && !report.project_osint?.discord && !report.project_osint?.github && (
-                    <span className="text-neutral-500 italic">No secondary socials discovered</span>
-                  )}
-                </div>
-
-                {/* Evidence Sources */}
-                {report.project_osint?.evidence_sources && report.project_osint.evidence_sources.length > 0 && (
-                  <div className="flex items-center gap-1.5 text-neutral-400 text-[11px]">
-                    <span className="text-neutral-500">Sources:</span>
-                    <span>{report.project_osint.evidence_sources.slice(0, 3).join(", ")}</span>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            )
+          })()}
 
           {/* Evidence Footer */}
           <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-neutral-400">

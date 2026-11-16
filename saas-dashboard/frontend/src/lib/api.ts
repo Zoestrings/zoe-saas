@@ -97,6 +97,19 @@ export interface InvestigationReport {
     holds_percent?: number
     status?: string
   }
+  osint?: {
+    has_official_website?: boolean
+    website?: string | null
+    twitter?: string | null
+    telegram?: string | null
+    discord?: string | null
+    github?: string | null
+    linkedin?: string | null
+    founder?: string | null
+    is_anonymous_founder?: boolean
+    socials?: Record<string, string>
+    evidence_sources?: string[]
+  }
   project_osint?: {
     has_official_website?: boolean
     website?: string | null
@@ -104,8 +117,10 @@ export interface InvestigationReport {
     telegram?: string | null
     discord?: string | null
     github?: string | null
+    linkedin?: string | null
     founder?: string | null
     is_anonymous_founder?: boolean
+    socials?: Record<string, string>
     evidence_sources?: string[]
   }
   risk?: {

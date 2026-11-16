@@ -231,7 +231,7 @@ def test_format_scan_report_structure():
     assert "🛡️ Security & Holder Intelligence" in report
     assert "Mint Auth: Revoked" in report
     assert "Freeze Auth: Revoked" in report
-    assert "🌐 Project Info" in report
+    assert "🌐 Project OSINT" in report
     assert "Website: https://www.bonkcoin.com" in report
     assert "Twitter: https://twitter.com/bonk_inu" in report
     assert "Founder: Nom" in report
@@ -248,6 +248,12 @@ def test_investigate_project_osint():
     assert "is_anonymous_founder" in res
     assert "has_official_website" in res
     assert "website" in res
+    assert "socials" in res
+
+    fallback = asyncio.run(investigate_project_osint(token_name="Unknown"))
+    assert fallback["website"] == "Unknown"
+    assert fallback["founder"] == "Unverified"
+    assert fallback["socials"] == {}
 
 
 def test_generate_scanner_inline_keyboard():

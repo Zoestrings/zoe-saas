@@ -359,13 +359,15 @@ async def investigate_project_osint(
     clean_name = (token_name or "").strip()
     if clean_name.lower() in ("unknown token", "unknown", "n/a", ""):
         return {
+            "website": "Unknown",
+            "founder": "Unverified",
+            "socials": {},
             "has_official_website": False,
-            "website": None,
             "twitter": None,
             "telegram": None,
             "discord": None,
             "github": None,
-            "founder": "Anonymous / Unverified",
+            "linkedin": None,
             "is_anonymous_founder": True,
             "evidence_sources": [],
         }
@@ -376,6 +378,7 @@ async def investigate_project_osint(
     telegram_url: Optional[str] = None
     discord_url: Optional[str] = None
     github_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
     founder_name: Optional[str] = None
 
     # 1. Parse DexScreener verified info if available
@@ -397,6 +400,8 @@ async def investigate_project_osint(
                     telegram_url = telegram_url or surl
                 elif "discord" in stype:
                     discord_url = discord_url or surl
+                elif "linkedin" in stype or "linkedin.com" in surl:
+                    linkedin_url = linkedin_url or surl
 
     # 2. Search DuckDuckGo for Official Website if missing
     from zoe.tools.web_search import search_web
@@ -449,6 +454,11 @@ async def investigate_project_osint(
                         gh_match = re.search(r'https?://github\.com/([A-Za-z0-9_-]{1,50})', html_content)
                         if gh_match and gh_match.group(1).lower() not in ("features", "pricing", "enterprise", "site"):
                             github_url = gh_match.group(0)
+
+                    if not linkedin_url:
+                        li_match = re.search(r'https?://(?:www\.)?linkedin\.com/(?:company|in)/[A-Za-z0-9_-]+', html_content)
+                        if li_match:
+                            linkedin_url = li_match.group(0)
         except Exception as exc:
             logger.debug("OSINT website scraping error for %s: %s", website_url, exc)
 
@@ -485,16 +495,30 @@ async def investigate_project_osint(
             break
 
     is_anon = not bool(founder_name)
-    display_founder = founder_name if founder_name else "Anonymous / Unverified"
+    display_founder = founder_name if founder_name else "Unverified"
+
+    socials_dict: Dict[str, str] = {}
+    if twitter_url:
+        socials_dict["twitter"] = twitter_url
+    if telegram_url:
+        socials_dict["telegram"] = telegram_url
+    if discord_url:
+        socials_dict["discord"] = discord_url
+    if github_url:
+        socials_dict["github"] = github_url
+    if linkedin_url:
+        socials_dict["linkedin"] = linkedin_url
 
     return {
+        "website": website_url if website_url else "Unknown",
+        "founder": display_founder,
+        "socials": socials_dict,
         "has_official_website": bool(website_url),
-        "website": website_url,
         "twitter": twitter_url,
         "telegram": telegram_url,
         "discord": discord_url,
         "github": github_url,
-        "founder": display_founder,
+        "linkedin": linkedin_url,
         "is_anonymous_founder": is_anon,
         "evidence_sources": list(dict.fromkeys(evidence)),
     }
@@ -598,14 +622,16 @@ def evaluate_risk(
 
     # 8. Project & Founder OSINT Checks (Mega-Module 2)
     if osint and isinstance(osint, dict):
-        if not osint.get("has_official_website"):
+        has_web = osint.get("has_official_website") or (osint.get("website") and osint.get("website") != "Unknown")
+        if not has_web:
             medium_reasons.append("No official website found.")
-        elif osint.get("website"):
+        elif osint.get("website") and osint.get("website") != "Unknown":
             low_reasons.append(f"Official website verified: {osint.get('website')}")
 
-        if osint.get("is_anonymous_founder"):
+        is_anon = osint.get("is_anonymous_founder") or (osint.get("founder") in ("Unverified", "Anonymous / Unverified", None))
+        if is_anon:
             unknown_reasons.append("Founder identity is unverified.")
-        elif osint.get("founder") and osint.get("founder") != "Anonymous / Unverified":
+        elif osint.get("founder") and osint.get("founder") not in ("Unverified", "Anonymous / Unverified"):
             low_reasons.append(f"Public founder identified: {osint.get('founder')}")
 
     # Deterministic Risk Hierarchy
@@ -738,6 +764,7 @@ async def scan_solana_token(
             "holds_percent": dev_pct,
             "status": dev_status,
         },
+        "osint": osint_data,
         "project_osint": osint_data,
         "risk": risk_assessment,
         "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
@@ -772,6 +799,11 @@ def scan_solana_token_sync(ca: str) -> Dict[str, Any]:
     except Exception as exc:
         logger.warning("scan_solana_token_sync encountered error: %s", exc)
         return asyncio.run(scan_solana_token(clean_ca))
+
+
+# Aliases for scan functions
+scan_token = scan_solana_token
+scan_token_sync = scan_solana_token_sync
 
 
 def format_scan_report(report_data: Dict[str, Any]) -> str:
@@ -809,7 +841,7 @@ def format_scan_report(report_data: Dict[str, Any]) -> str:
     dev_pct_val = dev_intel.get("holds_percent", 0.0)
     dev_str = f"Holds {dev_pct_val:.1f}% ({dev_intel.get('status', 'Low risk')})"
 
-    osint = report_data.get("project_osint") or {}
+    osint = report_data.get("osint") or report_data.get("project_osint") or {}
     website_str = osint.get("website") or "Unknown"
     twitter_str = osint.get("twitter") or "Unknown"
     founder_str = osint.get("founder") or "Anonymous / Unverified"
@@ -834,7 +866,7 @@ def format_scan_report(report_data: Dict[str, Any]) -> str:
         f"🧑‍💻 Dev Wallet: {dev_str}\n"
         f"Mint Auth: {mint_status}\n"
         f"Freeze Auth: {freeze_status}\n\n"
-        f"🌐 Project Info\n"
+        f"🌐 Project OSINT\n"
         f"Website: {website_str}\n"
         f"Twitter: {twitter_str}\n"
         f"Founder: {founder_str}\n\n"

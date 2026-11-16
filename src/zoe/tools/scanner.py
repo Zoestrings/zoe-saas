@@ -8,6 +8,7 @@ Provides deterministic on-chain and market intelligence:
 - Evidence-based Deterministic Risk Evaluation
 """
 
+import asyncio
 from datetime import datetime, timezone
 import re
 from typing import Any, Dict, List, Optional
@@ -149,6 +150,7 @@ async def fetch_dexscreener_market_data(
 
                 result["pair_url"] = top_pair.get("url")
                 result["pair_created_at"] = top_pair.get("pairCreatedAt")
+                result["info"] = top_pair.get("info") or {}
     except Exception as exc:
         logger.warning("DexScreener fetch error for %s: %s", ca, exc)
 
@@ -343,11 +345,167 @@ async def fetch_rugcheck_fallback(
     return result
 
 
+async def investigate_project_osint(
+    token_name: str,
+    symbol: Optional[str] = None,
+    market_info: Optional[Dict[str, Any]] = None,
+    client: Optional[httpx.AsyncClient] = None,
+) -> Dict[str, Any]:
+    """Execute Project & Founder OSINT intelligence investigation (Mega-Module 2).
+    
+    Searches official web presence, scrapes homepage for social links,
+    and identifies public founders/executives via search queries.
+    """
+    clean_name = (token_name or "").strip()
+    if clean_name.lower() in ("unknown token", "unknown", "n/a", ""):
+        return {
+            "has_official_website": False,
+            "website": None,
+            "twitter": None,
+            "telegram": None,
+            "discord": None,
+            "github": None,
+            "founder": "Anonymous / Unverified",
+            "is_anonymous_founder": True,
+            "evidence_sources": [],
+        }
+
+    evidence: List[str] = []
+    website_url: Optional[str] = None
+    twitter_url: Optional[str] = None
+    telegram_url: Optional[str] = None
+    discord_url: Optional[str] = None
+    github_url: Optional[str] = None
+    founder_name: Optional[str] = None
+
+    # 1. Parse DexScreener verified info if available
+    if market_info and isinstance(market_info, dict):
+        websites = market_info.get("websites") or []
+        for w in websites:
+            if isinstance(w, dict) and w.get("url"):
+                website_url = w["url"]
+                evidence.append("DexScreener Official Registry")
+                break
+        socials = market_info.get("socials") or []
+        for s in socials:
+            if isinstance(s, dict) and s.get("url"):
+                stype = (s.get("type") or "").lower()
+                surl = s["url"]
+                if "twitter" in stype or "x.com" in surl or "twitter.com" in surl:
+                    twitter_url = twitter_url or surl
+                elif "telegram" in stype or "t.me" in surl:
+                    telegram_url = telegram_url or surl
+                elif "discord" in stype:
+                    discord_url = discord_url or surl
+
+    # 2. Search DuckDuckGo for Official Website if missing
+    from zoe.tools.web_search import search_web
+    if not website_url:
+        search_query = f"{clean_name} official website"
+        try:
+            web_results = await search_web(search_query, max_results=3)
+            for res in web_results:
+                href = res.get("href") or ""
+                # Filter out aggregators / social platforms
+                if href and not any(skip in href.lower() for skip in (
+                    "dexscreener.com", "dextools.io", "coingecko.com", "coinmarketcap.com",
+                    "twitter.com", "x.com", "youtube.com", "t.me", "medium.com", "reddit.com"
+                )):
+                    website_url = href
+                    evidence.append(f"DuckDuckGo Search: '{search_query}'")
+                    break
+        except Exception as exc:
+            logger.debug("OSINT website search failed: %s", exc)
+
+    # 3. Scrape website homepage for social links if present
+    if website_url:
+        try:
+            async with httpx.AsyncClient(timeout=4.0, follow_redirects=True) as scrape_client:
+                resp = await scrape_client.get(
+                    website_url,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                )
+                if resp.status_code == 200:
+                    html_content = resp.text
+                    evidence.append(f"Homepage Scrape: {website_url}")
+
+                    # Regex patterns for social links
+                    if not twitter_url:
+                        tw_match = re.search(r'https?://(?:www\.)?(?:twitter\.com|x\.com)/([A-Za-z0-9_]{1,50})', html_content)
+                        if tw_match and tw_match.group(1).lower() not in ("share", "intent", "home", "search", "status"):
+                            twitter_url = tw_match.group(0)
+
+                    if not telegram_url:
+                        tg_match = re.search(r'https?://t\.me/([A-Za-z0-9_]{1,50})', html_content)
+                        if tg_match and tg_match.group(1).lower() not in ("share", "joinchat"):
+                            telegram_url = tg_match.group(0)
+
+                    if not discord_url:
+                        dc_match = re.search(r'https?://discord\.(?:gg|com/invite)/[A-Za-z0-9_-]+', html_content)
+                        if dc_match:
+                            discord_url = dc_match.group(0)
+
+                    if not github_url:
+                        gh_match = re.search(r'https?://github\.com/([A-Za-z0-9_-]{1,50})', html_content)
+                        if gh_match and gh_match.group(1).lower() not in ("features", "pricing", "enterprise", "site"):
+                            github_url = gh_match.group(0)
+        except Exception as exc:
+            logger.debug("OSINT website scraping error for %s: %s", website_url, exc)
+
+    # 4. Search DuckDuckGo for Founder / CEO
+    founder_query = f"{clean_name} crypto founder CEO"
+    snippets_collected: List[str] = []
+    try:
+        founder_results = await search_web(founder_query, max_results=4)
+        if founder_results:
+            evidence.append(f"DuckDuckGo Search: '{founder_query}'")
+            for fr in founder_results:
+                title = fr.get("title") or ""
+                body = fr.get("body") or ""
+                snippets_collected.append(f"{title} - {body}")
+    except Exception as exc:
+        logger.debug("OSINT founder search failed: %s", exc)
+
+    # 5. Parse founder name
+    founder_patterns = [
+        r'(?:co-founder|founder|creator|ceo)\s+(?:of\s+[A-Za-z0-9_\s]+\s+)?(?:is\s+|:\s+)?([A-Z][a-zA-Z0-9_\s]{1,25})',
+        r'([A-Z][a-zA-Z0-9_\s]{1,20})\s+(?:is\s+the\s+)?(?:co-founder|founder|creator|ceo)\b',
+        r'(?:founded|created)\s+by\s+([A-Z][a-zA-Z0-9_\s]{1,25})',
+    ]
+    stopwords = {"the", "a", "an", "this", "solana", "crypto", "coin", "token", "many", "everything", "popular", "meme", "here", "read", "how", "what", "who", "when"}
+    for text in snippets_collected:
+        for pat in founder_patterns:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                cand = m.group(1).strip()
+                if cand.lower() not in stopwords and len(cand) >= 2:
+                    founder_name = cand
+                    break
+        if founder_name:
+            break
+
+    is_anon = not bool(founder_name)
+    display_founder = founder_name if founder_name else "Anonymous / Unverified"
+
+    return {
+        "has_official_website": bool(website_url),
+        "website": website_url,
+        "twitter": twitter_url,
+        "telegram": telegram_url,
+        "discord": discord_url,
+        "github": github_url,
+        "founder": display_founder,
+        "is_anonymous_founder": is_anon,
+        "evidence_sources": list(dict.fromkeys(evidence)),
+    }
+
+
 def evaluate_risk(
     market: Dict[str, Any],
     security: Dict[str, Any],
+    osint: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Upgraded Risk Assessment Engine for Mega-Module 1.
+    """Upgraded Risk Assessment Engine for Mega-Module 1 & 2.
     
     Deterministic Rules:
     - If Honeypot -> CRITICAL
@@ -356,6 +514,8 @@ def evaluate_risk(
     - If LP is NOT locked/renounced -> HIGH
     - If Mint Authority active -> HIGH
     - If Freeze Authority active -> HIGH
+    - If No website found -> MEDIUM ("No official website found.")
+    - If Founder anonymous -> UNKNOWN/INFO ("Founder identity is unverified.")
     - If LP is locked and Top 10 < 40% (and mint revoked, freeze revoked, dev <= 5%) -> LOW
     """
     if not market.get("found") and not security.get("success"):
@@ -370,6 +530,7 @@ def evaluate_risk(
     high_reasons: List[str] = []
     medium_reasons: List[str] = []
     low_reasons: List[str] = []
+    unknown_reasons: List[str] = []
 
     mint_revoked = security.get("mint_revoked")
     freeze_revoked = security.get("freeze_revoked")
@@ -435,16 +596,31 @@ def evaluate_risk(
         elif liq_usd >= 50_000:
             low_reasons.append(f"Strong DEX liquidity (${format_currency(liq_usd)})")
 
+    # 8. Project & Founder OSINT Checks (Mega-Module 2)
+    if osint and isinstance(osint, dict):
+        if not osint.get("has_official_website"):
+            medium_reasons.append("No official website found.")
+        elif osint.get("website"):
+            low_reasons.append(f"Official website verified: {osint.get('website')}")
+
+        if osint.get("is_anonymous_founder"):
+            unknown_reasons.append("Founder identity is unverified.")
+        elif osint.get("founder") and osint.get("founder") != "Anonymous / Unverified":
+            low_reasons.append(f"Public founder identified: {osint.get('founder')}")
+
     # Deterministic Risk Hierarchy
     if critical_reasons:
         level = "CRITICAL"
-        reasons = critical_reasons + high_reasons + medium_reasons
+        reasons = critical_reasons + high_reasons + medium_reasons + unknown_reasons
     elif high_reasons:
         level = "HIGH"
-        reasons = high_reasons + medium_reasons + low_reasons
+        reasons = high_reasons + medium_reasons + unknown_reasons + low_reasons
     elif medium_reasons:
         level = "MEDIUM"
-        reasons = medium_reasons + low_reasons
+        reasons = medium_reasons + unknown_reasons + low_reasons
+    elif unknown_reasons:
+        level = "LOW"
+        reasons = unknown_reasons + low_reasons
     else:
         # Rule: LP is locked and Top 10 < 40% -> LOW risk
         level = "LOW"
@@ -488,11 +664,34 @@ async def scan_solana_token(
         if rugcheck_data.get("success"):
             security_data.update(rugcheck_data)
 
-    # 3. Deterministic Risk Assessment
-    risk_assessment = evaluate_risk(market_data, security_data)
-
     token_name = market_data.get("name") or "Unknown Token"
     symbol = market_data.get("symbol") or "N/A"
+
+    # 3. Project & Founder OSINT Investigation (Mega-Module 2)
+    osint_data: Dict[str, Any] = {
+        "has_official_website": False,
+        "website": None,
+        "twitter": None,
+        "telegram": None,
+        "discord": None,
+        "github": None,
+        "founder": "Anonymous / Unverified",
+        "is_anonymous_founder": True,
+        "evidence_sources": [],
+    }
+    if market_data.get("found") and token_name != "Unknown Token":
+        try:
+            osint_data = await investigate_project_osint(
+                token_name=token_name,
+                symbol=symbol,
+                market_info=market_data.get("info"),
+                client=client,
+            )
+        except Exception as exc:
+            logger.warning("Project OSINT investigation failed for %s: %s", token_name, exc)
+
+    # 4. Deterministic Risk Assessment (incorporating OSINT flags)
+    risk_assessment = evaluate_risk(market_data, security_data, osint=osint_data)
 
     # Holder Concentration intelligence summary
     top_10 = security_data.get("top_10_holders_percent")
@@ -539,6 +738,7 @@ async def scan_solana_token(
             "holds_percent": dev_pct,
             "status": dev_status,
         },
+        "project_osint": osint_data,
         "risk": risk_assessment,
         "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     }
@@ -557,239 +757,21 @@ def scan_solana_token_sync(ca: str) -> Dict[str, Any]:
             "error": "Invalid contract address format. Must be a valid Solana (base58, 32-44 chars) or EVM (0x..., 42 chars) address.",
         }
 
-    chain_type = "Solana" if valid_sol else "EVM"
-
-    with httpx.Client(timeout=10.0, follow_redirects=True) as client:
-        # 1. DexScreener
-        url_dex = f"https://api.dexscreener.com/latest/dex/tokens/{clean_ca}"
-        market_data: Dict[str, Any] = {
-            "found": False,
-            "chain_id": None,
-            "name": None,
-            "symbol": None,
-            "price_usd": None,
-            "market_cap": None,
-            "liquidity_usd": None,
-            "volume_24h": None,
-            "pair_url": None,
-            "pair_created_at": None,
-        }
+    try:
         try:
-            r = client.get(url_dex)
-            if r.status_code == 200:
-                data = r.json()
-                pairs = data.get("pairs") or []
-                if pairs:
-                    solana_pairs = [p for p in pairs if p.get("chainId") == "solana"]
-                    target_pairs = solana_pairs if solana_pairs else pairs
-                    sorted_pairs = sorted(
-                        target_pairs,
-                        key=lambda p: float(p.get("liquidity", {}).get("usd") or 0.0) if isinstance(p.get("liquidity"), dict) else 0.0,
-                        reverse=True,
-                    )
-                    top_pair = sorted_pairs[0]
-                    market_data["found"] = True
-                    market_data["chain_id"] = top_pair.get("chainId")
-                    base = top_pair.get("baseToken", {})
-                    market_data["name"] = base.get("name")
-                    market_data["symbol"] = base.get("symbol")
-                    try:
-                        market_data["price_usd"] = float(top_pair.get("priceUsd")) if top_pair.get("priceUsd") is not None else None
-                    except (ValueError, TypeError):
-                        pass
-                    mcap = top_pair.get("marketCap") or top_pair.get("fdv")
-                    try:
-                        market_data["market_cap"] = float(mcap) if mcap is not None else None
-                    except (ValueError, TypeError):
-                        pass
-                    liq = top_pair.get("liquidity", {})
-                    if isinstance(liq, dict):
-                        try:
-                            market_data["liquidity_usd"] = float(liq.get("usd")) if liq.get("usd") is not None else None
-                        except (ValueError, TypeError):
-                            pass
-                    vol = top_pair.get("volume", {})
-                    if isinstance(vol, dict):
-                        try:
-                            market_data["volume_24h"] = float(vol.get("h24")) if vol.get("h24") is not None else None
-                        except (ValueError, TypeError):
-                            pass
-                    market_data["pair_url"] = top_pair.get("url")
-                    market_data["pair_created_at"] = top_pair.get("pairCreatedAt")
-        except Exception as exc:
-            logger.warning("Sync DexScreener error for %s: %s", clean_ca, exc)
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
 
-        # 2. GoPlus Solana Security
-        url_goplus = f"https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses={clean_ca}"
-        security_data: Dict[str, Any] = {
-            "success": False,
-            "mint_revoked": None,
-            "freeze_revoked": None,
-            "top_10_holders_percent": None,
-            "holder_count": None,
-            "is_honeypot": False,
-            "lp_locked": False,
-            "lp_lock_percent": 0.0,
-            "creator_address": None,
-            "dev_wallet_percent": 0.0,
-            "source": "GoPlus",
-        }
-        try:
-            r2 = client.get(url_goplus)
-            if r2.status_code == 200:
-                data2 = r2.json()
-                res2 = data2.get("result", {})
-                token_data = res2.get(clean_ca) if isinstance(res2, dict) else None
-                if token_data and isinstance(token_data, dict):
-                    security_data["success"] = True
-                    mint_info = token_data.get("mintable", {})
-                    if isinstance(mint_info, dict):
-                        security_data["mint_revoked"] = (str(mint_info.get("status", "")) == "0")
-
-                    freeze_info = token_data.get("freezable", {})
-                    if isinstance(freeze_info, dict):
-                        security_data["freeze_revoked"] = (str(freeze_info.get("status", "")) == "0")
-
-                    if str(token_data.get("non_transferable", "0")) == "1":
-                        security_data["is_honeypot"] = True
-
-                    # Creator Address
-                    creators = token_data.get("creators") or []
-                    creator_addr = None
-                    if isinstance(creators, list) and creators:
-                        c0 = creators[0]
-                        creator_addr = c0.get("address") if isinstance(c0, dict) else str(c0)
-                    if not creator_addr:
-                        mut_auth = token_data.get("metadata_mutable", {}).get("metadata_upgrade_authority", [])
-                        if isinstance(mut_auth, list) and mut_auth:
-                            creator_addr = mut_auth[0].get("address")
-                    security_data["creator_address"] = creator_addr
-
-                    holders = token_data.get("holders") or []
-                    if isinstance(holders, list) and holders:
-                        top_10 = holders[:10]
-                        total_pct = 0.0
-                        for h in top_10:
-                            try:
-                                p_val = float(h.get("percent", 0.0))
-                                total_pct += (p_val * 100.0) if p_val <= 1.0 else p_val
-                            except (ValueError, TypeError):
-                                pass
-                        security_data["top_10_holders_percent"] = round(total_pct, 2)
-
-                        if creator_addr:
-                            dev_holder = next((h for h in holders if h.get("account") == creator_addr), None)
-                            if dev_holder:
-                                p = float(dev_holder.get("percent", 0.0))
-                                security_data["dev_wallet_percent"] = round((p * 100.0) if p <= 1.0 else p, 2)
-
-                    try:
-                        security_data["holder_count"] = int(token_data.get("holder_count", 0))
-                    except (ValueError, TypeError):
-                        pass
-
-                    # LP Lock check
-                    dex_pools = token_data.get("dex") or []
-                    max_burn = 0.0
-                    for pool in dex_pools:
-                        b_pct = pool.get("burn_percent")
-                        if b_pct is not None:
-                            try:
-                                val = float(b_pct)
-                                if val > max_burn:
-                                    max_burn = val
-                            except (ValueError, TypeError):
-                                pass
-                    security_data["lp_lock_percent"] = round(max_burn, 2)
-                    security_data["lp_locked"] = (max_burn >= 70.0)
-
-        except Exception as exc:
-            logger.warning("Sync GoPlus error for %s: %s", clean_ca, exc)
-
-        # Fallback to RugCheck if GoPlus failed on Solana
-        if not security_data.get("success") and valid_sol:
-            try:
-                url_rc = f"https://api.rugcheck.xyz/v1/tokens/{clean_ca}/report"
-                r3 = client.get(url_rc)
-                if r3.status_code == 200:
-                    d3 = r3.json()
-                    if isinstance(d3, dict):
-                        security_data["success"] = True
-                        security_data["source"] = "RugCheck"
-                        tok = d3.get("token", {})
-                        security_data["mint_revoked"] = (tok.get("mintAuthority") is None)
-                        security_data["freeze_revoked"] = (tok.get("freezeAuthority") is None)
-                        creator_addr = d3.get("creator")
-                        security_data["creator_address"] = creator_addr
-                        th = d3.get("topHolders") or []
-                        if isinstance(th, list) and th:
-                            top_10_rc = th[:10]
-                            total_rc = sum(float(h.get("pct", 0.0)) for h in top_10_rc if "pct" in h)
-                            security_data["top_10_holders_percent"] = round(total_rc, 2)
-                            if creator_addr:
-                                dev_h = next((h for h in th if h.get("address") == creator_addr), None)
-                                if dev_h and "pct" in dev_h:
-                                    security_data["dev_wallet_percent"] = round(float(dev_h["pct"]), 2)
-
-                        markets = d3.get("markets") or []
-                        if markets and isinstance(markets[0], dict):
-                            lp_info = markets[0].get("lp", {})
-                            if isinstance(lp_info, dict):
-                                lp_pct = float(lp_info.get("lpLockedPct") or 0.0)
-                                security_data["lp_lock_percent"] = round(lp_pct, 2)
-                                security_data["lp_locked"] = (lp_pct >= 70.0)
-            except Exception as exc:
-                logger.debug("Sync RugCheck fallback error: %s", exc)
-
-        # 3. Risk Evaluation
-        risk = evaluate_risk(market_data, security_data)
-        token_name = market_data.get("name") or "Unknown Token"
-        symbol = market_data.get("symbol") or "N/A"
-
-        top_10 = security_data.get("top_10_holders_percent")
-        if top_10 is not None:
-            if top_10 < 40.0:
-                holder_status = "Healthy"
-            elif top_10 <= 80.0:
-                holder_status = "Concentrated"
-            else:
-                holder_status = "Critical Danger"
+        if loop and loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(asyncio.run, scan_solana_token(clean_ca)).result(timeout=25.0)
         else:
-            holder_status = "Unknown"
-
-        lp_locked = security_data.get("lp_locked", False)
-        lp_status = "Locked (Safe)" if lp_locked else "Unlocked (Risky)"
-        dev_pct = security_data.get("dev_wallet_percent", 0.0)
-        dev_status = "High risk" if dev_pct > 10.0 else ("Moderate risk" if dev_pct > 5.0 else "Low risk")
-
-        return {
-            "valid": True,
-            "ca": clean_ca,
-            "ca_short": shorten_ca(clean_ca),
-            "chain": chain_type,
-            "name": token_name,
-            "symbol": symbol,
-            "market": market_data,
-            "security": security_data,
-            "holder_intelligence": {
-                "top_10_percent": top_10,
-                "holder_count": security_data.get("holder_count"),
-                "status": holder_status,
-            },
-            "lp_intelligence": {
-                "is_locked": lp_locked,
-                "lock_percent": security_data.get("lp_lock_percent", 0.0),
-                "status": lp_status,
-            },
-            "dev_wallet_intelligence": {
-                "creator_address": security_data.get("creator_address"),
-                "creator_address_short": shorten_ca(security_data.get("creator_address") or ""),
-                "holds_percent": dev_pct,
-                "status": dev_status,
-            },
-            "risk": risk,
-            "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-        }
+            return asyncio.run(scan_solana_token(clean_ca))
+    except Exception as exc:
+        logger.warning("scan_solana_token_sync encountered error: %s", exc)
+        return asyncio.run(scan_solana_token(clean_ca))
 
 
 def format_scan_report(report_data: Dict[str, Any]) -> str:
@@ -827,6 +809,11 @@ def format_scan_report(report_data: Dict[str, Any]) -> str:
     dev_pct_val = dev_intel.get("holds_percent", 0.0)
     dev_str = f"Holds {dev_pct_val:.1f}% ({dev_intel.get('status', 'Low risk')})"
 
+    osint = report_data.get("project_osint") or {}
+    website_str = osint.get("website") or "Unknown"
+    twitter_str = osint.get("twitter") or "Unknown"
+    founder_str = osint.get("founder") or "Anonymous / Unverified"
+
     timestamp = report_data.get("timestamp_utc") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
     # Format risk reasons
@@ -847,6 +834,10 @@ def format_scan_report(report_data: Dict[str, Any]) -> str:
         f"🧑‍💻 Dev Wallet: {dev_str}\n"
         f"Mint Auth: {mint_status}\n"
         f"Freeze Auth: {freeze_status}\n\n"
+        f"🌐 Project Info\n"
+        f"Website: {website_str}\n"
+        f"Twitter: {twitter_str}\n"
+        f"Founder: {founder_str}\n\n"
         f"Evidence Sources: DexScreener, GoPlus\n"
         f"Timestamp: {timestamp}\n"
         f"(This is a preliminary scan, not financial advice.)"

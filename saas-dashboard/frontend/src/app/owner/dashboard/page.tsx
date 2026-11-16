@@ -2,16 +2,16 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { 
-  Bot, 
-  BrainCircuit, 
-  FileCode, 
-  Copy, 
-  Check, 
-  ExternalLink, 
-  RefreshCw, 
-  Layers, 
-  ShieldCheck, 
+import {
+  Bot,
+  BrainCircuit,
+  FileCode,
+  Copy,
+  Check,
+  ExternalLink,
+  RefreshCw,
+  Layers,
+  ShieldCheck,
   Sparkles,
   Inbox
 } from "lucide-react"

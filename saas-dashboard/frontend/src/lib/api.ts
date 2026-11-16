@@ -97,6 +97,17 @@ export interface InvestigationReport {
     holds_percent?: number
     status?: string
   }
+  project_osint?: {
+    has_official_website?: boolean
+    website?: string | null
+    twitter?: string | null
+    telegram?: string | null
+    discord?: string | null
+    github?: string | null
+    founder?: string | null
+    is_anonymous_founder?: boolean
+    evidence_sources?: string[]
+  }
   risk?: {
     level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN"
     reasons: string[]

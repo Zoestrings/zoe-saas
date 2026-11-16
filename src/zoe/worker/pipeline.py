@@ -1165,6 +1165,25 @@ def process_message(
             except Exception:
                 pass
 
+        if intent == "command_investigate":
+            try:
+                from urllib.parse import urlparse
+                from zoe.safety.validator import DEFAULT_APPROVED_DOMAINS
+                investigate_domains = list(DEFAULT_APPROVED_DOMAINS) + [
+                    "dexscreener.com", "solscan.io", "etherscan.io", "gopluslabs.io", "rugcheck.xyz", "twitter.com", "x.com", "t.me"
+                ]
+                if 'scan_res' in locals() and isinstance(scan_res, dict):
+                    osint_res = scan_res.get("project_osint") or {}
+                    for u in [osint_res.get("website"), osint_res.get("twitter"), osint_res.get("telegram"), osint_res.get("discord")]:
+                        if u:
+                            netloc = urlparse(u).netloc.lower()
+                            if netloc:
+                                investigate_domains.append(netloc)
+                existing = safety_config.get("url_allowlist", [])
+                safety_config["url_allowlist"] = list(set(existing + investigate_domains))
+            except Exception:
+                pass
+
         validator = safety_validator_fn or validate_output
         try:
             safety_res = validator(generated_text, official_chunks, config=safety_config)

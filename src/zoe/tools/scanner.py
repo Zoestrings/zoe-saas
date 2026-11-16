@@ -1,7 +1,11 @@
-"""Solana Token Intelligence Scanner.
+"""Solana & EVM Token Intelligence Scanner (Mega-Module 1: Holder & LP Intelligence).
 
-Provides deterministic on-chain and market intelligence for Solana tokens,
-aggregating DexScreener and GoPlus security checks with evidence-based risk assessment.
+Provides deterministic on-chain and market intelligence:
+- Top 10 Holder Concentration
+- Liquidity Pool (LP) Lock & Burn Verification
+- Developer / Deployer Wallet Holding Analysis
+- Mint & Freeze Authority Checks
+- Evidence-based Deterministic Risk Evaluation
 """
 
 from datetime import datetime, timezone
@@ -15,13 +19,23 @@ logger = get_logger("zoe.tools.scanner")
 
 # Base58 character set for Solana contract addresses (length 32 to 44)
 SOLANA_CA_REGEX = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
+# EVM address pattern
+EVM_CA_REGEX = re.compile(r"^0x[a-fA-F0-9]{40}$")
 
 
 def is_valid_solana_ca(ca: str) -> bool:
     """Validate whether a string matches standard Solana base58 public key format."""
     if not ca or not isinstance(ca, str):
         return False
-    return bool(SOLANA_CA_REGEX.match(ca.strip()))
+    clean = ca.strip()
+    return bool(SOLANA_CA_REGEX.match(clean))
+
+
+def is_valid_evm_ca(ca: str) -> bool:
+    """Validate whether a string matches standard EVM 0x contract address format."""
+    if not ca or not isinstance(ca, str):
+        return False
+    return bool(EVM_CA_REGEX.match(ca.strip()))
 
 
 def format_currency(value: Optional[float], decimals: int = 2) -> str:
@@ -72,6 +86,7 @@ async def fetch_dexscreener_market_data(
     url = f"https://api.dexscreener.com/latest/dex/tokens/{ca}"
     result: Dict[str, Any] = {
         "found": False,
+        "chain_id": None,
         "name": None,
         "symbol": None,
         "price_usd": None,
@@ -93,7 +108,7 @@ async def fetch_dexscreener_market_data(
             data = resp.json()
             pairs = data.get("pairs") or []
             if pairs:
-                # Find the highest liquidity Solana pair
+                # Prefer Solana pair if CA matches Solana, or highest liquidity pair
                 solana_pairs = [p for p in pairs if p.get("chainId") == "solana"]
                 target_pairs = solana_pairs if solana_pairs else pairs
                 sorted_pairs = sorted(
@@ -103,6 +118,7 @@ async def fetch_dexscreener_market_data(
                 )
                 top_pair = sorted_pairs[0]
                 result["found"] = True
+                result["chain_id"] = top_pair.get("chainId")
                 base = top_pair.get("baseToken", {})
                 result["name"] = base.get("name")
                 result["symbol"] = base.get("symbol")
@@ -143,7 +159,7 @@ async def fetch_goplus_solana_security(
     ca: str,
     client: Optional[httpx.AsyncClient] = None,
 ) -> Dict[str, Any]:
-    """Fetch on-chain security metrics from GoPlus Solana API."""
+    """Fetch on-chain security metrics from GoPlus Solana API with LP and creator extraction."""
     url = f"https://api.gopluslabs.io/api/v1/solana/token_security?contract_addresses={ca}"
     result: Dict[str, Any] = {
         "success": False,
@@ -152,6 +168,10 @@ async def fetch_goplus_solana_security(
         "top_10_holders_percent": None,
         "holder_count": None,
         "is_honeypot": False,
+        "lp_locked": False,
+        "lp_lock_percent": 0.0,
+        "creator_address": None,
+        "dev_wallet_percent": 0.0,
         "source": "GoPlus",
     }
 
@@ -170,23 +190,35 @@ async def fetch_goplus_solana_security(
             if token_data and isinstance(token_data, dict):
                 result["success"] = True
 
-                # Mint authority: status '0' means non-mintable (revoked), '1' means mintable (active)
+                # 1. Mint authority: '0' = revoked, '1' = active
                 mintable_info = token_data.get("mintable", {})
                 if isinstance(mintable_info, dict):
                     status = str(mintable_info.get("status", ""))
                     result["mint_revoked"] = (status == "0")
 
-                # Freeze authority: status '0' means non-freezable (revoked), '1' means freezable (active)
+                # 2. Freeze authority: '0' = revoked, '1' = active
                 freezable_info = token_data.get("freezable", {})
                 if isinstance(freezable_info, dict):
                     status = str(freezable_info.get("status", ""))
                     result["freeze_revoked"] = (status == "0")
 
-                # Non-transferable flag
+                # 3. Honeypot check
                 if str(token_data.get("non_transferable", "0")) == "1":
                     result["is_honeypot"] = True
 
-                # Top 10 Holders concentration
+                # 4. Creator / Deployer Address
+                creators = token_data.get("creators") or []
+                creator_addr = None
+                if isinstance(creators, list) and creators:
+                    c0 = creators[0]
+                    creator_addr = c0.get("address") if isinstance(c0, dict) else str(c0)
+                if not creator_addr:
+                    mut_auth = token_data.get("metadata_mutable", {}).get("metadata_upgrade_authority", [])
+                    if isinstance(mut_auth, list) and mut_auth:
+                        creator_addr = mut_auth[0].get("address")
+                result["creator_address"] = creator_addr
+
+                # 5. Holders Analysis & Dev Wallet Balance
                 holders = token_data.get("holders") or []
                 if isinstance(holders, list) and holders:
                     top_10 = holders[:10]
@@ -194,19 +226,42 @@ async def fetch_goplus_solana_security(
                     for h in top_10:
                         try:
                             pct_val = float(h.get("percent", 0.0))
-                            # Handle decimal (0.104) vs percentage (10.4)
-                            if pct_val <= 1.0:
-                                total_pct += pct_val * 100.0
-                            else:
-                                total_pct += pct_val
+                            total_pct += (pct_val * 100.0) if pct_val <= 1.0 else pct_val
                         except (ValueError, TypeError):
                             pass
                     result["top_10_holders_percent"] = round(total_pct, 2)
+
+                    # Check creator holding
+                    if creator_addr:
+                        dev_holder = next(
+                            (h for h in holders if h.get("account") == creator_addr),
+                            None
+                        )
+                        if dev_holder:
+                            p = float(dev_holder.get("percent", 0.0))
+                            result["dev_wallet_percent"] = round((p * 100.0) if p <= 1.0 else p, 2)
 
                 try:
                     result["holder_count"] = int(token_data.get("holder_count", 0))
                 except (ValueError, TypeError):
                     result["holder_count"] = None
+
+                # 6. LP Lock Analysis
+                dex_pools = token_data.get("dex") or []
+                max_burn = 0.0
+                for pool in dex_pools:
+                    b_pct = pool.get("burn_percent")
+                    if b_pct is not None:
+                        try:
+                            val = float(b_pct)
+                            if val > max_burn:
+                                max_burn = val
+                        except (ValueError, TypeError):
+                            pass
+
+                result["lp_lock_percent"] = round(max_burn, 2)
+                # Consider locked if >= 70% of pool is burned or LP tokens renounced
+                result["lp_locked"] = (max_burn >= 70.0)
 
     except Exception as exc:
         logger.warning("GoPlus fetch error for %s: %s", ca, exc)
@@ -218,13 +273,17 @@ async def fetch_rugcheck_fallback(
     ca: str,
     client: Optional[httpx.AsyncClient] = None,
 ) -> Dict[str, Any]:
-    """Fallback security check using RugCheck API if GoPlus is unreachable."""
+    """Fallback security check using RugCheck API with LP and creator data."""
     url = f"https://api.rugcheck.xyz/v1/tokens/{ca}/report"
     result: Dict[str, Any] = {
         "success": False,
         "mint_revoked": None,
         "freeze_revoked": None,
         "top_10_holders_percent": None,
+        "lp_locked": False,
+        "lp_lock_percent": 0.0,
+        "creator_address": None,
+        "dev_wallet_percent": 0.0,
         "source": "RugCheck",
     }
     try:
@@ -238,20 +297,46 @@ async def fetch_rugcheck_fallback(
             data = resp.json()
             if isinstance(data, dict):
                 result["success"] = True
-                token_meta = data.get("tokenMeta", {})
                 token_data = data.get("token", {})
 
-                # In RugCheck, null authority means revoked
-                mint_auth = token_data.get("mintAuthority")
-                freeze_auth = token_data.get("freezeAuthority")
-                result["mint_revoked"] = (mint_auth is None)
-                result["freeze_revoked"] = (freeze_auth is None)
+                result["mint_revoked"] = (token_data.get("mintAuthority") is None)
+                result["freeze_revoked"] = (token_data.get("freezeAuthority") is None)
 
+                # Creator
+                creator_addr = data.get("creator")
+                result["creator_address"] = creator_addr
+
+                # Top Holders & Dev Wallet
                 top_holders = data.get("topHolders") or []
                 if isinstance(top_holders, list) and top_holders:
                     top_10 = top_holders[:10]
                     total_pct = sum(float(h.get("pct", 0.0)) for h in top_10 if "pct" in h)
                     result["top_10_holders_percent"] = round(total_pct, 2)
+
+                    if creator_addr:
+                        dev_h = next((h for h in top_holders if h.get("address") == creator_addr), None)
+                        if dev_h and "pct" in dev_h:
+                            result["dev_wallet_percent"] = round(float(dev_h["pct"]), 2)
+
+                # LP Lock Check
+                markets = data.get("markets") or []
+                if markets and isinstance(markets[0], dict):
+                    m0 = markets[0]
+                    lp_info = m0.get("lp", {})
+                    if isinstance(lp_info, dict):
+                        lp_locked_pct = float(lp_info.get("lpLockedPct") or 0.0)
+                        result["lp_lock_percent"] = round(lp_locked_pct, 2)
+                        result["lp_locked"] = (lp_locked_pct >= 70.0)
+                        
+                # Check risks for LP unlock mention
+                risks = data.get("risks") or []
+                for r in risks:
+                    r_name = str(r.get("name", "")).lower()
+                    if "lp not locked" in r_name or "unlocked lp" in r_name:
+                        result["lp_locked"] = False
+                    elif "copycat" in r_name or "honeypot" in r_name:
+                        result["is_honeypot"] = True
+
     except Exception as exc:
         logger.debug("RugCheck fallback fetch error for %s: %s", ca, exc)
 
@@ -262,89 +347,114 @@ def evaluate_risk(
     market: Dict[str, Any],
     security: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Deterministic Risk Assessment Engine.
+    """Upgraded Risk Assessment Engine for Mega-Module 1.
     
-    Risk Levels: CRITICAL, HIGH, MEDIUM, LOW, UNKNOWN
+    Deterministic Rules:
+    - If Honeypot -> CRITICAL
+    - If Top 10 Holders > 80% -> CRITICAL
+    - If Dev Wallet holds > 10% -> HIGH
+    - If LP is NOT locked/renounced -> HIGH
+    - If Mint Authority active -> HIGH
+    - If Freeze Authority active -> HIGH
+    - If LP is locked and Top 10 < 40% (and mint revoked, freeze revoked, dev <= 5%) -> LOW
     """
-    reasons: List[str] = []
-    risk_score = 0  # 0-10: LOW, 11-30: MEDIUM, 31-60: HIGH, 61+: CRITICAL
+    if not market.get("found") and not security.get("success"):
+        return {
+            "level": "UNKNOWN",
+            "reasons": ["Token data not found on decentralized exchanges or security registries."],
+            "critical_count": 0,
+            "high_count": 0,
+        }
+
+    critical_reasons: List[str] = []
+    high_reasons: List[str] = []
+    medium_reasons: List[str] = []
+    low_reasons: List[str] = []
 
     mint_revoked = security.get("mint_revoked")
     freeze_revoked = security.get("freeze_revoked")
     top_10_pct = security.get("top_10_holders_percent")
     liq_usd = market.get("liquidity_usd")
     is_honeypot = security.get("is_honeypot", False)
+    lp_locked = security.get("lp_locked", False)
+    lp_lock_pct = security.get("lp_lock_percent", 0.0)
+    dev_pct = security.get("dev_wallet_percent", 0.0)
 
-    # If completely unlisted and no security data
-    if not market.get("found") and not security.get("success"):
-        return {
-            "level": "UNKNOWN",
-            "reasons": ["Token data not found on Solana DEXes or security registries."],
-        }
-
-    # 1. Honeypot / Transfer Block
+    # 1. Honeypot Check
     if is_honeypot:
-        risk_score += 100
-        reasons.append("Honeypot risk: token transfers may be blocked or restricted")
+        critical_reasons.append("Honeypot risk: token transfers are restricted or blocked")
 
-    # 2. Mint Authority
-    if mint_revoked is False:
-        risk_score += 35
-        reasons.append("Mint Authority is active (owner can inflate supply)")
-    elif mint_revoked is True:
-        reasons.append("Mint Authority is revoked (fixed supply)")
-    else:
-        reasons.append("Mint Authority status unknown")
-
-    # 3. Freeze Authority
-    if freeze_revoked is False:
-        risk_score += 35
-        reasons.append("Freeze Authority is active (owner can freeze token accounts)")
-    elif freeze_revoked is True:
-        reasons.append("Freeze Authority is revoked (accounts cannot be frozen)")
-    else:
-        reasons.append("Freeze Authority status unknown")
-
-    # 4. Top 10 Holder Concentration
+    # 2. Holder Concentration Check
+    # Rule: Top 10 Holders > 80% -> CRITICAL
     if top_10_pct is not None:
         if top_10_pct > 80.0:
-            risk_score += 30
-            reasons.append(f"Extreme holder concentration: Top 10 hold {top_10_pct:.1f}%")
+            critical_reasons.append(f"Extreme holder concentration: Top 10 hold {top_10_pct:.1f}% (>80% threshold)")
         elif top_10_pct > 50.0:
-            risk_score += 15
-            reasons.append(f"Moderate holder concentration: Top 10 hold {top_10_pct:.1f}%")
+            medium_reasons.append(f"Moderate holder concentration: Top 10 hold {top_10_pct:.1f}%")
+        elif top_10_pct < 40.0:
+            low_reasons.append(f"Healthy holder distribution: Top 10 hold {top_10_pct:.1f}% (<40%)")
         else:
-            reasons.append(f"Healthy holder distribution: Top 10 hold {top_10_pct:.1f}%")
+            low_reasons.append(f"Acceptable holder distribution: Top 10 hold {top_10_pct:.1f}%")
 
-    # 5. Liquidity Checks
+    # 3. Developer Wallet Check
+    # Rule: Dev Wallet holds > 10% -> HIGH
+    if dev_pct is not None:
+        if dev_pct > 10.0:
+            high_reasons.append(f"Developer wallet holds {dev_pct:.1f}% of supply (>10% dump risk)")
+        elif dev_pct > 5.0:
+            medium_reasons.append(f"Developer wallet holds {dev_pct:.1f}% of supply")
+        else:
+            low_reasons.append(f"Developer wallet holds {dev_pct:.1f}% (Low risk)")
+
+    # 4. Liquidity Lock Check
+    # Rule: If LP is NOT locked/renounced -> HIGH
+    if lp_locked:
+        pct_tag = f" ({lp_lock_pct:.1f}% burned/locked)" if lp_lock_pct > 0 else ""
+        low_reasons.append(f"Liquidity is Locked/Burned{pct_tag} (Safe)")
+    else:
+        high_reasons.append("Liquidity is NOT locked/renounced - High LP removal/rug risk")
+
+    # 5. Mint Authority Check
+    if mint_revoked is False:
+        high_reasons.append("Mint Authority is active (owner can inflate supply)")
+    elif mint_revoked is True:
+        low_reasons.append("Mint Authority is revoked (fixed supply)")
+
+    # 6. Freeze Authority Check
+    if freeze_revoked is False:
+        high_reasons.append("Freeze Authority is active (owner can freeze token accounts)")
+    elif freeze_revoked is True:
+        low_reasons.append("Freeze Authority is revoked (accounts cannot be frozen)")
+
+    # 7. DEX Liquidity Check
     if liq_usd is not None:
         if liq_usd < 1_000:
-            risk_score += 50
-            reasons.append(f"Extremely low liquidity (${format_currency(liq_usd)}) - high slippage/rug risk")
+            critical_reasons.append(f"Extremely low liquidity (${format_currency(liq_usd)})")
         elif liq_usd < 5_000:
-            risk_score += 30
-            reasons.append(f"Low liquidity (${format_currency(liq_usd)})")
+            high_reasons.append(f"Low liquidity (${format_currency(liq_usd)})")
         elif liq_usd >= 50_000:
-            reasons.append(f"Strong DEX liquidity (${format_currency(liq_usd)})")
-    else:
-        if market.get("found"):
-            risk_score += 20
-            reasons.append("DEX liquidity pool unindexed or minimal")
+            low_reasons.append(f"Strong DEX liquidity (${format_currency(liq_usd)})")
 
-    # Deterministic mapping
-    if risk_score >= 60:
+    # Deterministic Risk Hierarchy
+    if critical_reasons:
         level = "CRITICAL"
-    elif risk_score >= 30:
+        reasons = critical_reasons + high_reasons + medium_reasons
+    elif high_reasons:
         level = "HIGH"
-    elif risk_score >= 15:
+        reasons = high_reasons + medium_reasons + low_reasons
+    elif medium_reasons:
         level = "MEDIUM"
+        reasons = medium_reasons + low_reasons
     else:
+        # Rule: LP is locked and Top 10 < 40% -> LOW risk
         level = "LOW"
+        reasons = low_reasons
 
     return {
         "level": level,
         "reasons": reasons,
-        "risk_score": risk_score,
+        "critical_count": len(critical_reasons),
+        "high_count": len(high_reasons),
     }
 
 
@@ -352,23 +462,28 @@ async def scan_solana_token(
     ca: str,
     client: Optional[httpx.AsyncClient] = None,
 ) -> Dict[str, Any]:
-    """Execute full Solana token investigation scan."""
+    """Execute full token investigation scan for Solana and EVM."""
     clean_ca = ca.strip()
 
     # Format validation
-    if not is_valid_solana_ca(clean_ca):
+    valid_sol = is_valid_solana_ca(clean_ca)
+    valid_evm = is_valid_evm_ca(clean_ca)
+
+    if not valid_sol and not valid_evm:
         return {
             "valid": False,
             "ca": clean_ca,
-            "error": "Invalid Solana contract address format. Solana CAs must be 32-44 base58 characters.",
+            "error": "Invalid contract address format. Must be a valid Solana (base58, 32-44 chars) or EVM (0x..., 42 chars) address.",
         }
+
+    chain_type = "Solana" if valid_sol else "EVM"
 
     # 1. Fetch Market Data (DexScreener)
     market_data = await fetch_dexscreener_market_data(clean_ca, client=client)
 
     # 2. Fetch Security Data (GoPlus primary, RugCheck fallback)
     security_data = await fetch_goplus_solana_security(clean_ca, client=client)
-    if not security_data.get("success"):
+    if not security_data.get("success") and valid_sol:
         rugcheck_data = await fetch_rugcheck_fallback(clean_ca, client=client)
         if rugcheck_data.get("success"):
             security_data.update(rugcheck_data)
@@ -379,14 +494,51 @@ async def scan_solana_token(
     token_name = market_data.get("name") or "Unknown Token"
     symbol = market_data.get("symbol") or "N/A"
 
+    # Holder Concentration intelligence summary
+    top_10 = security_data.get("top_10_holders_percent")
+    if top_10 is not None:
+        if top_10 < 40.0:
+            holder_status = "Healthy"
+        elif top_10 <= 80.0:
+            holder_status = "Concentrated"
+        else:
+            holder_status = "Critical Danger"
+    else:
+        holder_status = "Unknown"
+
+    # LP Lock summary
+    lp_locked = security_data.get("lp_locked", False)
+    lp_status = "Locked (Safe)" if lp_locked else "Unlocked (Risky)"
+
+    # Dev Wallet summary
+    dev_pct = security_data.get("dev_wallet_percent", 0.0)
+    dev_status = "High risk" if dev_pct > 10.0 else ("Moderate risk" if dev_pct > 5.0 else "Low risk")
+
     return {
         "valid": True,
         "ca": clean_ca,
         "ca_short": shorten_ca(clean_ca),
+        "chain": chain_type,
         "name": token_name,
         "symbol": symbol,
         "market": market_data,
         "security": security_data,
+        "holder_intelligence": {
+            "top_10_percent": top_10,
+            "holder_count": security_data.get("holder_count"),
+            "status": holder_status,
+        },
+        "lp_intelligence": {
+            "is_locked": lp_locked,
+            "lock_percent": security_data.get("lp_lock_percent", 0.0),
+            "status": lp_status,
+        },
+        "dev_wallet_intelligence": {
+            "creator_address": security_data.get("creator_address"),
+            "creator_address_short": shorten_ca(security_data.get("creator_address") or ""),
+            "holds_percent": dev_pct,
+            "status": dev_status,
+        },
         "risk": risk_assessment,
         "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     }
@@ -395,18 +547,24 @@ async def scan_solana_token(
 def scan_solana_token_sync(ca: str) -> Dict[str, Any]:
     """Synchronous execution wrapper for scan_solana_token."""
     clean_ca = ca.strip()
-    if not is_valid_solana_ca(clean_ca):
+    valid_sol = is_valid_solana_ca(clean_ca)
+    valid_evm = is_valid_evm_ca(clean_ca)
+
+    if not valid_sol and not valid_evm:
         return {
             "valid": False,
             "ca": clean_ca,
-            "error": "Invalid Solana contract address format. Solana CAs must be 32-44 base58 characters.",
+            "error": "Invalid contract address format. Must be a valid Solana (base58, 32-44 chars) or EVM (0x..., 42 chars) address.",
         }
+
+    chain_type = "Solana" if valid_sol else "EVM"
 
     with httpx.Client(timeout=10.0, follow_redirects=True) as client:
         # 1. DexScreener
         url_dex = f"https://api.dexscreener.com/latest/dex/tokens/{clean_ca}"
         market_data: Dict[str, Any] = {
             "found": False,
+            "chain_id": None,
             "name": None,
             "symbol": None,
             "price_usd": None,
@@ -431,6 +589,7 @@ def scan_solana_token_sync(ca: str) -> Dict[str, Any]:
                     )
                     top_pair = sorted_pairs[0]
                     market_data["found"] = True
+                    market_data["chain_id"] = top_pair.get("chainId")
                     base = top_pair.get("baseToken", {})
                     market_data["name"] = base.get("name")
                     market_data["symbol"] = base.get("symbol")
@@ -469,6 +628,10 @@ def scan_solana_token_sync(ca: str) -> Dict[str, Any]:
             "top_10_holders_percent": None,
             "holder_count": None,
             "is_honeypot": False,
+            "lp_locked": False,
+            "lp_lock_percent": 0.0,
+            "creator_address": None,
+            "dev_wallet_percent": 0.0,
             "source": "GoPlus",
         }
         try:
@@ -490,6 +653,18 @@ def scan_solana_token_sync(ca: str) -> Dict[str, Any]:
                     if str(token_data.get("non_transferable", "0")) == "1":
                         security_data["is_honeypot"] = True
 
+                    # Creator Address
+                    creators = token_data.get("creators") or []
+                    creator_addr = None
+                    if isinstance(creators, list) and creators:
+                        c0 = creators[0]
+                        creator_addr = c0.get("address") if isinstance(c0, dict) else str(c0)
+                    if not creator_addr:
+                        mut_auth = token_data.get("metadata_mutable", {}).get("metadata_upgrade_authority", [])
+                        if isinstance(mut_auth, list) and mut_auth:
+                            creator_addr = mut_auth[0].get("address")
+                    security_data["creator_address"] = creator_addr
+
                     holders = token_data.get("holders") or []
                     if isinstance(holders, list) and holders:
                         top_10 = holders[:10]
@@ -501,15 +676,38 @@ def scan_solana_token_sync(ca: str) -> Dict[str, Any]:
                             except (ValueError, TypeError):
                                 pass
                         security_data["top_10_holders_percent"] = round(total_pct, 2)
+
+                        if creator_addr:
+                            dev_holder = next((h for h in holders if h.get("account") == creator_addr), None)
+                            if dev_holder:
+                                p = float(dev_holder.get("percent", 0.0))
+                                security_data["dev_wallet_percent"] = round((p * 100.0) if p <= 1.0 else p, 2)
+
                     try:
                         security_data["holder_count"] = int(token_data.get("holder_count", 0))
                     except (ValueError, TypeError):
                         pass
+
+                    # LP Lock check
+                    dex_pools = token_data.get("dex") or []
+                    max_burn = 0.0
+                    for pool in dex_pools:
+                        b_pct = pool.get("burn_percent")
+                        if b_pct is not None:
+                            try:
+                                val = float(b_pct)
+                                if val > max_burn:
+                                    max_burn = val
+                            except (ValueError, TypeError):
+                                pass
+                    security_data["lp_lock_percent"] = round(max_burn, 2)
+                    security_data["lp_locked"] = (max_burn >= 70.0)
+
         except Exception as exc:
             logger.warning("Sync GoPlus error for %s: %s", clean_ca, exc)
 
-        # Fallback to RugCheck if GoPlus failed
-        if not security_data.get("success"):
+        # Fallback to RugCheck if GoPlus failed on Solana
+        if not security_data.get("success") and valid_sol:
             try:
                 url_rc = f"https://api.rugcheck.xyz/v1/tokens/{clean_ca}/report"
                 r3 = client.get(url_rc)
@@ -521,11 +719,25 @@ def scan_solana_token_sync(ca: str) -> Dict[str, Any]:
                         tok = d3.get("token", {})
                         security_data["mint_revoked"] = (tok.get("mintAuthority") is None)
                         security_data["freeze_revoked"] = (tok.get("freezeAuthority") is None)
+                        creator_addr = d3.get("creator")
+                        security_data["creator_address"] = creator_addr
                         th = d3.get("topHolders") or []
                         if isinstance(th, list) and th:
                             top_10_rc = th[:10]
                             total_rc = sum(float(h.get("pct", 0.0)) for h in top_10_rc if "pct" in h)
                             security_data["top_10_holders_percent"] = round(total_rc, 2)
+                            if creator_addr:
+                                dev_h = next((h for h in th if h.get("address") == creator_addr), None)
+                                if dev_h and "pct" in dev_h:
+                                    security_data["dev_wallet_percent"] = round(float(dev_h["pct"]), 2)
+
+                        markets = d3.get("markets") or []
+                        if markets and isinstance(markets[0], dict):
+                            lp_info = markets[0].get("lp", {})
+                            if isinstance(lp_info, dict):
+                                lp_pct = float(lp_info.get("lpLockedPct") or 0.0)
+                                security_data["lp_lock_percent"] = round(lp_pct, 2)
+                                security_data["lp_locked"] = (lp_pct >= 70.0)
             except Exception as exc:
                 logger.debug("Sync RugCheck fallback error: %s", exc)
 
@@ -534,26 +746,60 @@ def scan_solana_token_sync(ca: str) -> Dict[str, Any]:
         token_name = market_data.get("name") or "Unknown Token"
         symbol = market_data.get("symbol") or "N/A"
 
+        top_10 = security_data.get("top_10_holders_percent")
+        if top_10 is not None:
+            if top_10 < 40.0:
+                holder_status = "Healthy"
+            elif top_10 <= 80.0:
+                holder_status = "Concentrated"
+            else:
+                holder_status = "Critical Danger"
+        else:
+            holder_status = "Unknown"
+
+        lp_locked = security_data.get("lp_locked", False)
+        lp_status = "Locked (Safe)" if lp_locked else "Unlocked (Risky)"
+        dev_pct = security_data.get("dev_wallet_percent", 0.0)
+        dev_status = "High risk" if dev_pct > 10.0 else ("Moderate risk" if dev_pct > 5.0 else "Low risk")
+
         return {
             "valid": True,
             "ca": clean_ca,
             "ca_short": shorten_ca(clean_ca),
+            "chain": chain_type,
             "name": token_name,
             "symbol": symbol,
             "market": market_data,
             "security": security_data,
+            "holder_intelligence": {
+                "top_10_percent": top_10,
+                "holder_count": security_data.get("holder_count"),
+                "status": holder_status,
+            },
+            "lp_intelligence": {
+                "is_locked": lp_locked,
+                "lock_percent": security_data.get("lp_lock_percent", 0.0),
+                "status": lp_status,
+            },
+            "dev_wallet_intelligence": {
+                "creator_address": security_data.get("creator_address"),
+                "creator_address_short": shorten_ca(security_data.get("creator_address") or ""),
+                "holds_percent": dev_pct,
+                "status": dev_status,
+            },
             "risk": risk,
             "timestamp_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         }
 
 
 def format_scan_report(report_data: Dict[str, Any]) -> str:
-    """Format investigation results into the required Zoe Intelligence Report string."""
+    """Format investigation results into the upgraded Zoe Intelligence Report string."""
     if not report_data.get("valid", True):
         return f"❌ **Investigation Error**\n\n{report_data.get('error', 'Invalid contract address.')}"
 
     name = report_data.get("name") or "Unknown Token"
     ca_short = report_data.get("ca_short") or shorten_ca(report_data.get("ca", ""))
+    chain = report_data.get("chain") or "Solana"
     risk = report_data.get("risk", {})
     risk_level = risk.get("level", "UNKNOWN")
     reasons = risk.get("reasons", [])
@@ -567,24 +813,19 @@ def format_scan_report(report_data: Dict[str, Any]) -> str:
     liq_str = format_currency(liq_val)
 
     security = report_data.get("security", {})
-    mint_rev = security.get("mint_revoked")
-    if mint_rev is True:
-        mint_status = "Revoked"
-    elif mint_rev is False:
-        mint_status = "Active"
-    else:
-        mint_status = "Unknown"
+    mint_status = "Revoked" if security.get("mint_revoked") is True else ("Active" if security.get("mint_revoked") is False else "Unknown")
+    freeze_status = "Revoked" if security.get("freeze_revoked") is True else ("Active" if security.get("freeze_revoked") is False else "Unknown")
 
-    freeze_rev = security.get("freeze_revoked")
-    if freeze_rev is True:
-        freeze_status = "Revoked"
-    elif freeze_rev is False:
-        freeze_status = "Active"
-    else:
-        freeze_status = "Unknown"
+    holder_intel = report_data.get("holder_intelligence", {})
+    top_10_pct = holder_intel.get("top_10_percent")
+    top_10_str = f"{top_10_pct:.1f}% ({holder_intel.get('status', 'Unknown')})" if top_10_pct is not None else "N/A"
 
-    top_10_pct = security.get("top_10_holders_percent")
-    top_10_str = f"{top_10_pct:.1f}%" if top_10_pct is not None else "N/A"
+    lp_intel = report_data.get("lp_intelligence", {})
+    lp_status_str = lp_intel.get("status", "Unlocked (Risky)")
+
+    dev_intel = report_data.get("dev_wallet_intelligence", {})
+    dev_pct_val = dev_intel.get("holds_percent", 0.0)
+    dev_str = f"Holds {dev_pct_val:.1f}% ({dev_intel.get('status', 'Low risk')})"
 
     timestamp = report_data.get("timestamp_utc") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
@@ -593,17 +834,19 @@ def format_scan_report(report_data: Dict[str, Any]) -> str:
 
     report = (
         f"🔍 Zoe Intelligence Report\n"
-        f"**{name}** (CA: {ca_short}) · Solana\n\n"
+        f"**{name}** (CA: {ca_short}) · {chain}\n\n"
         f"🚨 Risk Assessment: {risk_level}\n"
         f"{reasons_block}\n\n"
         f"📊 Market Data\n"
         f"Price: ${price_str}\n"
         f"Market Cap: ${mc_str}\n"
         f"Liquidity: ${liq_str}\n\n"
-        f"🛡️ Security Checks\n"
+        f"🛡️ Security & Holder Intelligence\n"
+        f"👥 Holder Concentration: Top 10 hold {top_10_str}\n"
+        f"🔒 LP Lock: {lp_status_str}\n"
+        f"🧑‍💻 Dev Wallet: {dev_str}\n"
         f"Mint Auth: {mint_status}\n"
-        f"Freeze Auth: {freeze_status}\n"
-        f"Top 10 Holders: {top_10_str}\n\n"
+        f"Freeze Auth: {freeze_status}\n\n"
         f"Evidence Sources: DexScreener, GoPlus\n"
         f"Timestamp: {timestamp}\n"
         f"(This is a preliminary scan, not financial advice.)"
@@ -615,19 +858,20 @@ def generate_scanner_inline_keyboard(
     ca: str,
     report_data: Optional[Dict[str, Any]] = None,
 ) -> List[List[Dict[str, str]]]:
-    """Generate inline buttons for DexScreener Chart and Solscan Explorer."""
+    """Generate inline buttons for DexScreener Chart and Blockchain Explorer."""
     clean_ca = ca.strip()
     pair_url = None
+    is_sol = is_valid_solana_ca(clean_ca)
+
     if report_data and isinstance(report_data.get("market"), dict):
         pair_url = report_data["market"].get("pair_url")
 
-    chart_url = pair_url or f"https://dexscreener.com/solana/{clean_ca}"
-    solscan_url = f"https://solscan.io/token/{clean_ca}"
+    chart_url = pair_url or (f"https://dexscreener.com/solana/{clean_ca}" if is_sol else f"https://dexscreener.com/search?q={clean_ca}")
+    explorer_url = f"https://solscan.io/token/{clean_ca}" if is_sol else f"https://etherscan.io/token/{clean_ca}"
 
     return [
         [
             {"text": "📊 Live Chart", "url": chart_url},
-            {"text": "🔍 Solscan Explorer", "url": solscan_url},
+            {"text": "🔍 Explorer", "url": explorer_url},
         ]
     ]
-

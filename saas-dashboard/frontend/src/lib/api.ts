@@ -56,6 +56,7 @@ export interface InvestigationReport {
   ca_short?: string
   name?: string
   symbol?: string
+  chain?: string
   market?: {
     found: boolean
     name?: string | null
@@ -74,7 +75,27 @@ export interface InvestigationReport {
     top_10_holders_percent?: number | null
     holder_count?: number | null
     is_honeypot?: boolean
+    lp_locked?: boolean
+    lp_lock_percent?: number
+    creator_address?: string | null
+    dev_wallet_percent?: number
     source?: string
+  }
+  holder_intelligence?: {
+    top_10_percent?: number | null
+    holder_count?: number | null
+    status?: string
+  }
+  lp_intelligence?: {
+    is_locked: boolean
+    lock_percent?: number
+    status?: string
+  }
+  dev_wallet_intelligence?: {
+    creator_address?: string | null
+    creator_address_short?: string
+    holds_percent?: number
+    status?: string
   }
   risk?: {
     level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN"

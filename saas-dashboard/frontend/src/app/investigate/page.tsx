@@ -20,7 +20,8 @@ import {
   Clock,
   Eye,
   RefreshCw,
-  FileSearch
+  FileSearch,
+  Code2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +42,7 @@ export default function InvestigatePage() {
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<InvestigationReport | null>(null)
   const [copied, setCopied] = useState(false)
+  const [copiedCreator, setCopiedCreator] = useState(false)
   const [copiedHistoryId, setCopiedHistoryId] = useState<string | null>(null)
 
   // Investigation History state
@@ -53,10 +55,16 @@ export default function InvestigatePage() {
       const data = await api.getInvestigations()
       setHistory(data || [])
     } catch (err) {
-      console.error("Failed to load investigation history:", err)
+      console.warn("Notice: Failed to load investigation history:", err)
     } finally {
       setHistoryLoading(false)
     }
+  }
+
+  const copyCreatorToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedCreator(true)
+    setTimeout(() => setCopiedCreator(false), 2000)
   }
 
   useEffect(() => {
@@ -301,7 +309,7 @@ export default function InvestigatePage() {
                     Token Investigation Report
                   </span>
                   <span className="text-[10px] bg-neutral-800 text-neutral-300 px-2 py-0.5 rounded-full border border-neutral-700">
-                    Solana
+                    {report.chain || "Solana"}
                   </span>
                 </div>
                 <h2 className="text-2xl font-black text-white tracking-tight mt-1">
@@ -349,6 +357,171 @@ export default function InvestigatePage() {
               </div>
             </div>
           </div>
+
+          {/* Mega-Module 1: Advanced Contract, Holder & LP Intelligence */}
+          {(() => {
+            const top10 = report.holder_intelligence?.top_10_percent ?? report.security?.top_10_holders_percent ?? null
+            const holders = report.holder_intelligence?.holder_count ?? report.security?.holder_count ?? null
+            const holderStatus = report.holder_intelligence?.status || (top10 !== null ? (top10 > 80 ? "Critical Danger" : top10 > 40 ? "Concentrated" : "Healthy") : "Unknown")
+
+            const lpLocked = report.lp_intelligence?.is_locked ?? (report.security?.lp_locked ?? false)
+            const lpPct = report.lp_intelligence?.lock_percent ?? report.security?.lp_lock_percent ?? (lpLocked ? 100 : 0)
+
+            const devPct = report.dev_wallet_intelligence?.holds_percent ?? report.security?.dev_wallet_percent ?? 0
+            const devStatus = report.dev_wallet_intelligence?.status || (devPct > 10 ? "High risk" : devPct > 5 ? "Moderate risk" : "Low risk")
+            const creatorAddr = report.dev_wallet_intelligence?.creator_address || report.security?.creator_address
+            const creatorAddrShort = report.dev_wallet_intelligence?.creator_address_short || (creatorAddr ? `${creatorAddr.slice(0, 4)}...${creatorAddr.slice(-4)}` : null)
+
+            return (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* 1. Holder Concentration Card */}
+                <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden flex flex-col justify-between">
+                  <CardHeader className="p-6 border-b border-neutral-800">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+                        <Users className="h-4 w-4 text-[#00ff66]" />
+                        <span>Holder Concentration</span>
+                      </CardTitle>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                        top10 !== null && top10 > 80
+                          ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                          : top10 !== null && top10 > 40
+                          ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                          : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+                      }`}>
+                        {holderStatus}
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    <div>
+                      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                        Top 10 Holders Control
+                      </span>
+                      <div className="text-3xl font-black text-white mt-1">
+                        {top10 !== null ? `${top10.toFixed(1)}%` : "N/A"}
+                      </div>
+                    </div>
+                    <div className="w-full bg-neutral-900 rounded-full h-2 overflow-hidden border border-neutral-800">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          top10 !== null && top10 > 80
+                            ? "bg-rose-500"
+                            : top10 !== null && top10 > 40
+                            ? "bg-amber-400"
+                            : "bg-[#00ff66]"
+                        }`}
+                        style={{ width: `${Math.min(top10 || 0, 100)}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-neutral-400 pt-1">
+                      <span>Total Unique Holders</span>
+                      <span className="text-white font-mono font-bold">
+                        {holders ? holders.toLocaleString() : "N/A"}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* 2. Liquidity Pool Lock Card */}
+                <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden flex flex-col justify-between">
+                  <CardHeader className="p-6 border-b border-neutral-800">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+                        <Lock className="h-4 w-4 text-[#00ff66]" />
+                        <span>Liquidity Pool (LP)</span>
+                      </CardTitle>
+                      {lpLocked ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
+                          <Check className="h-3 w-3" /> Locked (Safe)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                          <AlertTriangle className="h-3 w-3" /> Unlocked (Risky)
+                        </span>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    <div>
+                      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                        LP Burn / Lock Ratio
+                      </span>
+                      <div className={`text-3xl font-black mt-1 ${lpLocked ? "text-[#00ff66]" : "text-rose-400"}`}>
+                        {lpPct !== null && lpPct !== undefined ? `${lpPct.toFixed(1)}%` : (lpLocked ? "100.0%" : "0.0%")}
+                      </div>
+                    </div>
+                    <div className="w-full bg-neutral-900 rounded-full h-2 overflow-hidden border border-neutral-800">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${lpLocked ? "bg-[#00ff66]" : "bg-rose-500"}`}
+                        style={{ width: `${Math.min(lpPct || (lpLocked ? 100 : 0), 100)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-neutral-400 leading-relaxed">
+                      {lpLocked
+                        ? "DEX liquidity pair tokens are burned or secured in a lock contract."
+                        : "Liquidity is NOT locked. Deployer could pull liquidity pool at any time."}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                {/* 3. Developer Wallet Card */}
+                <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden flex flex-col justify-between">
+                  <CardHeader className="p-6 border-b border-neutral-800">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+                        <Code2 className="h-4 w-4 text-[#00ff66]" />
+                        <span>Dev Wallet</span>
+                      </CardTitle>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                        devPct > 10
+                          ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                          : devPct > 5
+                          ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                          : "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+                      }`}>
+                        {devStatus}
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    <div>
+                      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                        Developer Holding
+                      </span>
+                      <div className={`text-3xl font-black mt-1 ${devPct > 10 ? "text-rose-400" : devPct > 5 ? "text-amber-400" : "text-[#00ff66]"}`}>
+                        {devPct !== null && devPct !== undefined ? `${devPct.toFixed(1)}%` : "0.0%"}
+                      </div>
+                    </div>
+                    <div className="w-full bg-neutral-900 rounded-full h-2 overflow-hidden border border-neutral-800">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          devPct > 10 ? "bg-rose-500" : devPct > 5 ? "bg-amber-400" : "bg-[#00ff66]"
+                        }`}
+                        style={{ width: `${Math.min(devPct || 0, 100)}%` }}
+                      />
+                    </div>
+                    {creatorAddr ? (
+                      <div className="p-2.5 rounded-2xl bg-neutral-900 border border-neutral-800 flex items-center justify-between text-xs">
+                        <span className="font-mono text-neutral-300 truncate max-w-[170px]" title={creatorAddr}>
+                          {creatorAddrShort || creatorAddr}
+                        </span>
+                        <button
+                          onClick={() => copyCreatorToClipboard(creatorAddr)}
+                          className="text-neutral-400 hover:text-[#00ff66] transition-colors cursor-pointer p-1"
+                          title="Copy Deployer Address"
+                        >
+                          {copiedCreator ? <Check className="h-3.5 w-3.5 text-[#00ff66]" /> : <Copy className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-neutral-500 italic">Deployer address not detected or creator identity revoked.</p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )
+          })()}
 
           {/* Grid Cards: Market Data & Security Checks */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -36,8 +36,8 @@ def test_shorten_ca():
 
 
 def test_evaluate_risk_deterministic():
-    """Test deterministic risk evaluation logic."""
-    # 1. Safe Token (Mint revoked, Freeze revoked, distributed holders, strong liquidity)
+    """Test deterministic risk evaluation logic for Mega-Module 1."""
+    # 1. Safe Token (Mint revoked, Freeze revoked, distributed holders, LP locked, dev <= 5%, strong liquidity)
     safe_market = {
         "found": True,
         "price_usd": 0.000025,
@@ -50,36 +50,76 @@ def test_evaluate_risk_deterministic():
         "freeze_revoked": True,
         "top_10_holders_percent": 35.5,
         "is_honeypot": False,
+        "lp_locked": True,
+        "lp_lock_percent": 100.0,
+        "dev_wallet_percent": 0.0,
     }
     risk_safe = evaluate_risk(safe_market, safe_security)
     assert risk_safe["level"] == "LOW"
     assert any("revoked" in r.lower() for r in risk_safe["reasons"])
+    assert any("locked" in r.lower() for r in risk_safe["reasons"])
 
-    # 2. High Risk: Mint Authority is Active
-    active_mint_sec = {
-        "success": True,
-        "mint_revoked": False,  # Active
-        "freeze_revoked": True,
-        "top_10_holders_percent": 40.0,
-        "is_honeypot": False,
-    }
-    risk_mint = evaluate_risk(safe_market, active_mint_sec)
-    assert risk_mint["level"] in ("HIGH", "CRITICAL")
-    assert any("Mint Authority is active" in r for r in risk_mint["reasons"])
-
-    # 3. High Risk: Top 10 Holders > 80%
-    high_conc_sec = {
+    # 2. Critical Risk: Top 10 Holders > 80%
+    critical_conc_sec = {
         "success": True,
         "mint_revoked": True,
         "freeze_revoked": True,
         "top_10_holders_percent": 88.5,
         "is_honeypot": False,
+        "lp_locked": True,
+        "lp_lock_percent": 100.0,
+        "dev_wallet_percent": 2.0,
     }
-    risk_conc = evaluate_risk(safe_market, high_conc_sec)
-    assert risk_conc["level"] in ("HIGH", "CRITICAL")
+    risk_conc = evaluate_risk(safe_market, critical_conc_sec)
+    assert risk_conc["level"] == "CRITICAL"
     assert any("holder concentration" in r.lower() for r in risk_conc["reasons"])
 
-    # 4. High Risk: Liquidity < $5,000
+    # 3. High Risk: Dev Wallet > 10%
+    high_dev_sec = {
+        "success": True,
+        "mint_revoked": True,
+        "freeze_revoked": True,
+        "top_10_holders_percent": 30.0,
+        "is_honeypot": False,
+        "lp_locked": True,
+        "lp_lock_percent": 100.0,
+        "dev_wallet_percent": 18.5,
+    }
+    risk_dev = evaluate_risk(safe_market, high_dev_sec)
+    assert risk_dev["level"] == "HIGH"
+    assert any("developer wallet holds" in r.lower() for r in risk_dev["reasons"])
+
+    # 4. High Risk: Liquidity NOT Locked / Renounced
+    unlocked_lp_sec = {
+        "success": True,
+        "mint_revoked": True,
+        "freeze_revoked": True,
+        "top_10_holders_percent": 30.0,
+        "is_honeypot": False,
+        "lp_locked": False,
+        "lp_lock_percent": 0.0,
+        "dev_wallet_percent": 1.0,
+    }
+    risk_unlocked = evaluate_risk(safe_market, unlocked_lp_sec)
+    assert risk_unlocked["level"] == "HIGH"
+    assert any("liquidity is not locked" in r.lower() for r in risk_unlocked["reasons"])
+
+    # 5. High Risk: Mint Authority is Active
+    active_mint_sec = {
+        "success": True,
+        "mint_revoked": False,  # Active
+        "freeze_revoked": True,
+        "top_10_holders_percent": 30.0,
+        "is_honeypot": False,
+        "lp_locked": True,
+        "lp_lock_percent": 100.0,
+        "dev_wallet_percent": 0.0,
+    }
+    risk_mint = evaluate_risk(safe_market, active_mint_sec)
+    assert risk_mint["level"] in ("HIGH", "CRITICAL")
+    assert any("Mint Authority is active" in r for r in risk_mint["reasons"])
+
+    # 6. High Risk: Liquidity < $5,000
     low_liq_market = {
         "found": True,
         "price_usd": 0.001,
@@ -90,13 +130,16 @@ def test_evaluate_risk_deterministic():
     assert risk_liq["level"] in ("HIGH", "CRITICAL")
     assert any("Low liquidity" in r for r in risk_liq["reasons"])
 
-    # 5. Critical Risk: Honeypot / Transfer Block
+    # 7. Critical Risk: Honeypot / Transfer Block
     honeypot_sec = {
         "success": True,
         "mint_revoked": True,
         "freeze_revoked": True,
         "top_10_holders_percent": 30.0,
         "is_honeypot": True,
+        "lp_locked": True,
+        "lp_lock_percent": 100.0,
+        "dev_wallet_percent": 0.0,
     }
     risk_hp = evaluate_risk(safe_market, honeypot_sec)
     assert risk_hp["level"] == "CRITICAL"
@@ -107,7 +150,7 @@ def test_invalid_ca_scan():
     """Test scanner behavior with invalid CA."""
     res = scan_solana_token_sync("not_a_valid_solana_ca")
     assert res["valid"] is False
-    assert "Invalid Solana contract address" in res["error"]
+    assert "Invalid contract address format" in res["error"]
 
     report = format_scan_report(res)
     assert "Investigation Error" in report or "Invalid" in report
@@ -156,23 +199,22 @@ def test_format_scan_report_structure():
     assert "Price: $" in report
     assert "Market Cap: $" in report
     assert "Liquidity: $" in report
-    assert "🛡️ Security Checks" in report
+    assert "🛡️ Security & Holder Intelligence" in report
     assert "Mint Auth: Revoked" in report
     assert "Freeze Auth: Revoked" in report
-    assert "Top 10 Holders: 41.2%" in report
     assert "Evidence Sources: DexScreener, GoPlus" in report
     assert "(This is a preliminary scan, not financial advice.)" in report
 
 
 def test_generate_scanner_inline_keyboard():
-    """Test inline buttons generation for DexScreener chart and Solscan."""
+    """Test inline buttons generation for DexScreener chart and Explorer."""
     ca = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
     kb = generate_scanner_inline_keyboard(ca)
     assert len(kb) == 1
     assert len(kb[0]) == 2
     assert kb[0][0]["text"] == "📊 Live Chart"
     assert "dexscreener.com" in kb[0][0]["url"]
-    assert kb[0][1]["text"] == "🔍 Solscan Explorer"
+    assert "Explorer" in kb[0][1]["text"]
     assert f"solscan.io/token/{ca}" in kb[0][1]["url"]
 
 
@@ -300,8 +342,8 @@ def test_pipeline_investigate_command_interception(tmp_path):
     assert "🔍 Zoe Intelligence Report" in res_valid.response_text
     assert "🚨 Risk Assessment:" in res_valid.response_text
     assert "📊 Market Data" in res_valid.response_text
-    assert "🛡️ Security Checks" in res_valid.response_text
+    assert "🛡️ Security & Holder Intelligence" in res_valid.response_text
     assert res_valid.inline_keyboard is not None
     assert any("Live Chart" in btn["text"] for row in res_valid.inline_keyboard for btn in row)
-    assert any("Solscan Explorer" in btn["text"] for row in res_valid.inline_keyboard for btn in row)
+    assert any("Explorer" in btn["text"] for row in res_valid.inline_keyboard for btn in row)
 

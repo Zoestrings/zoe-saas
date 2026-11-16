@@ -36,7 +36,8 @@ export default function OwnerDashboardPage() {
       const data = await api.getProjects()
       setProjects(data || [])
     } catch (err) {
-      console.error("Failed to fetch owner projects:", err)
+      console.warn("Notice: Backend service unavailable or not logged in yet:", err)
+      setProjects([])
     } finally {
       setLoading(false)
     }

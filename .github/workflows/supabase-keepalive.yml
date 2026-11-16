@@ -12,11 +12,21 @@ jobs:
     steps:
       - name: Ping Supabase REST API
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://lgpovjspaptgtbvkimmx.supabase.co' }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'sb_publishable_UxpAGLCq92ayJsKe8HY3AA_oVzduGCy' }}
         run: |
           echo "Pinging Supabase at $SUPABASE_URL..."
-          curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" \
+          STATUS=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
             "$SUPABASE_URL/rest/v1/keepalive?select=*&limit=1" \
             -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY"
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "HTTP Status: $STATUS"
+          cat /tmp/resp.json
+          echo ""
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 500 ]; then
+            echo "Keep-alive ping successful (Database active)!"
+          else
+            echo "Keep-alive ping failed with status $STATUS"
+            exit 1
+          fi
+

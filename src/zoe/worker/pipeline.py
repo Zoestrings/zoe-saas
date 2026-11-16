@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import timedelta
+import asyncio
 import json
 from pathlib import Path
 import re
@@ -57,6 +58,61 @@ class PipelineResult:
     escalation_result: Optional[EscalationResult] = None
     aborted: bool = False
     inline_keyboard: Optional[List[List[Dict[str, str]]]] = None
+
+
+def delete_telegram_message_safe(adapter: Any, chat_id: Union[str, int], message_id: int) -> bool:
+    """Safely delete a Telegram message catching permission errors gracefully."""
+    if not adapter:
+        return False
+    try:
+        if hasattr(adapter, "delete_message_sync"):
+            return adapter.delete_message_sync(chat_id, message_id)
+        elif hasattr(adapter, "delete_message"):
+            fn = adapter.delete_message
+            if asyncio.iscoroutinefunction(fn):
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    return pool.submit(lambda: asyncio.run(fn(chat_id, message_id))).result()
+            else:
+                return fn(chat_id, message_id)
+    except Exception as exc:
+        logger.warning(
+            "Could not delete message %s in chat %s: %s (Ensure bot has 'Delete Messages' admin permission)",
+            message_id,
+            chat_id,
+            exc,
+        )
+    return False
+
+
+def restrict_telegram_member_safe(
+    adapter: Any,
+    chat_id: Union[str, int],
+    user_id: Union[str, int],
+    until_date: Optional[Union[int, Any]] = None,
+) -> bool:
+    """Safely mute / restrict a chat member catching permission errors gracefully."""
+    if not adapter or not user_id:
+        return False
+    try:
+        if hasattr(adapter, "restrict_chat_member_sync"):
+            return adapter.restrict_chat_member_sync(chat_id, user_id, until_date=until_date)
+        elif hasattr(adapter, "restrict_chat_member"):
+            fn = adapter.restrict_chat_member
+            if asyncio.iscoroutinefunction(fn):
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    return pool.submit(lambda: asyncio.run(fn(chat_id, user_id, until_date=until_date))).result()
+            else:
+                return fn(chat_id, user_id, until_date=until_date)
+    except Exception as exc:
+        logger.warning(
+            "Could not restrict member %s in chat %s: %s (Ensure bot has 'Ban Users' admin permission)",
+            user_id,
+            chat_id,
+            exc,
+        )
+    return False
 
 
 def extract_token_query(text: str, default_token: str = "$FLY") -> str:
@@ -149,6 +205,7 @@ def process_message(
     simulated: Optional[bool] = None,
     enforce_accuracy_guard: Optional[bool] = None,
     intent: Optional[str] = None,
+    adapter: Optional[Any] = None,
 ) -> PipelineResult:
     """Run the complete pipeline: classify -> decide -> retrieve -> prompt -> generate -> safety -> outbox."""
     conns = db_conns or {}
@@ -207,6 +264,10 @@ def process_message(
             transition(conn_op, inbox_id, "processing")
             conn_op.commit()
 
+        raw_uid = None
+        if isinstance(inbox_row, dict):
+            raw_uid = inbox_row.get("raw_user_id")
+
         norm_msg = NormalizedMessage(
             project_id=project_id,
             telegram_update_id=update_id,
@@ -217,6 +278,7 @@ def process_message(
             reply_to_message_id=reply_to_id,
             is_forward=is_fwd,
             timestamp=msg_timestamp,
+            raw_user_id=raw_uid,
         )
 
         # 2. Record to community memory
@@ -253,6 +315,86 @@ def process_message(
         # 4. Classify message and determine intent
         intent_start = time.perf_counter()
         classification = classify_message(norm_msg.text, community_context, llm_client=llm_client)
+
+        # Resolve bot adapter if not provided and not in simulation
+        if adapter is None and not simulated:
+            try:
+                from zoe.settings import load_project_secrets
+                from zoe.telegram.adapter import PTBTelegramAdapter
+                sec = load_project_secrets(norm_msg.project_id)
+                token = sec.get("telegram", {}).get("bot_token") or sec.get("bot_token")
+                if token:
+                    adapter = PTBTelegramAdapter(bot_token=token)
+            except Exception:
+                adapter = None
+
+        # Check inbound safety for scam links, phishing, or fake admin impersonation
+        from zoe.safety.validator import validate_inbound_message
+        inbound_safety = validate_inbound_message(norm_msg.text)
+        if inbound_safety.is_scam:
+            logger.warning(
+                "🚨 Autonomous Moderation: Inbound scam detected in chat %s (message %d): %s - Type: %s",
+                norm_msg.group_id,
+                norm_msg.telegram_message_id,
+                inbound_safety.violations,
+                inbound_safety.violation_type,
+            )
+            # 1. Delete the scam message
+            deleted = delete_telegram_message_safe(adapter, norm_msg.group_id, norm_msg.telegram_message_id)
+            if deleted:
+                logger.info("Successfully deleted scam message %d in chat %s.", norm_msg.telegram_message_id, norm_msg.group_id)
+
+            # 2. Record scam strike for user
+            user_key = norm_msg.pseudonymous_user_id
+            from zoe.participation.decision import record_scam_strike
+            scam_strikes = record_scam_strike(norm_msg.group_id, user_key)
+            if scam_strikes >= 2:
+                logger.warning("User %s posted %d scam links in 5 minutes! Restricting for 1 hour.", user_key, scam_strikes)
+                target_uid = getattr(norm_msg, "raw_user_id", None) or user_key
+                mute_until = int(time.time() + 3600)
+                restrict_telegram_member_safe(adapter, norm_msg.group_id, target_uid, until_date=mute_until)
+
+            # 3. Post warning in group
+            warning_text = "⚠️ I removed a suspicious message. Please never share your seed phrase or click unverified links."
+            created_dt = now()
+            created_str = format_timestamp(created_dt)
+            sim_val = 1 if simulated else 0
+
+            transition(conn_op, inbox_id, "response_pending")
+            outbox_cur = conn_op.execute(
+                """
+                INSERT INTO outbox_messages (
+                    project_id, inbox_message_id, group_id, reply_to_message_id, text,
+                    simulated, state, state_changed_at, created_at, inline_keyboard_json
+                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                """,
+                (
+                    norm_msg.project_id,
+                    inbox_id,
+                    norm_msg.group_id,
+                    None,
+                    warning_text,
+                    sim_val,
+                    created_str,
+                    created_str,
+                    None,
+                ),
+            )
+            outbox_id = outbox_cur.lastrowid
+            conn_op.commit()
+
+            return PipelineResult(
+                inbox_id=inbox_id,
+                responded=True,
+                classification=classification,
+                decision=ParticipationDecision(
+                    decision="moderation_action",
+                    should_respond=True,
+                    reason=f"scam_deleted:{inbound_safety.violation_type}",
+                ),
+                outbox_id=outbox_id,
+                response_text=warning_text,
+            )
 
         # 5. Check last response time and recent Zoe messages
         cur = conn_op.execute(
@@ -413,6 +555,29 @@ def process_message(
             (classification.category, classification.confidence, decision.decision, decision.reason, inbox_id),
         )
         conn_op.commit()
+
+        # Check if user needs to be muted for spam flooding or repeat violation
+        if decision.should_mute or decision.decision == "mute_spammer":
+            logger.warning(
+                "🚨 Autonomous Moderation: Muting spammer in chat %s (message %d): reason=%s, duration=%ds",
+                norm_msg.group_id,
+                norm_msg.telegram_message_id,
+                decision.reason,
+                decision.mute_duration_seconds or 3600,
+            )
+            target_uid = getattr(norm_msg, "raw_user_id", None) or norm_msg.pseudonymous_user_id
+            mute_until = int(time.time() + (decision.mute_duration_seconds or 3600))
+            restrict_telegram_member_safe(adapter, norm_msg.group_id, target_uid, until_date=mute_until)
+            delete_telegram_message_safe(adapter, norm_msg.group_id, norm_msg.telegram_message_id)
+
+            transition(conn_op, inbox_id, "no_response_required")
+            conn_op.commit()
+            return PipelineResult(
+                inbox_id=inbox_id,
+                responded=False,
+                classification=classification,
+                decision=decision,
+            )
 
         # 7. Check if escalation is triggered
         if classification.category == "escalation_trigger" or decision.decision == "escalate":

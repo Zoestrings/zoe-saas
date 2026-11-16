@@ -1,4 +1,6 @@
+from datetime import datetime
 from pathlib import Path
+import asyncio
 from typing import Any, Dict, List, Optional, Protocol, Union, runtime_checkable
 
 from zoe.utils.logging import get_logger
@@ -37,6 +39,34 @@ class TelegramAdapter(Protocol):
 
     async def download_file(self, file_id: str, destination_path: Union[str, Path]) -> Path:
         """Download a Telegram file by file_id to the destination path."""
+        ...
+
+    async def delete_message(self, chat_id: Union[str, int], message_id: int) -> bool:
+        """Delete a message from a chat."""
+        ...
+
+    def delete_message_sync(self, chat_id: Union[str, int], message_id: int) -> bool:
+        """Synchronously delete a message from a chat."""
+        ...
+
+    async def restrict_chat_member(
+        self,
+        chat_id: Union[str, int],
+        user_id: Union[str, int],
+        until_date: Optional[Union[int, datetime]] = None,
+        permissions: Optional[Any] = None,
+    ) -> bool:
+        """Restrict/mute a chat member."""
+        ...
+
+    def restrict_chat_member_sync(
+        self,
+        chat_id: Union[str, int],
+        user_id: Union[str, int],
+        until_date: Optional[Union[int, datetime]] = None,
+        permissions: Optional[Any] = None,
+    ) -> bool:
+        """Synchronously restrict/mute a chat member."""
         ...
 
 
@@ -153,3 +183,83 @@ class PTBTelegramAdapter:
     async def get_chat_member(self, chat_id: str, user_id: str) -> Dict[str, Any]:
         member = await self._bot.get_chat_member(chat_id=chat_id, user_id=int(user_id))
         return member.to_dict()
+
+    async def delete_message(self, chat_id: Union[str, int], message_id: int) -> bool:
+        """Delete a message from a chat using the Telegram Bot API."""
+        from telegram.error import TelegramError
+        try:
+            cid = int(chat_id) if str(chat_id).lstrip("-").isdigit() else chat_id
+            res = await self._bot.delete_message(chat_id=cid, message_id=int(message_id))
+            logger.info("Deleted message %s from chat %s.", message_id, chat_id)
+            return bool(res)
+        except TelegramError as e:
+            logger.warning(
+                "Telegram error deleting message %s in chat %s: %s (Ensure bot has 'Delete Messages' admin permission)",
+                message_id,
+                chat_id,
+                e,
+            )
+            return False
+        except Exception as exc:
+            logger.warning("Unexpected error deleting message %s in chat %s: %s", message_id, chat_id, exc)
+            return False
+
+    def delete_message_sync(self, chat_id: Union[str, int], message_id: int) -> bool:
+        """Synchronously delete a message from a chat."""
+        import concurrent.futures
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(lambda: asyncio.run(self.delete_message(chat_id, message_id))).result()
+        except Exception as exc:
+            logger.warning("Error in delete_message_sync: %s", exc)
+            return False
+
+    async def restrict_chat_member(
+        self,
+        chat_id: Union[str, int],
+        user_id: Union[str, int],
+        until_date: Optional[Union[int, datetime]] = None,
+        permissions: Optional[Any] = None,
+    ) -> bool:
+        """Mute / restrict a chat member from sending messages."""
+        from telegram import ChatPermissions
+        from telegram.error import TelegramError
+        try:
+            cid = int(chat_id) if str(chat_id).lstrip("-").isdigit() else chat_id
+            uid = int(user_id) if str(user_id).isdigit() else user_id
+            perms = permissions or ChatPermissions(can_send_messages=False)
+            res = await self._bot.restrict_chat_member(
+                chat_id=cid,
+                user_id=uid,
+                permissions=perms,
+                until_date=until_date,
+            )
+            logger.info("Restricted member %s in chat %s until %s.", user_id, chat_id, until_date)
+            return bool(res)
+        except TelegramError as e:
+            logger.warning(
+                "Telegram error restricting member %s in chat %s: %s (Ensure bot has 'Ban Users' admin permission)",
+                user_id,
+                chat_id,
+                e,
+            )
+            return False
+        except Exception as exc:
+            logger.warning("Unexpected error restricting member %s in chat %s: %s", user_id, chat_id, exc)
+            return False
+
+    def restrict_chat_member_sync(
+        self,
+        chat_id: Union[str, int],
+        user_id: Union[str, int],
+        until_date: Optional[Union[int, datetime]] = None,
+        permissions: Optional[Any] = None,
+    ) -> bool:
+        """Synchronously restrict/mute a chat member."""
+        import concurrent.futures
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                return pool.submit(lambda: asyncio.run(self.restrict_chat_member(chat_id, user_id, until_date, permissions))).result()
+        except Exception as exc:
+            logger.warning("Error in restrict_chat_member_sync: %s", exc)
+            return False

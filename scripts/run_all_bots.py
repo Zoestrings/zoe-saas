@@ -97,6 +97,7 @@ class BotInstance:
                     llm_client=self.llm_client,
                     model=self.model,
                     simulated=False,
+                    adapter=self.adapter,
                 )
                 processed_count += 1
                 logger.info(

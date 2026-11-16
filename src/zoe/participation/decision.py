@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import re
 import sqlite3
-from typing import Any, List, Optional, Union
+import time
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from zoe.clock.clock import format_timestamp, now, parse_timestamp
 from zoe.conversation.classifier import ClassificationResult
@@ -23,10 +24,69 @@ logger = get_logger("zoe.participation.decision")
 
 @dataclass(frozen=True)
 class ParticipationDecision:
-    decision: str  # 'respond', 'remain_silent', 'escalate', 'ignore'
+    decision: str  # 'respond', 'remain_silent', 'escalate', 'ignore', 'mute_spammer'
     should_respond: bool
     reason: str
     cooldown_remaining_seconds: float = 0.0
+    should_mute: bool = False
+    mute_duration_seconds: int = 0
+    mute_reason: Optional[str] = None
+
+
+# In-memory sliding window trackers for moderation
+# Key: (group_id, user_id) -> list of (timestamp, text)
+_user_message_history: Dict[Tuple[str, str], List[Tuple[float, str]]] = {}
+# Key: (group_id, user_id) -> list of timestamps
+_user_scam_history: Dict[Tuple[str, str], List[float]] = {}
+
+
+def record_user_message_history(group_id: str, user_id: str, text: str, timestamp: Optional[float] = None) -> None:
+    now_ts = timestamp if timestamp is not None else time.time()
+    key = (str(group_id), str(user_id))
+    history = _user_message_history.setdefault(key, [])
+    history.append((now_ts, text.strip().lower()))
+    # Keep last 20 messages, prune older than 15 minutes (900s)
+    cutoff = now_ts - 900.0
+    _user_message_history[key] = [(t, txt) for t, txt in history[-20:] if t >= cutoff]
+
+
+def check_is_flooding(group_id: str, user_id: str, text: str, threshold: int = 3) -> bool:
+    """Check if the user has sent more than `threshold` identical messages."""
+    key = (str(group_id), str(user_id))
+    history = _user_message_history.get(key, [])
+    clean = text.strip().lower()
+    if not clean:
+        return False
+    identical_count = sum(1 for _, txt in history if txt == clean)
+    return identical_count > threshold
+
+
+def record_scam_strike(group_id: str, user_id: str, timestamp: Optional[float] = None) -> int:
+    """Record a scam/phishing incident for a user and return the strike count in the last 5 minutes."""
+    now_ts = timestamp if timestamp is not None else time.time()
+    key = (str(group_id), str(user_id))
+    strikes = _user_scam_history.setdefault(key, [])
+    strikes.append(now_ts)
+    cutoff = now_ts - 300.0  # 5 minutes
+    valid_strikes = [t for t in strikes if t >= cutoff]
+    _user_scam_history[key] = valid_strikes
+    return len(valid_strikes)
+
+
+def check_is_repeat_scam(group_id: str, user_id: str, window_seconds: float = 300.0, max_strikes: int = 2) -> bool:
+    """Return True if user posted `max_strikes` or more scam links within `window_seconds`."""
+    key = (str(group_id), str(user_id))
+    strikes = _user_scam_history.get(key, [])
+    now_ts = time.time()
+    cutoff = now_ts - window_seconds
+    valid = [t for t in strikes if t >= cutoff]
+    return len(valid) >= max_strikes
+
+
+def reset_moderation_tracking() -> None:
+    """Reset moderation in-memory trackers (useful for unit tests)."""
+    _user_message_history.clear()
+    _user_scam_history.clear()
 
 
 FOLLOW_UP_REACTIONS_PATTERN = re.compile(
@@ -198,7 +258,33 @@ def should_respond(
 
     is_command = message.text.strip().startswith("/")
 
-    if other_bot_addressed:
+    # Track user messaging for flood & repeat scam detection
+    user_key = getattr(message, "pseudonymous_user_id", "unknown_user")
+    record_user_message_history(message.group_id, user_key, message.text)
+    is_flooding = check_is_flooding(message.group_id, user_key, message.text, threshold=3)
+    is_repeat_scam = check_is_repeat_scam(message.group_id, user_key, window_seconds=300.0, max_strikes=2)
+
+    should_mute = False
+    mute_duration_sec = 0
+    mute_reason_str = None
+
+    if is_flooding:
+        decision_str = "mute_spammer"
+        reason_code = "flooding_spammer_muted"
+        do_respond = False
+        should_mute = True
+        mute_duration_sec = 3600
+        mute_reason_str = "Repeated message flooding (>3 identical messages)"
+
+    elif is_repeat_scam:
+        decision_str = "mute_spammer"
+        reason_code = "repeat_scam_spammer_muted"
+        do_respond = False
+        should_mute = True
+        mute_duration_sec = 3600
+        mute_reason_str = "Posted 2 scam links within 5 minutes"
+
+    elif other_bot_addressed:
         # Message was addressed to another project's bot in a shared group
         decision_str = "remain_silent"
         reason_code = "other_bot_addressed"
@@ -337,6 +423,9 @@ def should_respond(
         should_respond=do_respond,
         reason=reason_code,
         cooldown_remaining_seconds=max(0.0, cooldown_remaining),
+        should_mute=should_mute,
+        mute_duration_seconds=mute_duration_sec,
+        mute_reason=mute_reason_str,
     )
 
     # 3. Log decision into participation_log if db connection is provided

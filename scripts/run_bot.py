@@ -63,6 +63,7 @@ async def run_step(
                 llm_client=llm_client,
                 model=model,
                 simulated=False,
+                adapter=adapter,
             )
             logger.info(
                 "Inbox msg %d processed: decision=%s, reason=%s, responded=%s",

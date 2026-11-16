@@ -7,6 +7,8 @@ class MockTelegramAdapter:
     def __init__(self, updates: Optional[List[Dict[str, Any]]] = None) -> None:
         self.updates: List[Dict[str, Any]] = updates or []
         self.sent_messages: List[Dict[str, Any]] = []
+        self.deleted_messages: List[Dict[str, Any]] = []
+        self.restricted_members: List[Dict[str, Any]] = []
         self.chat_members: Dict[tuple, Dict[str, Any]] = {}
         self.webhook_deleted: bool = False
         self.error_to_raise: Optional[Exception] = None
@@ -76,4 +78,42 @@ class MockTelegramAdapter:
             "user": {"id": int(user_id), "is_bot": False},
             "can_post_messages": True,
         }
+
+    async def delete_message(self, chat_id: Any, message_id: int) -> bool:
+        self.deleted_messages.append({"chat_id": str(chat_id), "message_id": int(message_id)})
+        return True
+
+    def delete_message_sync(self, chat_id: Any, message_id: int) -> bool:
+        self.deleted_messages.append({"chat_id": str(chat_id), "message_id": int(message_id)})
+        return True
+
+    async def restrict_chat_member(
+        self,
+        chat_id: Any,
+        user_id: Any,
+        until_date: Optional[Any] = None,
+        permissions: Optional[Any] = None,
+    ) -> bool:
+        self.restricted_members.append({
+            "chat_id": str(chat_id),
+            "user_id": int(user_id) if str(user_id).isdigit() else user_id,
+            "until_date": until_date,
+            "permissions": permissions,
+        })
+        return True
+
+    def restrict_chat_member_sync(
+        self,
+        chat_id: Any,
+        user_id: Any,
+        until_date: Optional[Any] = None,
+        permissions: Optional[Any] = None,
+    ) -> bool:
+        self.restricted_members.append({
+            "chat_id": str(chat_id),
+            "user_id": int(user_id) if str(user_id).isdigit() else user_id,
+            "until_date": until_date,
+            "permissions": permissions,
+        })
+        return True
 

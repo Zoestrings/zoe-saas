@@ -108,6 +108,7 @@ class NormalizedMessage:
     is_forward: bool
     timestamp: str  # "YYYY-MM-DD HH:MM:SS" UTC
     is_voice: bool = False
+    raw_user_id: Optional[int] = None
 
 
 def _download_and_transcribe_sync(
@@ -370,6 +371,7 @@ def normalize_update(
         is_forward=is_forward,
         timestamp=timestamp,
         is_voice=is_voice,
+        raw_user_id=int(raw_user_id) if str(raw_user_id).isdigit() else None,
     )
 
 
@@ -505,5 +507,6 @@ async def normalize_update_async(
         is_forward=is_forward,
         timestamp=timestamp,
         is_voice=is_voice,
+        raw_user_id=int(raw_user_id) if str(raw_user_id).isdigit() else None,
     )
 

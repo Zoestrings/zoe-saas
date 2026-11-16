@@ -97,6 +97,18 @@ class PollingLoop:
         # Normalize batch (handles both typed text and voice notes)
         normalized_messages = []
         for u in updates:
+            # Handle new member welcoming (ChatMemberUpdated or service messages)
+            try:
+                from zoe.telegram.handlers import handle_chat_member_updated
+                await handle_chat_member_updated(
+                    u,
+                    adapter=self.adapter,
+                    project_id=self.project_id,
+                    configured_group_id=self.configured_group_id,
+                )
+            except Exception as e:
+                logger.debug("Chat member update handler check: %s", e)
+
             msg = await normalize_update_async(
                 project_id=self.project_id,
                 update=u,

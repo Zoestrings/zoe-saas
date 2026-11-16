@@ -7,10 +7,9 @@ import {
   Bot, 
   Settings, 
   Sparkles,
-  ShieldAlert,
-  Layers,
   ChevronRight,
-  Activity
+  Activity,
+  Layers
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -19,19 +18,16 @@ const adminNav = [
     name: "Overview", 
     href: "/admin/overview", 
     icon: LayoutDashboard,
-    description: "Fleet metrics & health"
   },
   { 
     name: "Projects", 
     href: "/admin/projects", 
     icon: Bot,
-    description: "Manage all tenant bots"
   },
   { 
     name: "Settings", 
     href: "/admin/settings", 
     icon: Settings,
-    description: "System & API keys"
   },
 ]
 
@@ -39,29 +35,29 @@ export function AdminSidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="w-64 flex-shrink-0 flex flex-col border-r border-slate-800 bg-[#0d131f] text-slate-200 h-screen sticky top-0 z-40 select-none">
+    <aside className="w-64 flex-shrink-0 flex flex-col border-r border-border bg-card text-card-foreground h-screen sticky top-0 z-40 select-none">
       {/* Brand Header */}
-      <div className="h-16 flex items-center px-5 border-b border-slate-800/80 gap-3">
-        <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center text-white font-bold text-base shadow-lg shadow-cyan-500/20">
-          <Sparkles className="h-5 w-5" />
+      <div className="h-16 flex items-center px-6 border-b border-border gap-3">
+        <div className="h-8 w-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm shadow-sm">
+          Z
         </div>
         <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="font-bold text-white text-sm tracking-tight">
-              Zoe Engine
+            <span className="font-semibold text-foreground text-sm tracking-tight">
+              Zoe Platform
             </span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider bg-indigo-950 text-indigo-400 border border-indigo-800/60 px-1.5 py-0.2 rounded">
+            <span className="text-[10px] font-semibold uppercase tracking-wider bg-secondary text-secondary-foreground border border-border px-1.5 py-0.2 rounded">
               Admin
             </span>
           </div>
-          <span className="text-[11px] text-slate-400 truncate">Autonomous Fleet Console</span>
+          <span className="text-xs text-muted-foreground truncate">Autonomous Agent SaaS</span>
         </div>
       </div>
 
-      {/* Navigation Group */}
-      <div className="flex-1 py-5 px-3 space-y-1.5 overflow-y-auto">
-        <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-          Platform Management
+      {/* Navigation Links */}
+      <div className="flex-1 py-5 px-3 space-y-1 overflow-y-auto">
+        <div className="px-3 pb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          Platform Menu
         </div>
 
         {adminNav.map((item) => {
@@ -73,47 +69,40 @@ export function AdminSidebar() {
               key={item.name}
               href={item.href}
               className={cn(
-                "group flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-medium transition-all relative",
+                "group flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
                 isActive
-                  ? "bg-slate-800/90 text-cyan-400 shadow-sm border border-slate-700/80 font-semibold"
-                  : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/50"
+                  ? "bg-secondary text-foreground font-medium shadow-xs"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
               )}
             >
               <Icon
                 className={cn(
                   "h-4 w-4 transition-colors",
-                  isActive ? "text-cyan-400" : "text-slate-400 group-hover:text-slate-200"
+                  isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
                 )}
               />
-              <div className="flex-1 min-w-0">
-                <div className="truncate text-xs">{item.name}</div>
-              </div>
-
-              {isActive && (
-                <div className="h-1.5 w-1.5 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400/50" />
-              )}
+              <span className="flex-1 text-sm">{item.name}</span>
             </Link>
           )
         })}
       </div>
 
       {/* System Status Footer */}
-      <div className="p-4 border-t border-slate-800/80 bg-slate-900/60">
-        <div className="rounded-lg bg-slate-950/70 border border-slate-800/80 p-3 space-y-2">
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-slate-400">FastAPI Runtime</span>
-            <span className="inline-flex items-center gap-1 font-medium text-emerald-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+      <div className="p-4 border-t border-border bg-muted/30">
+        <div className="rounded-lg bg-card border border-border p-3 space-y-2 shadow-xs">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">FastAPI Engine</span>
+            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               Connected
             </span>
           </div>
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-slate-400">Supabase Auth</span>
-            <span className="text-slate-300 font-mono text-[10px]">JWT Active</span>
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Supabase Auth</span>
+            <span className="text-foreground font-mono text-[11px]">JWT Active</span>
           </div>
         </div>
       </div>
     </aside>
   )
 }
-

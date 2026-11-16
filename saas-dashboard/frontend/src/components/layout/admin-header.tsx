@@ -7,7 +7,6 @@ import {
   Search, 
   Settings, 
   Bell, 
-  ShieldCheck, 
   ExternalLink,
   Cpu,
   Command
@@ -40,17 +39,17 @@ export function AdminHeader() {
     .toUpperCase() || "ZA"
 
   return (
-    <header className="h-16 border-b border-slate-800 bg-[#0d131f]/90 backdrop-blur-md px-6 md:px-8 flex items-center justify-between sticky top-0 z-30">
-      {/* Search Bar - shadcn style with keyboard shortcut badge */}
+    <header className="h-16 border-b border-border bg-card px-6 md:px-8 flex items-center justify-between sticky top-0 z-30 select-none">
+      {/* Search Bar - shadcn style */}
       <div className="flex items-center gap-4 max-w-md w-full">
         <div className="relative w-full">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search projects, tokens, or system events..."
-            className="w-full bg-slate-900/80 border border-slate-800 rounded-lg pl-9 pr-12 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all font-sans"
+            className="w-full bg-muted/40 border border-input rounded-md pl-9 pr-12 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring focus:bg-background transition-all"
           />
-          <div className="absolute right-2.5 top-2 flex items-center gap-0.5 pointer-events-none text-[10px] bg-slate-800/80 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700/60 font-mono">
+          <div className="absolute right-2.5 top-2 flex items-center gap-0.5 pointer-events-none text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded border border-border font-mono">
             <Command className="h-2.5 w-2.5" /> K
           </div>
         </div>
@@ -59,8 +58,8 @@ export function AdminHeader() {
       {/* Right Controls */}
       <div className="flex items-center gap-3 md:gap-4">
         {/* Backend API status */}
-        <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-lg border border-slate-800 bg-slate-900/60 text-xs text-slate-300">
-          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+        <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md border border-border bg-secondary/50 text-xs text-foreground">
+          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-[11px] font-medium">FastAPI Engine</span>
         </div>
 
@@ -69,12 +68,12 @@ export function AdminHeader() {
           <button 
             type="button" 
             aria-label="View notifications"
-            className="h-8 w-8 rounded-lg border border-slate-800 bg-slate-900/60 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            className="h-8 w-8 rounded-md border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
           >
             <Bell className="h-4 w-4" />
           </button>
           {notificationsCount > 0 && (
-            <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-cyan-500 text-[10px] font-bold text-white flex items-center justify-center border-2 border-[#0d131f]">
+            <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-bold text-primary-foreground flex items-center justify-center">
               {notificationsCount}
             </span>
           )}
@@ -83,47 +82,47 @@ export function AdminHeader() {
         {/* User Profile Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 p-1 rounded-lg hover:bg-slate-800/60 transition-colors focus:outline-none cursor-pointer">
-              <Avatar className="h-8 w-8 border border-slate-700 bg-gradient-to-br from-indigo-900 to-slate-800 text-white">
-                <AvatarFallback className="text-xs font-semibold text-cyan-300">
+            <button className="flex items-center gap-2 p-0.5 rounded-full hover:bg-secondary transition-colors focus:outline-none cursor-pointer">
+              <Avatar className="h-8 w-8 border border-border bg-secondary text-foreground">
+                <AvatarFallback className="text-xs font-semibold text-foreground">
                   {initials}
                 </AvatarFallback>
               </Avatar>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60 bg-slate-900 border border-slate-800 text-slate-200 shadow-2xl rounded-xl p-1.5 backdrop-blur-lg">
-            <div className="p-3 border-b border-slate-800/80">
+          <DropdownMenuContent align="end" className="w-60 bg-popover border border-border text-popover-foreground shadow-lg rounded-lg p-1.5">
+            <div className="p-2.5 border-b border-border">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
                   Signed In
                 </span>
-                <span className="text-[10px] font-bold text-cyan-400 bg-cyan-950/80 border border-cyan-800/60 px-1.5 py-0.2 rounded">
+                <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
                   Super Admin
                 </span>
               </div>
-              <p className="text-xs font-medium text-white truncate">{email}</p>
+              <p className="text-xs font-medium text-foreground truncate">{email}</p>
             </div>
             
             <div className="py-1">
               <Link href="/admin/settings">
-                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-slate-800 text-slate-300 hover:text-white py-2 rounded-md text-xs">
-                  <Settings className="h-4 w-4 text-slate-400" />
+                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-secondary text-foreground py-2 rounded-md text-xs">
+                  <Settings className="h-4 w-4 text-muted-foreground" />
                   <span>Platform Settings</span>
                 </DropdownMenuItem>
               </Link>
               <Link href="/admin/overview">
-                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-slate-800 text-slate-300 hover:text-white py-2 rounded-md text-xs">
-                  <Cpu className="h-4 w-4 text-slate-400" />
+                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-secondary text-foreground py-2 rounded-md text-xs">
+                  <Cpu className="h-4 w-4 text-muted-foreground" />
                   <span>Fleet Overview</span>
                 </DropdownMenuItem>
               </Link>
             </div>
 
-            <DropdownMenuSeparator className="bg-slate-800" />
+            <DropdownMenuSeparator className="bg-border" />
             
             <DropdownMenuItem
               onClick={logout}
-              className="cursor-pointer gap-2 text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 py-2 rounded-md text-xs"
+              className="cursor-pointer gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive py-2 rounded-md text-xs font-medium"
             >
               <LogOut className="h-4 w-4" />
               <span>Sign Out</span>
@@ -134,4 +133,3 @@ export function AdminHeader() {
     </header>
   )
 }
-

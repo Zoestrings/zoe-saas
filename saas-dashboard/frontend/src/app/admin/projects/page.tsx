@@ -26,7 +26,8 @@ import {
   AlertCircle, 
   Loader2,
   Copy,
-  Check
+  Check,
+  Sparkles
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -189,43 +190,42 @@ export default function AdminProjectsPage() {
       {
         accessorKey: "name",
         header: ({ column }) => (
-          <Button
-            variant="ghost"
+          <button
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="text-xs font-semibold text-foreground p-0 hover:bg-transparent"
+            className="flex items-center gap-1.5 text-xs font-semibold text-white hover:text-[#00ff66] transition-colors cursor-pointer"
           >
             Project Name
-            <ArrowUpDown className="ml-2 h-3.5 w-3.5 text-muted-foreground" />
-          </Button>
+            <ArrowUpDown className="h-3.5 w-3.5 text-[#818c99]" />
+          </button>
         ),
         cell: ({ row }) => {
           const proj = row.original
           return (
             <div className="flex items-center gap-3">
-              <div className="h-8 w-8 rounded-md bg-secondary border border-border flex items-center justify-center text-foreground shrink-0">
+              <div className="h-9 w-9 rounded-2xl bg-[#00ff66]/10 border border-[#00ff66]/20 flex items-center justify-center text-[#00ff66] shrink-0">
                 <Bot className="h-4 w-4" />
               </div>
               <div className="min-w-0">
-                <div className="font-semibold text-foreground text-xs truncate">{proj.name}</div>
+                <div className="font-bold text-white text-xs truncate">{proj.name}</div>
                 {proj.token_address ? (
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="font-mono text-[11px] text-muted-foreground truncate max-w-[160px]">
+                    <span className="font-mono text-[11px] text-[#818c99] truncate max-w-[160px]">
                       {proj.token_address}
                     </span>
                     <button
                       onClick={() => copyToClipboard(proj.token_address!, proj.id)}
-                      className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                      className="text-[#818c99] hover:text-[#00ff66] transition-colors cursor-pointer"
                       title="Copy Token Address"
                     >
                       {copiedId === proj.id ? (
-                        <Check className="h-2.5 w-2.5 text-emerald-600" />
+                        <Check className="h-2.5 w-2.5 text-[#00ff66]" />
                       ) : (
                         <Copy className="h-2.5 w-2.5" />
                       )}
                     </button>
                   </div>
                 ) : (
-                  <span className="text-[11px] text-muted-foreground">ID: {proj.id.slice(0, 8)}...</span>
+                  <span className="text-[11px] text-[#818c99]">ID: {proj.id.slice(0, 8)}...</span>
                 )}
               </div>
             </div>
@@ -238,11 +238,11 @@ export default function AdminProjectsPage() {
         cell: ({ row }) => {
           const groupId = row.original.telegram_group_id
           return groupId ? (
-            <div className="font-mono text-xs text-foreground bg-muted/60 border border-border px-2 py-0.5 rounded-md w-fit">
+            <div className="font-mono text-xs text-white bg-[#161b22] border border-[#212833] px-3 py-1 rounded-full w-fit">
               {groupId}
             </div>
           ) : (
-            <span className="inline-flex items-center text-[11px] text-muted-foreground bg-secondary border border-border px-2 py-0.5 rounded-md">
+            <span className="inline-flex items-center text-[11px] text-[#818c99] bg-[#161b22] border border-[#212833] px-2.5 py-0.5 rounded-full">
               Direct Messages (DMs)
             </span>
           )
@@ -251,14 +251,13 @@ export default function AdminProjectsPage() {
       {
         accessorKey: "status",
         header: ({ column }) => (
-          <Button
-            variant="ghost"
+          <button
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="text-xs font-semibold text-foreground p-0 hover:bg-transparent"
+            className="flex items-center gap-1.5 text-xs font-semibold text-white hover:text-[#00ff66] transition-colors cursor-pointer"
           >
             Status
-            <ArrowUpDown className="ml-2 h-3.5 w-3.5 text-muted-foreground" />
-          </Button>
+            <ArrowUpDown className="h-3.5 w-3.5 text-[#818c99]" />
+          </button>
         ),
         cell: ({ row }) => {
           const status = row.original.status
@@ -267,23 +266,23 @@ export default function AdminProjectsPage() {
 
           if (isHealthy) {
             return (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#00ff66] bg-[#00ff66]/10 border border-[#00ff66]/30 px-3 py-1 rounded-full">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#00ff66] animate-pulse" />
                 Online
               </span>
             )
           }
           if (isDeploying) {
             return (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-600 animate-ping" />
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-3 py-1 rounded-full">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
                 Deploying
               </span>
             )
           }
           return (
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-full">
-              <span className="h-1.5 w-1.5 rounded-full bg-rose-600" />
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-400 bg-rose-500/10 border border-rose-500/30 px-3 py-1 rounded-full">
+              <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
               {status || "Error"}
             </span>
           )
@@ -292,14 +291,13 @@ export default function AdminProjectsPage() {
       {
         accessorKey: "created_at",
         header: ({ column }) => (
-          <Button
-            variant="ghost"
+          <button
             onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="text-xs font-semibold text-foreground p-0 hover:bg-transparent"
+            className="flex items-center gap-1.5 text-xs font-semibold text-white hover:text-[#00ff66] transition-colors cursor-pointer"
           >
             Created At
-            <ArrowUpDown className="ml-2 h-3.5 w-3.5 text-muted-foreground" />
-          </Button>
+            <ArrowUpDown className="h-3.5 w-3.5 text-[#818c99]" />
+          </button>
         ),
         cell: ({ row }) => {
           const raw = row.original.created_at
@@ -314,8 +312,8 @@ export default function AdminProjectsPage() {
             } catch {}
           }
           return (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+            <div className="flex items-center gap-1.5 text-xs text-[#818c99]">
+              <Calendar className="h-3.5 w-3.5 text-[#818c99]" />
               <span>{dateStr}</span>
             </div>
           )
@@ -332,14 +330,14 @@ export default function AdminProjectsPage() {
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-md cursor-pointer"
+                    className="h-8 w-8 p-0 text-[#818c99] hover:text-white hover:bg-[#181d24] rounded-full cursor-pointer"
                   >
                     <span className="sr-only">Open menu</span>
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48 bg-popover border border-border text-popover-foreground shadow-md rounded-md p-1">
-                  <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2 py-1.5">
+                <DropdownMenuContent align="end" className="w-48 bg-[#12161c] border border-[#212833] text-white shadow-2xl rounded-2xl p-1.5">
+                  <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-wider text-[#818c99] px-2.5 py-1.5">
                     Project Actions
                   </DropdownMenuLabel>
                   <DropdownMenuItem
@@ -348,15 +346,15 @@ export default function AdminProjectsPage() {
                       setEditGroupId(proj.telegram_group_id || "")
                       setEditError(null)
                     }}
-                    className="cursor-pointer gap-2 hover:bg-secondary text-foreground text-xs py-1.5 rounded-sm"
+                    className="cursor-pointer gap-2 hover:bg-[#181d24] text-white hover:text-[#00ff66] text-xs py-2 rounded-xl"
                   >
-                    <Edit className="h-3.5 w-3.5 text-muted-foreground" />
+                    <Edit className="h-3.5 w-3.5 text-[#818c99]" />
                     <span>Edit Group ID</span>
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-border" />
+                  <DropdownMenuSeparator className="bg-[#212833]" />
                   <DropdownMenuItem
                     onClick={() => handleDelete(proj.id)}
-                    className="cursor-pointer gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive text-xs py-1.5 rounded-sm"
+                    className="cursor-pointer gap-2 text-rose-400 hover:bg-rose-950/30 hover:text-rose-300 text-xs py-2 rounded-xl font-semibold"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     <span>Delete Bot</span>
@@ -394,14 +392,14 @@ export default function AdminProjectsPage() {
   })
 
   return (
-    <div className="space-y-6">
-      {/* Header and Add Project Action */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-border">
+    <div className="space-y-6 pb-12">
+      {/* WealthWave Header and Add Project Action */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-[#212833]">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             Active Projects
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-xs text-[#818c99] mt-1">
             Manage your AI agents, Telegram group bindings, and secure credentials.
           </p>
         </div>
@@ -412,42 +410,42 @@ export default function AdminProjectsPage() {
             size="sm"
             onClick={fetchProjects}
             disabled={loading}
-            className="border-border bg-card hover:bg-secondary text-foreground text-xs h-9 cursor-pointer shadow-xs"
+            className="border-[#212833] bg-[#12161c] hover:bg-[#181d24] text-white text-xs h-10 px-4 rounded-full cursor-pointer shadow-sm"
           >
-            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? "animate-spin text-[#00ff66]" : ""}`} />
             Refresh
           </Button>
 
           {/* Deploy New Bot Modal */}
           <Dialog open={isDeployOpen} onOpenChange={setIsDeployOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-9 px-4 font-medium shadow-sm cursor-pointer">
-                <Plus className="h-3.5 w-3.5 mr-1.5" />
+              <Button className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-10 px-5 rounded-full shadow-lg shadow-[#00ff66]/20 cursor-pointer transition-all">
+                <Plus className="h-4 w-4 mr-1.5 stroke-[3]" />
                 Add Project
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px] bg-card border border-border text-foreground shadow-xl rounded-lg">
+            <DialogContent className="sm:max-w-[500px] bg-[#12161c] border border-[#212833] text-white shadow-2xl rounded-3xl p-6">
               <DialogHeader>
-                <DialogTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <Bot className="h-5 w-5 text-foreground" />
+                <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
+                  <Bot className="h-5 w-5 text-[#00ff66]" />
                   Deploy New Bot to Zoe Engine
                 </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground">
+                <DialogDescription className="text-xs text-[#818c99]">
                   Register a new Telegram bot token and connect it directly to the runtime engine.
                 </DialogDescription>
               </DialogHeader>
 
               {deployError && (
-                <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+                <div className="p-3 rounded-2xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
                   <span>{deployError}</span>
                 </div>
               )}
 
               <form onSubmit={handleDeploy} className="space-y-4 pt-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="bot-name" className="text-xs font-medium text-foreground">
-                    Bot / Project Name <span className="text-destructive">*</span>
+                  <Label htmlFor="bot-name" className="text-xs font-semibold text-white">
+                    Bot / Project Name <span className="text-[#00ff66]">*</span>
                   </Label>
                   <Input
                     id="bot-name"
@@ -455,13 +453,13 @@ export default function AdminProjectsPage() {
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="h-9 text-xs"
+                    className="h-10 text-xs bg-[#161b22] border-[#212833] text-white rounded-full"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="bot-token" className="text-xs font-medium text-foreground">
-                    Telegram Bot Token <span className="text-destructive">*</span>
+                  <Label htmlFor="bot-token" className="text-xs font-semibold text-white">
+                    Telegram Bot Token <span className="text-[#00ff66]">*</span>
                   </Label>
                   <Input
                     id="bot-token"
@@ -470,66 +468,66 @@ export default function AdminProjectsPage() {
                     required
                     value={botToken}
                     onChange={(e) => setBotToken(e.target.value)}
-                    className="h-9 text-xs font-mono"
+                    className="h-10 text-xs font-mono bg-[#161b22] border-[#212833] text-white rounded-full"
                   />
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-[11px] text-[#818c99]">
                     Obtained from @BotFather. AES-256 encrypted before saving to database.
                   </p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="group-id" className="text-xs font-medium text-foreground">
-                    Telegram Group ID <span className="text-muted-foreground font-normal">(optional)</span>
+                  <Label htmlFor="group-id" className="text-xs font-semibold text-white">
+                    Telegram Group ID <span className="text-[#818c99] font-normal">(optional)</span>
                   </Label>
                   <Input
                     id="group-id"
                     placeholder="e.g. -1001234567890"
                     value={groupId}
                     onChange={(e) => setGroupId(e.target.value)}
-                    className="h-9 text-xs font-mono"
+                    className="h-10 text-xs font-mono bg-[#161b22] border-[#212833] text-white rounded-full"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="token-address" className="text-xs font-medium text-foreground">
-                    Token Contract Address <span className="text-muted-foreground font-normal">(optional)</span>
+                  <Label htmlFor="token-address" className="text-xs font-semibold text-white">
+                    Token Contract Address <span className="text-[#818c99] font-normal">(optional)</span>
                   </Label>
                   <Input
                     id="token-address"
                     placeholder="e.g. 0x... or Solana Mint"
                     value={tokenAddress}
                     onChange={(e) => setTokenAddress(e.target.value)}
-                    className="h-9 text-xs font-mono"
+                    className="h-10 text-xs font-mono bg-[#161b22] border-[#212833] text-white rounded-full"
                   />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="custom-instructions" className="text-xs font-medium text-foreground">
-                    Custom Persona Instructions <span className="text-muted-foreground font-normal">(optional)</span>
+                  <Label htmlFor="custom-instructions" className="text-xs font-semibold text-white">
+                    Custom Persona Instructions <span className="text-[#818c99] font-normal">(optional)</span>
                   </Label>
                   <Input
                     id="custom-instructions"
                     placeholder="e.g. Act as a welcoming assistant for our DeFi token."
                     value={customInstructions}
                     onChange={(e) => setCustomInstructions(e.target.value)}
-                    className="h-9 text-xs"
+                    className="h-10 text-xs bg-[#161b22] border-[#212833] text-white rounded-full"
                   />
                 </div>
 
-                <DialogFooter className="pt-3 border-t border-border flex items-center justify-end gap-2">
+                <DialogFooter className="pt-3 border-t border-[#212833] flex items-center justify-end gap-2">
                   <Button
                     type="button"
                     variant="outline"
                     disabled={deploySubmitting}
                     onClick={() => setIsDeployOpen(false)}
-                    className="text-xs h-9"
+                    className="text-xs h-10 px-5 rounded-full border-[#212833] text-[#818c99] hover:text-white"
                   >
                     Cancel
                   </Button>
                   <Button
                     type="submit"
                     disabled={deploySubmitting || !name || !botToken}
-                    className="text-xs h-9 px-4 font-medium disabled:opacity-50 cursor-pointer"
+                    className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-10 px-6 rounded-full shadow-lg shadow-[#00ff66]/20 disabled:opacity-50 cursor-pointer"
                   >
                     {deploySubmitting && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
                     {deploySubmitting ? "Deploying..." : "Deploy Bot"}
@@ -545,60 +543,60 @@ export default function AdminProjectsPage() {
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         {/* Search Input */}
         <div className="relative max-w-sm w-full">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-4 top-3 h-4 w-4 text-[#6e7886]" />
           <Input
             placeholder="Search projects or contracts..."
             value={globalFilter}
             onChange={(e) => setGlobalFilter(e.target.value)}
-            className="text-xs pl-9 h-9"
+            className="text-xs pl-10 h-10 bg-[#12161c] border-[#212833] text-white rounded-full placeholder:text-[#6e7886]"
           />
         </div>
 
         {/* Status Filter Buttons */}
-        <div className="flex items-center gap-1 bg-secondary/80 border border-border p-1 rounded-md">
+        <div className="flex items-center gap-1.5 bg-[#12161c] border border-[#212833] p-1.5 rounded-full">
           <button
             onClick={() => setStatusFilter("all")}
-            className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
               statusFilter === "all"
-                ? "bg-card text-foreground shadow-xs font-semibold"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-[#1f2631] text-[#00ff66] shadow-sm"
+                : "text-[#818c99] hover:text-white"
             }`}
           >
             All ({data.length})
           </button>
           <button
             onClick={() => setStatusFilter("online")}
-            className={`px-3 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${
+            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               statusFilter === "online"
-                ? "bg-card text-emerald-700 shadow-xs font-semibold"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-[#1f2631] text-[#00ff66] shadow-sm"
+                : "text-[#818c99] hover:text-white"
             }`}
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+            <span className="h-2 w-2 rounded-full bg-[#00ff66]" />
             Online
           </button>
           <button
             onClick={() => setStatusFilter("deploying")}
-            className={`px-3 py-1 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${
+            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
               statusFilter === "deploying"
-                ? "bg-card text-amber-700 shadow-xs font-semibold"
-                : "text-muted-foreground hover:text-foreground"
+                ? "bg-[#1f2631] text-amber-400 shadow-sm"
+                : "text-[#818c99] hover:text-white"
             }`}
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
+            <span className="h-2 w-2 rounded-full bg-amber-400" />
             Deploying
           </button>
         </div>
       </div>
 
-      {/* shadcn Clean Light Data Table */}
-      <div className="rounded-lg border border-border bg-card overflow-hidden shadow-xs">
+      {/* WealthWave Dark Data Table */}
+      <div className="rounded-3xl border border-[#212833] bg-[#12161c] overflow-hidden shadow-2xl">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id} className="text-muted-foreground text-xs py-3 px-4 font-semibold">
+                  <TableHead key={header.id} className="text-[#818c99] text-xs py-4 px-5 font-bold uppercase tracking-wider">
                     {header.isPlaceholder
                       ? null
                       : flexRender(header.column.columnDef.header, header.getContext())}
@@ -611,10 +609,10 @@ export default function AdminProjectsPage() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={columns.length} className="h-36 text-center text-[#818c99]">
                   <div className="flex flex-col items-center justify-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    <span className="text-xs">Loading projects from Zoe Engine...</span>
+                    <Loader2 className="h-6 w-6 animate-spin text-[#00ff66]" />
+                    <span className="text-xs font-semibold text-white">Loading projects from Zoe Engine...</span>
                   </div>
                 </TableCell>
               </TableRow>
@@ -622,7 +620,7 @@ export default function AdminProjectsPage() {
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id} className="py-3 px-4 text-xs">
+                    <TableCell key={cell.id} className="py-4 px-5 text-xs">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </TableCell>
                   ))}
@@ -630,10 +628,10 @@ export default function AdminProjectsPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground text-xs">
+                <TableCell colSpan={columns.length} className="h-36 text-center text-[#818c99] text-xs">
                   <div className="space-y-1">
-                    <p className="font-medium text-foreground">No projects found</p>
-                    <p className="text-xs text-muted-foreground">Click &quot;Add Project&quot; above to register an autonomous Telegram bot.</p>
+                    <p className="font-bold text-white text-sm">No projects found</p>
+                    <p className="text-xs text-[#818c99]">Click &quot;Add Project&quot; above to register an autonomous Telegram bot.</p>
                   </div>
                 </TableCell>
               </TableRow>
@@ -643,7 +641,7 @@ export default function AdminProjectsPage() {
       </div>
 
       {/* Pagination Controls */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+      <div className="flex items-center justify-between text-xs text-[#818c99] px-2">
         <div>
           Showing {table.getFilteredRowModel().rows.length} of {data.length} registered project(s)
         </div>
@@ -653,11 +651,11 @@ export default function AdminProjectsPage() {
             size="sm"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
-            className="h-8 px-3 text-xs disabled:opacity-40 cursor-pointer"
+            className="h-9 px-4 rounded-full border-[#212833] bg-[#12161c] text-white text-xs disabled:opacity-30 cursor-pointer"
           >
             Previous
           </Button>
-          <span className="text-xs">
+          <span className="text-xs font-medium text-white px-2">
             Page {table.getState().pagination.pageIndex + 1} of {Math.max(1, table.getPageCount())}
           </span>
           <Button
@@ -665,7 +663,7 @@ export default function AdminProjectsPage() {
             size="sm"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
-            className="h-8 px-3 text-xs disabled:opacity-40 cursor-pointer"
+            className="h-9 px-4 rounded-full border-[#212833] bg-[#12161c] text-white text-xs disabled:opacity-30 cursor-pointer"
           >
             Next
           </Button>
@@ -675,26 +673,26 @@ export default function AdminProjectsPage() {
       {/* Edit Group ID Modal */}
       {editProject && (
         <Dialog open={!!editProject} onOpenChange={(open) => !open && setEditProject(null)}>
-          <DialogContent className="sm:max-w-[450px] bg-card border border-border text-foreground shadow-xl rounded-lg">
+          <DialogContent className="sm:max-w-[450px] bg-[#12161c] border border-[#212833] text-white shadow-2xl rounded-3xl p-6">
             <DialogHeader>
-              <DialogTitle className="text-base font-semibold text-foreground">
+              <DialogTitle className="text-base font-bold text-white">
                 Edit Telegram Group for {editProject.name}
               </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
+              <DialogDescription className="text-xs text-[#818c99]">
                 Update the authorized group chat ID where this bot responds.
               </DialogDescription>
             </DialogHeader>
 
             {editError && (
-              <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+              <div className="p-3 rounded-2xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
                 <span>{editError}</span>
               </div>
             )}
 
             <form onSubmit={handleUpdateGroup} className="space-y-4 pt-2">
               <div className="space-y-1.5">
-                <Label htmlFor="edit-group-id" className="text-xs font-medium text-foreground">
+                <Label htmlFor="edit-group-id" className="text-xs font-semibold text-white">
                   Telegram Group ID
                 </Label>
                 <Input
@@ -702,23 +700,23 @@ export default function AdminProjectsPage() {
                   placeholder="e.g. -1001234567890"
                   value={editGroupId}
                   onChange={(e) => setEditGroupId(e.target.value)}
-                  className="font-mono text-xs h-9"
+                  className="font-mono text-xs h-10 bg-[#161b22] border-[#212833] text-white rounded-full"
                 />
               </div>
 
-              <DialogFooter className="pt-3 border-t border-border flex items-center justify-end gap-2">
+              <DialogFooter className="pt-3 border-t border-[#212833] flex items-center justify-end gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setEditProject(null)}
-                  className="text-xs h-9"
+                  className="text-xs h-10 px-5 rounded-full border-[#212833] text-[#818c99] hover:text-white"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={editSubmitting}
-                  className="text-xs h-9 px-4 font-medium cursor-pointer"
+                  className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-10 px-6 rounded-full shadow-lg shadow-[#00ff66]/20 cursor-pointer"
                 >
                   {editSubmitting ? "Saving..." : "Save Changes"}
                 </Button>

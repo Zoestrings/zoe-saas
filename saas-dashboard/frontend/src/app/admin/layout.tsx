@@ -29,22 +29,22 @@ export default function AdminLayout({
 
   if (isAuthenticated === null) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-background text-muted-foreground gap-3">
-        <Loader2 className="h-8 w-8 animate-spin text-foreground" />
-        <p className="text-sm font-medium">Verifying admin session...</p>
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#080a0c] text-[#818c99] gap-3">
+        <Loader2 className="h-8 w-8 animate-spin text-[#00ff66]" />
+        <p className="text-xs font-semibold text-white tracking-wide">Loading Zoe Platform...</p>
       </div>
     )
   }
 
   return (
-    <div className="h-screen w-full bg-background text-foreground flex overflow-hidden font-sans">
-      {/* Shadcn Admin Sidebar */}
+    <div className="h-screen w-full bg-[#080a0c] text-white flex overflow-hidden font-sans">
+      {/* WealthWave Dark Sidebar */}
       <AdminSidebar />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto bg-slate-50/60">
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto bg-[#080a0c]">
         <AdminHeader />
-        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto space-y-8">
           {children}
         </main>
       </div>

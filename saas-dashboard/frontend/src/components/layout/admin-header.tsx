@@ -7,9 +7,10 @@ import {
   Search, 
   Settings, 
   Bell, 
-  ExternalLink,
+  Plus,
   Cpu,
-  Command
+  User as UserIcon,
+  Sparkles
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -19,11 +20,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button"
 import { getUser, logout, User } from "@/lib/api"
 
 export function AdminHeader() {
   const [user, setUser] = useState<User | null>(null)
-  const [notificationsCount, setNotificationsCount] = useState<number>(3)
 
   useEffect(() => {
     const currentUser = getUser()
@@ -39,90 +40,85 @@ export function AdminHeader() {
     .toUpperCase() || "ZA"
 
   return (
-    <header className="h-16 border-b border-border bg-card px-6 md:px-8 flex items-center justify-between sticky top-0 z-30 select-none">
-      {/* Search Bar - shadcn style */}
+    <header className="h-20 border-b border-[#1f2530]/60 bg-[#080a0c] px-6 md:px-8 flex items-center justify-between sticky top-0 z-30 select-none">
+      {/* Pill Search Bar - WealthWave style */}
       <div className="flex items-center gap-4 max-w-md w-full">
         <div className="relative w-full">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-4 top-3 h-4 w-4 text-[#6e7886]" />
           <input
             type="text"
             placeholder="Search projects, tokens, or system events..."
-            className="w-full bg-muted/40 border border-input rounded-md pl-9 pr-12 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring focus:bg-background transition-all"
+            className="w-full bg-[#13171d] border border-[#212833] rounded-full pl-10 pr-4 py-2 text-xs text-white placeholder:text-[#6e7886] focus:outline-none focus:border-[#00ff66] focus:ring-1 focus:ring-[#00ff66] transition-all"
           />
-          <div className="absolute right-2.5 top-2 flex items-center gap-0.5 pointer-events-none text-[10px] bg-secondary text-muted-foreground px-1.5 py-0.5 rounded border border-border font-mono">
-            <Command className="h-2.5 w-2.5" /> K
-          </div>
         </div>
       </div>
 
       {/* Right Controls */}
       <div className="flex items-center gap-3 md:gap-4">
-        {/* Backend API status */}
-        <div className="hidden sm:flex items-center gap-2 px-2.5 py-1 rounded-md border border-border bg-secondary/50 text-xs text-foreground">
-          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[11px] font-medium">FastAPI Engine</span>
-        </div>
+        {/* WealthWave Neon Green Action Button */}
+        <Link href="/admin/projects">
+          <Button className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-10 px-5 rounded-full shadow-lg shadow-[#00ff66]/20 flex items-center gap-2 cursor-pointer transition-all">
+            <Plus className="h-4 w-4 stroke-[3]" />
+            <span>Add Project</span>
+          </Button>
+        </Link>
 
-        {/* Notification Bell */}
+        {/* Circular Notification Bell */}
         <div className="relative">
           <button 
             type="button" 
             aria-label="View notifications"
-            className="h-8 w-8 rounded-md border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+            className="h-10 w-10 rounded-full border border-[#212833] bg-[#13171d] flex items-center justify-center text-white hover:border-[#00ff66]/50 transition-colors cursor-pointer"
           >
             <Bell className="h-4 w-4" />
           </button>
-          {notificationsCount > 0 && (
-            <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-[10px] font-bold text-primary-foreground flex items-center justify-center">
-              {notificationsCount}
-            </span>
-          )}
+          <span className="absolute 1 top-1 right-1 h-2.5 w-2.5 rounded-full bg-[#00ff66] ring-2 ring-[#080a0c]" />
         </div>
 
         {/* User Profile Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 p-0.5 rounded-full hover:bg-secondary transition-colors focus:outline-none cursor-pointer">
-              <Avatar className="h-8 w-8 border border-border bg-secondary text-foreground">
-                <AvatarFallback className="text-xs font-semibold text-foreground">
+            <button className="flex items-center gap-2 p-0.5 rounded-full hover:ring-2 hover:ring-[#00ff66]/40 transition-all focus:outline-none cursor-pointer">
+              <Avatar className="h-10 w-10 border border-[#212833] bg-[#181d24] text-white">
+                <AvatarFallback className="text-xs font-bold text-[#00ff66]">
                   {initials}
                 </AvatarFallback>
               </Avatar>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60 bg-popover border border-border text-popover-foreground shadow-lg rounded-lg p-1.5">
-            <div className="p-2.5 border-b border-border">
+          <DropdownMenuContent align="end" className="w-60 bg-[#12161c] border border-[#212833] text-white shadow-2xl rounded-2xl p-2 backdrop-blur-xl">
+            <div className="p-3 border-b border-[#212833]">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                <span className="text-[10px] font-bold text-[#818c99] uppercase tracking-wider">
                   Signed In
                 </span>
-                <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
+                <span className="text-[10px] font-bold text-black bg-[#00ff66] px-2 py-0.5 rounded-full">
                   Super Admin
                 </span>
               </div>
-              <p className="text-xs font-medium text-foreground truncate">{email}</p>
+              <p className="text-xs font-semibold text-white truncate">{email}</p>
             </div>
             
             <div className="py-1">
               <Link href="/admin/settings">
-                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-secondary text-foreground py-2 rounded-md text-xs">
-                  <Settings className="h-4 w-4 text-muted-foreground" />
+                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-[#181d24] hover:text-[#00ff66] text-white py-2 rounded-xl text-xs">
+                  <Settings className="h-4 w-4 text-[#818c99]" />
                   <span>Platform Settings</span>
                 </DropdownMenuItem>
               </Link>
               <Link href="/admin/overview">
-                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-secondary text-foreground py-2 rounded-md text-xs">
-                  <Cpu className="h-4 w-4 text-muted-foreground" />
+                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-[#181d24] hover:text-[#00ff66] text-white py-2 rounded-xl text-xs">
+                  <Cpu className="h-4 w-4 text-[#818c99]" />
                   <span>Fleet Overview</span>
                 </DropdownMenuItem>
               </Link>
             </div>
 
-            <DropdownMenuSeparator className="bg-border" />
+            <DropdownMenuSeparator className="bg-[#212833]" />
             
             <DropdownMenuItem
               onClick={logout}
-              className="cursor-pointer gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive py-2 rounded-md text-xs font-medium"
+              className="cursor-pointer gap-2 text-rose-400 hover:bg-rose-950/30 hover:text-rose-300 py-2 rounded-xl text-xs font-semibold"
             >
               <LogOut className="h-4 w-4" />
               <span>Sign Out</span>

@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
-import { getToken, getUser } from "@/lib/api"
-import { Sidebar } from "@/components/layout/sidebar"
-import { Header } from "@/components/layout/header"
+import { getToken, getUser, isSuperAdmin } from "@/lib/api"
+import { AdminSidebar } from "@/components/layout/admin-sidebar"
+import { AdminHeader } from "@/components/layout/admin-header"
 
 export default function DashboardLayout({
   children,
@@ -30,7 +30,7 @@ export default function DashboardLayout({
   // Prevent flicker while checking token
   if (isAuthenticated === null) {
     return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#0b0f19] text-slate-400 gap-3">
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#0d131f] text-slate-400 gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-cyan-400" />
         <p className="text-sm font-medium">Verifying session...</p>
       </div>
@@ -38,14 +38,14 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="h-screen w-full bg-[#0b0f19] text-slate-100 flex overflow-hidden font-sans">
-      {/* Persistent Left Sidebar */}
-      <Sidebar />
+    <div className="h-screen w-full bg-[#0d131f] text-slate-100 flex overflow-hidden font-sans">
+      {/* Modern Admin Sidebar */}
+      <AdminSidebar />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
-        <Header />
-        <main className="flex-1 p-8">
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto bg-[#0a0f18]">
+        <AdminHeader />
+        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">
           {children}
         </main>
       </div>

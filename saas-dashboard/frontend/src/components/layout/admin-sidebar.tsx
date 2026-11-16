@@ -37,9 +37,9 @@ export function AdminSidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="w-64 flex-shrink-0 flex flex-col border-r border-[#1f2530] bg-[#0d1015] text-white h-screen sticky top-0 z-40 select-none">
+    <aside className="w-64 flex-shrink-0 flex flex-col border-r border-neutral-800 bg-[#121212] text-white h-screen sticky top-0 z-40 select-none">
       {/* Brand Header */}
-      <div className="h-20 flex items-center px-6 border-b border-[#1f2530]/60 gap-3">
+      <div className="h-20 flex items-center px-6 border-b border-neutral-800 gap-3">
         <div className="h-9 w-9 rounded-xl bg-[#00ff66] text-black flex items-center justify-center font-black text-base shadow-lg shadow-[#00ff66]/20">
           <Sparkles className="h-5 w-5 fill-black" />
         </div>
@@ -55,7 +55,7 @@ export function AdminSidebar() {
 
       {/* Navigation Links */}
       <div className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
-        <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-[#6e7886]">
+        <div className="px-3 pb-2 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
           Menu
         </div>
 
@@ -70,14 +70,14 @@ export function AdminSidebar() {
               className={cn(
                 "group flex items-center gap-3.5 px-4 py-3 rounded-2xl text-xs font-semibold transition-all",
                 isActive
-                  ? "bg-[#181d24] text-[#00ff66] border border-[#00ff66]/30 shadow-md shadow-[#00ff66]/5"
-                  : "text-[#818c99] hover:text-white hover:bg-[#14181f]"
+                  ? "bg-neutral-800 text-[#00ff66] border border-[#00ff66]/40 shadow-md shadow-[#00ff66]/5"
+                  : "text-neutral-400 hover:text-white hover:bg-neutral-900"
               )}
             >
               <Icon
                 className={cn(
                   "h-4 w-4 transition-colors",
-                  isActive ? "text-[#00ff66]" : "text-[#6e7886] group-hover:text-white"
+                  isActive ? "text-[#00ff66]" : "text-neutral-500 group-hover:text-white"
                 )}
               />
               <span className="flex-1 text-xs">{item.name}</span>
@@ -87,9 +87,9 @@ export function AdminSidebar() {
       </div>
 
       {/* WealthWave Style Bottom Section */}
-      <div className="p-4 space-y-3 border-t border-[#1f2530]/60">
+      <div className="p-4 space-y-3 border-t border-neutral-800">
         {/* Engine Status Card */}
-        <div className="rounded-2xl bg-[#14181f] border border-[#212833] p-4 text-center space-y-2 shadow-inner">
+        <div className="rounded-2xl bg-neutral-900 border border-neutral-800 p-4 text-center space-y-2 shadow-inner">
           <span className="text-xs font-bold text-white block">Engine Core</span>
           <div className="inline-flex items-center gap-1.5 bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30 px-3 py-1 rounded-full text-[10px] font-bold">
             <span className="h-1.5 w-1.5 rounded-full bg-[#00ff66] animate-pulse" />
@@ -101,14 +101,14 @@ export function AdminSidebar() {
         <div className="space-y-1 pt-1">
           <Link
             href="/admin/settings"
-            className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs text-[#818c99] hover:text-white hover:bg-[#14181f] transition-colors"
+            className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors"
           >
             <Settings className="h-4 w-4" />
             <span>Settings</span>
           </Link>
           <button
             onClick={logout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs text-[#818c99] hover:text-rose-400 hover:bg-rose-950/20 transition-colors cursor-pointer"
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs text-neutral-400 hover:text-rose-400 hover:bg-rose-950/20 transition-colors cursor-pointer"
           >
             <LogOut className="h-4 w-4" />
             <span>Log out</span>

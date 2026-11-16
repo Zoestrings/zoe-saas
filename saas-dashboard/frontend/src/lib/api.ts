@@ -3,7 +3,9 @@
  * Talks to FastAPI backend at http://localhost:8000
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL || "https://zoe-saas-production.up.railway.app"
+).replace(/\/$/, "")
 
 const TOKEN_KEY = "zoe_auth_token"
 const USER_KEY = "zoe_auth_user"

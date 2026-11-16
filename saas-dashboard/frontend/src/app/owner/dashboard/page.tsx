@@ -48,9 +48,9 @@ export default function OwnerDashboardPage() {
 
   if (loading) {
     return (
-      <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-3">
-        <RefreshCw className="h-6 w-6 animate-spin text-cyan-400" />
-        <p className="text-xs font-medium">Loading your bot profile...</p>
+      <div className="py-20 flex flex-col items-center justify-center text-neutral-400 gap-3">
+        <RefreshCw className="h-6 w-6 animate-spin text-[#00ff66]" />
+        <p className="text-xs font-semibold text-white tracking-wide">Loading your bot profile...</p>
       </div>
     )
   }
@@ -59,12 +59,12 @@ export default function OwnerDashboardPage() {
   if (projects.length === 0) {
     return (
       <div className="py-20 max-w-xl mx-auto text-center space-y-5">
-        <div className="h-16 w-16 mx-auto rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-center text-slate-500 shadow-xl">
-          <Inbox className="h-8 w-8 text-slate-400" />
+        <div className="h-16 w-16 mx-auto rounded-3xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-neutral-500 shadow-xl">
+          <Inbox className="h-8 w-8 text-[#00ff66]" />
         </div>
         <div className="space-y-2">
-          <h2 className="text-lg font-semibold text-white">No Assigned Bot</h2>
-          <p className="text-sm text-slate-400 leading-relaxed">
+          <h2 className="text-lg font-bold text-white">No Assigned Bot</h2>
+          <p className="text-xs text-neutral-400 leading-relaxed">
             You don&apos;t have any projects assigned yet. Please contact the Zoe platform admin to deploy your bot.
           </p>
         </div>
@@ -73,7 +73,7 @@ export default function OwnerDashboardPage() {
             variant="outline"
             size="sm"
             onClick={loadProjects}
-            className="border-slate-800 bg-slate-900/50 hover:bg-slate-800 text-slate-300 text-xs h-9"
+            className="border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-white text-xs h-9 rounded-full cursor-pointer"
           >
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
             Check Again
@@ -86,13 +86,13 @@ export default function OwnerDashboardPage() {
   return (
     <div className="space-y-8">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-slate-800/80">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-6 border-b border-neutral-800">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2.5">
-            <Bot className="h-6 w-6 text-cyan-400" />
+            <Bot className="h-6 w-6 text-[#00ff66]" />
             My Deployed Agents
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-neutral-400 mt-1">
             Manage your autonomous Telegram community assistant, custom facts, and response persona.
           </p>
         </div>
@@ -100,7 +100,7 @@ export default function OwnerDashboardPage() {
           variant="outline"
           size="sm"
           onClick={loadProjects}
-          className="border-slate-800 bg-slate-900/60 hover:bg-slate-800 text-slate-300 text-xs h-9 cursor-pointer w-fit"
+          className="border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-white text-xs h-9 rounded-full cursor-pointer w-fit"
         >
           <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
           Refresh Status
@@ -117,9 +117,9 @@ export default function OwnerDashboardPage() {
           return (
             <Card
               key={proj.id}
-              className="bg-slate-900/60 border border-slate-800/80 rounded-xl overflow-hidden backdrop-blur-sm shadow-xl flex flex-col justify-between"
+              className="bg-[#121212] border border-neutral-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between"
             >
-              <CardHeader className="p-6 border-b border-slate-800/60 pb-5">
+              <CardHeader className="p-6 border-b border-neutral-800 pb-5">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
@@ -127,30 +127,30 @@ export default function OwnerDashboardPage() {
                         {proj.name}
                       </CardTitle>
                       {isHealthy && (
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-full">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#00ff66] bg-[#00ff66]/10 border border-[#00ff66]/30 px-2.5 py-0.5 rounded-full">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[#00ff66] animate-pulse" />
                           Online
                         </span>
                       )}
                       {isDeploying && (
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2 py-0.5 rounded-full">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2.5 py-0.5 rounded-full">
                           <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-ping" />
                           Deploying
                         </span>
                       )}
                       {isError && (
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-rose-400 bg-rose-950/60 border border-rose-800/60 px-2 py-0.5 rounded-full">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-rose-400 bg-rose-950/60 border border-rose-800/60 px-2.5 py-0.5 rounded-full">
                           <span className="h-1.5 w-1.5 rounded-full bg-rose-400" />
                           Error
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400 mt-1 font-mono">
+                    <p className="text-xs text-neutral-400 mt-1 font-mono">
                       ID: {proj.id}
                     </p>
                   </div>
 
-                  <div className="h-9 w-9 rounded-lg bg-cyan-950/60 border border-cyan-800/50 flex items-center justify-center text-cyan-400">
+                  <div className="h-9 w-9 rounded-2xl bg-[#00ff66]/10 border border-[#00ff66]/20 flex items-center justify-center text-[#00ff66]">
                     <Sparkles className="h-4 w-4" />
                   </div>
                 </div>
@@ -161,19 +161,19 @@ export default function OwnerDashboardPage() {
                   {/* Token Address Row */}
                   {proj.token_address ? (
                     <div>
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1.5">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 block mb-1.5">
                         Token Contract Address
                       </span>
-                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80">
-                        <span className="font-mono text-xs text-slate-300 truncate max-w-[260px]">
+                      <div className="flex items-center justify-between p-2.5 rounded-2xl bg-neutral-900 border border-neutral-800">
+                        <span className="font-mono text-xs text-white truncate max-w-[260px]">
                           {proj.token_address}
                         </span>
                         <button
                           onClick={() => copyToClipboard(proj.token_address!)}
-                          className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800/60 hover:bg-slate-800 transition-colors cursor-pointer"
+                          className="flex items-center gap-1 text-[11px] text-neutral-300 hover:text-[#00ff66] px-2.5 py-1 rounded-full bg-neutral-800 hover:bg-neutral-700 transition-colors cursor-pointer"
                         >
                           {copiedCA === proj.token_address ? (
-                            <Check className="h-3 w-3 text-emerald-400" />
+                            <Check className="h-3 w-3 text-[#00ff66]" />
                           ) : (
                             <Copy className="h-3 w-3" />
                           )}
@@ -185,17 +185,17 @@ export default function OwnerDashboardPage() {
 
                   {/* Telegram Group */}
                   {proj.telegram_group_id && (
-                    <div className="flex items-center justify-between text-xs py-1.5 border-b border-slate-800/40">
-                      <span className="text-slate-400">Telegram Group ID</span>
-                      <span className="font-mono text-slate-300">{proj.telegram_group_id}</span>
+                    <div className="flex items-center justify-between text-xs py-1.5 border-b border-neutral-800">
+                      <span className="text-neutral-400">Telegram Group ID</span>
+                      <span className="font-mono text-white">{proj.telegram_group_id}</span>
                     </div>
                   )}
 
                   {/* Custom Instructions Snippet */}
                   {proj.custom_instructions && (
                     <div className="text-xs space-y-1">
-                      <span className="text-slate-400 font-medium">Custom Persona</span>
-                      <p className="text-slate-300 bg-slate-950/40 p-2.5 rounded-lg border border-slate-800/50 text-[11px] line-clamp-2 italic">
+                      <span className="text-neutral-400 font-medium">Custom Persona</span>
+                      <p className="text-neutral-300 bg-neutral-900/60 p-3 rounded-2xl border border-neutral-800 text-[11px] line-clamp-2 italic">
                         &quot;{proj.custom_instructions}&quot;
                       </p>
                     </div>
@@ -203,22 +203,22 @@ export default function OwnerDashboardPage() {
                 </div>
 
                 {/* Quick Actions */}
-                <div className="pt-4 border-t border-slate-800/60 grid grid-cols-2 gap-3">
+                <div className="pt-4 border-t border-neutral-800 grid grid-cols-2 gap-3">
                   <Link href="/owner/dashboard/knowledge" className="w-full">
                     <Button
                       variant="outline"
-                      className="w-full justify-center border-slate-800 bg-slate-800/50 hover:bg-slate-800 hover:text-cyan-400 text-slate-200 text-xs h-9 cursor-pointer"
+                      className="w-full justify-center border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:text-[#00ff66] text-white text-xs h-10 rounded-full cursor-pointer"
                     >
-                      <BrainCircuit className="h-3.5 w-3.5 mr-1.5 text-cyan-400" />
+                      <BrainCircuit className="h-3.5 w-3.5 mr-1.5 text-[#00ff66]" />
                       Knowledge Base
                     </Button>
                   </Link>
                   <Link href="/owner/dashboard/instructions" className="w-full">
                     <Button
                       variant="outline"
-                      className="w-full justify-center border-slate-800 bg-slate-800/50 hover:bg-slate-800 hover:text-indigo-400 text-slate-200 text-xs h-9 cursor-pointer"
+                      className="w-full justify-center border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:text-[#00ff66] text-white text-xs h-10 rounded-full cursor-pointer"
                     >
-                      <FileCode className="h-3.5 w-3.5 mr-1.5 text-indigo-400" />
+                      <FileCode className="h-3.5 w-3.5 mr-1.5 text-[#00ff66]" />
                       Instructions
                     </Button>
                   </Link>

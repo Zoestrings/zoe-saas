@@ -132,6 +132,8 @@ def on_startup() -> None:
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://zoe-dashboard-production-74e063ad.up.railway.app",
+    "https://zoe-saas-production.up.railway.app",
 ]
 env_cors = os.getenv("CORS_ORIGINS", "")
 if env_cors:
@@ -140,7 +142,8 @@ if env_cors:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"^https:\/\/.*\.up\.railway\.app$|^https:\/\/.*\.vercel\.app$|^http:\/\/localhost(:\d+)?$",
+    # Allow all Railway, Vercel, and local web origins
+    allow_origin_regex=r"^https?:\/\/.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

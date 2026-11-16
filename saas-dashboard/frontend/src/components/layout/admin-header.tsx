@@ -40,15 +40,15 @@ export function AdminHeader() {
     .toUpperCase() || "ZA"
 
   return (
-    <header className="h-20 border-b border-[#1f2530]/60 bg-[#080a0c] px-6 md:px-8 flex items-center justify-between sticky top-0 z-30 select-none">
+    <header className="h-20 border-b border-neutral-800 bg-[#0a0a0a] px-6 md:px-8 flex items-center justify-between sticky top-0 z-30 select-none">
       {/* Pill Search Bar - WealthWave style */}
       <div className="flex items-center gap-4 max-w-md w-full">
         <div className="relative w-full">
-          <Search className="absolute left-4 top-3 h-4 w-4 text-[#6e7886]" />
+          <Search className="absolute left-4 top-3 h-4 w-4 text-neutral-500" />
           <input
             type="text"
             placeholder="Search projects, tokens, or system events..."
-            className="w-full bg-[#13171d] border border-[#212833] rounded-full pl-10 pr-4 py-2 text-xs text-white placeholder:text-[#6e7886] focus:outline-none focus:border-[#00ff66] focus:ring-1 focus:ring-[#00ff66] transition-all"
+            className="w-full bg-neutral-800 border border-neutral-700 rounded-full pl-10 pr-4 py-2 text-xs text-white placeholder:text-neutral-500 focus:outline-none focus:border-[#00ff66] focus:ring-1 focus:ring-[#00ff66] transition-all"
           />
         </div>
       </div>
@@ -68,28 +68,28 @@ export function AdminHeader() {
           <button 
             type="button" 
             aria-label="View notifications"
-            className="h-10 w-10 rounded-full border border-[#212833] bg-[#13171d] flex items-center justify-center text-white hover:border-[#00ff66]/50 transition-colors cursor-pointer"
+            className="h-10 w-10 rounded-full border border-neutral-800 bg-neutral-900 flex items-center justify-center text-white hover:border-[#00ff66]/50 transition-colors cursor-pointer"
           >
             <Bell className="h-4 w-4" />
           </button>
-          <span className="absolute 1 top-1 right-1 h-2.5 w-2.5 rounded-full bg-[#00ff66] ring-2 ring-[#080a0c]" />
+          <span className="absolute 1 top-1 right-1 h-2.5 w-2.5 rounded-full bg-[#00ff66] ring-2 ring-[#0a0a0a]" />
         </div>
 
         {/* User Profile Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 p-0.5 rounded-full hover:ring-2 hover:ring-[#00ff66]/40 transition-all focus:outline-none cursor-pointer">
-              <Avatar className="h-10 w-10 border border-[#212833] bg-[#181d24] text-white">
+              <Avatar className="h-10 w-10 border border-neutral-800 bg-neutral-900 text-white">
                 <AvatarFallback className="text-xs font-bold text-[#00ff66]">
                   {initials}
                 </AvatarFallback>
               </Avatar>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-60 bg-[#12161c] border border-[#212833] text-white shadow-2xl rounded-2xl p-2 backdrop-blur-xl">
-            <div className="p-3 border-b border-[#212833]">
+          <DropdownMenuContent align="end" className="w-60 bg-[#121212] border border-neutral-800 text-white shadow-2xl rounded-2xl p-2 backdrop-blur-xl">
+            <div className="p-3 border-b border-neutral-800">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold text-[#818c99] uppercase tracking-wider">
+                <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
                   Signed In
                 </span>
                 <span className="text-[10px] font-bold text-black bg-[#00ff66] px-2 py-0.5 rounded-full">
@@ -101,20 +101,20 @@ export function AdminHeader() {
             
             <div className="py-1">
               <Link href="/admin/settings">
-                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-[#181d24] hover:text-[#00ff66] text-white py-2 rounded-xl text-xs">
-                  <Settings className="h-4 w-4 text-[#818c99]" />
+                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-neutral-800 hover:text-[#00ff66] text-white py-2 rounded-xl text-xs">
+                  <Settings className="h-4 w-4 text-neutral-400" />
                   <span>Platform Settings</span>
                 </DropdownMenuItem>
               </Link>
               <Link href="/admin/overview">
-                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-[#181d24] hover:text-[#00ff66] text-white py-2 rounded-xl text-xs">
-                  <Cpu className="h-4 w-4 text-[#818c99]" />
+                <DropdownMenuItem className="cursor-pointer gap-2 hover:bg-neutral-800 hover:text-[#00ff66] text-white py-2 rounded-xl text-xs">
+                  <Cpu className="h-4 w-4 text-neutral-400" />
                   <span>Fleet Overview</span>
                 </DropdownMenuItem>
               </Link>
             </div>
 
-            <DropdownMenuSeparator className="bg-[#212833]" />
+            <DropdownMenuSeparator className="bg-neutral-800" />
             
             <DropdownMenuItem
               onClick={logout}

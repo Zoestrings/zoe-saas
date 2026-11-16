@@ -630,3 +630,4 @@ def generate_scanner_inline_keyboard(
             {"text": "🔍 Solscan Explorer", "url": solscan_url},
         ]
     ]
+

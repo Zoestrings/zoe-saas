@@ -10,7 +10,8 @@ import {
   Sparkles,
   Activity,
   Layers,
-  ShieldCheck
+  ShieldCheck,
+  Radar
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { logout } from "@/lib/api"
@@ -25,6 +26,11 @@ const adminNav = [
     name: "Projects", 
     href: "/admin/projects", 
     icon: Bot,
+  },
+  { 
+    name: "Intelligence Scanner", 
+    href: "/investigate", 
+    icon: Radar,
   },
   { 
     name: "Settings", 

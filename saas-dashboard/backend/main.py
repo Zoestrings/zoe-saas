@@ -371,6 +371,10 @@ class PatchProjectRequest(BaseModel):
     token_address: Optional[str] = None
 
 
+class InvestigateRequest(BaseModel):
+    contract_address: str
+
+
 class ProjectResponse(BaseModel):
     id: str
     owner_id: str
@@ -1315,6 +1319,31 @@ async def update_settings(
         "status": "success",
         "message": "Custom bot persona instructions updated successfully and active immediately."
     }
+
+
+@app.post("/api/investigate", response_model=Dict[str, Any])
+async def investigate_token(
+    payload: InvestigateRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Execute on-chain intelligence investigation scan on a Solana contract address."""
+    ca = payload.contract_address.strip()
+    if not ca:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Contract address cannot be empty.",
+        )
+
+    from zoe.tools.scanner import scan_solana_token
+    try:
+        report = await scan_solana_token(ca)
+        return report
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Investigation scan failed: {str(exc)}",
+        )
+
 
 
 

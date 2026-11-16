@@ -49,6 +49,41 @@ export interface CreateProjectPayload {
   custom_instructions?: string | null
 }
 
+export interface InvestigationReport {
+  valid: boolean
+  error?: string
+  ca?: string
+  ca_short?: string
+  name?: string
+  symbol?: string
+  market?: {
+    found: boolean
+    name?: string | null
+    symbol?: string | null
+    price_usd?: number | null
+    market_cap?: number | null
+    liquidity_usd?: number | null
+    volume_24h?: number | null
+    pair_url?: string | null
+    pair_created_at?: number | null
+  }
+  security?: {
+    success: boolean
+    mint_revoked?: boolean | null
+    freeze_revoked?: boolean | null
+    top_10_holders_percent?: number | null
+    holder_count?: number | null
+    is_honeypot?: boolean
+    source?: string
+  }
+  risk?: {
+    level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "UNKNOWN"
+    reasons: string[]
+    risk_score?: number
+  }
+  timestamp_utc?: string
+}
+
 // --- Local Storage Helpers ---
 
 export function getToken(): string | null {
@@ -246,6 +281,13 @@ export const api = {
   async getProjectStatus(id: string): Promise<any> {
     return apiRequest<any>(`/api/projects/${id}/status`, {
       method: "GET",
+    })
+  },
+
+  async investigate(contractAddress: string): Promise<InvestigationReport> {
+    return apiRequest<InvestigationReport>("/api/investigate", {
+      method: "POST",
+      body: JSON.stringify({ contract_address: contractAddress }),
     })
   },
 }

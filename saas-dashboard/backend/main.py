@@ -172,6 +172,17 @@ def get_dev_db() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dev_buy_monitors (
+            project_id TEXT PRIMARY KEY,
+            min_buy_usd REAL DEFAULT 10.0,
+            active INTEGER DEFAULT 1,
+            last_tx_signature TEXT,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
     conn.commit()
 
     # Graceful migration for existing local dev databases
@@ -3569,8 +3580,9 @@ def reset_paper_wallet(
 @app.on_event("startup")
 async def start_background_monitoring():
     """Start continuous background monitoring worker on app boot."""
-    from zoe.monitor import run_monitoring_loop
+    from zoe.monitor import run_buy_monitoring_loop, run_monitoring_loop
     asyncio.create_task(run_monitoring_loop(interval_seconds=900))
+    asyncio.create_task(run_buy_monitoring_loop(interval_seconds=30))
 
 
 

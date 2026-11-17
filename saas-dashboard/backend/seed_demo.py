@@ -304,6 +304,29 @@ def seed_demo_data():
         print(f"  ✓ {t['trade_type'].upper()} ${t['amount_usdt']:.2f} USDT of {t['token_name']} @ ${t['price_at_trade']:.2f}")
     conn.commit()
 
+    # 4b. Seed Buy Monitors for Demo Projects (Phase 2 Green Candle)
+    print("\n🟢 Seeding Buy Monitors (Green Candle)...")
+    for p in demo_projects:
+        cur.execute(
+            """
+            INSERT OR REPLACE INTO dev_buy_monitors (project_id, min_buy_usd, active, last_tx_signature, updated_at)
+            VALUES (?, 10.0, 1, NULL, ?)
+            """,
+            (p["id"], now_iso),
+        )
+        if admin_client:
+            try:
+                admin_client.table("buy_monitors").upsert({
+                    "project_id": p["id"],
+                    "min_buy_usd": 10.0,
+                    "active": True,
+                    "updated_at": now_iso,
+                }).execute()
+            except Exception:
+                pass
+        print(f"  ✓ Buy Monitor active for {p['name']} [Min Buy: $10.00 USD]")
+    conn.commit()
+
     # 5. Fake Invoices (3 invoices: 2 paid, 1 pending)
     demo_invoices = [
         {

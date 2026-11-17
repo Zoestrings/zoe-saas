@@ -107,3 +107,4 @@ def test_update_user_password():
         assert res.json().get("success") is True
     finally:
         app.dependency_overrides.clear()
+

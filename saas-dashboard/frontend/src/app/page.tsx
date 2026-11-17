@@ -449,7 +449,7 @@ export default function LandingPage() {
           </div>
 
           <div className="text-[11px]">
-            &copy; {new Date().getFullYear()} Zoe Intelligence. All rights reserved.
+            &copy; 2026 Zoe Intelligence. All rights reserved.
           </div>
         </div>
       </footer>

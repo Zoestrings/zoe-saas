@@ -226,6 +226,52 @@ export interface AdminRevenueResponse {
   invoices: AdminRevenueInvoice[]
 }
 
+export interface RecentSignup {
+  id: string
+  email: string
+  role: string
+  created_at: string
+  plan: string
+}
+
+export interface RevenueChartPoint {
+  date: string
+  revenue: number
+}
+
+export interface AdminOverviewResponse {
+  summary: {
+    total_revenue: number
+    total_users: number
+    total_projects: number
+    active_bots: number
+    pro_subscribers: number
+  }
+  recent_signups: RecentSignup[]
+  revenue_chart: RevenueChartPoint[]
+}
+
+export interface AdminProjectItem {
+  id: string
+  name: string
+  owner_id: string
+  owner_email: string
+  status: string
+  plan: string
+  telegram_group_id?: string | null
+  token_address?: string | null
+  created_at: string
+}
+
+export interface SystemHealthResponse {
+  status: string
+  fastapi: string
+  database: string
+  solana_rpc: string
+  engine: string
+  timestamp: string
+}
+
 export interface SavedInvestigation {
   id: string
   user_id: string
@@ -550,6 +596,37 @@ export const api = {
 
   async getAdminRevenue(): Promise<AdminRevenueResponse> {
     return apiRequest<AdminRevenueResponse>("/api/admin/revenue", {
+      method: "GET",
+    })
+  },
+
+  // Admin Master Control (Mega-Module 10)
+  async getAdminOverview(): Promise<AdminOverviewResponse> {
+    return apiRequest<AdminOverviewResponse>("/api/admin/overview", {
+      method: "GET",
+    })
+  },
+
+  async getAdminAllProjects(): Promise<AdminProjectItem[]> {
+    return apiRequest<AdminProjectItem[]>("/api/admin/projects", {
+      method: "GET",
+    })
+  },
+
+  async suspendProject(projectId: string): Promise<{ status: string; project_id: string; message: string }> {
+    return apiRequest<{ status: string; project_id: string; message: string }>(`/api/admin/projects/${projectId}/suspend`, {
+      method: "POST",
+    })
+  },
+
+  async activateProject(projectId: string): Promise<{ status: string; project_id: string; message: string }> {
+    return apiRequest<{ status: string; project_id: string; message: string }>(`/api/admin/projects/${projectId}/activate`, {
+      method: "POST",
+    })
+  },
+
+  async getSystemHealth(): Promise<SystemHealthResponse> {
+    return apiRequest<SystemHealthResponse>("/api/admin/health", {
       method: "GET",
     })
   },

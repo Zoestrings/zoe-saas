@@ -129,7 +129,7 @@ export default function InvestigatePage() {
   const handleScan = async (targetCa?: string) => {
     const addressToScan = (targetCa || caInput).trim()
     if (!addressToScan) {
-      setError("Please enter a Solana contract address.")
+      setError("Please enter a Solana or EVM contract address.")
       return
     }
 
@@ -142,7 +142,7 @@ export default function InvestigatePage() {
     try {
       const data = await api.investigate(addressToScan)
       if (!data.valid) {
-        setError(data.error || "Invalid Solana contract address.")
+        setError(data.error || "Invalid contract address.")
       } else {
         setReport(data)
         // Auto-refresh history so newest scan appears at the top
@@ -216,12 +216,54 @@ export default function InvestigatePage() {
     }
   }
 
-  // Sample tokens for instant 1-click testing
+  // Sample tokens for instant 1-click testing (Solana & EVM)
   const sampleTokens = [
-    { name: "BONK", ca: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" },
-    { name: "USDC (Solana)", ca: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" },
+    { name: "BONK (Solana)", ca: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263" },
+    { name: "PEPE (Ethereum)", ca: "0x6982508145454Ce325dDbE47a25d4ec3d2311933" },
+    { name: "VIRTUAL (Base)", ca: "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b" },
     { name: "Wrapped SOL", ca: "So11111111111111111111111111111111111111112" },
   ]
+
+  const getChainBadgeStyle = (chain?: string) => {
+    const c = (chain || "Solana").toLowerCase()
+    if (c.includes("eth")) {
+      return "bg-purple-500/10 text-purple-400 border-purple-500/30"
+    }
+    if (c.includes("base")) {
+      return "bg-blue-500/10 text-blue-400 border-blue-500/30"
+    }
+    if (c.includes("bsc") || c.includes("binance")) {
+      return "bg-amber-500/10 text-amber-400 border-amber-500/30"
+    }
+    if (c.includes("arbitrum")) {
+      return "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
+    }
+    if (c.includes("polygon")) {
+      return "bg-violet-500/10 text-violet-400 border-violet-500/30"
+    }
+    return "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+  }
+
+  const getExplorerInfo = (chain?: string, ca?: string) => {
+    const c = (chain || "Solana").toLowerCase()
+    const addr = ca || ""
+    if (c.includes("eth")) {
+      return { name: "Etherscan", url: `https://etherscan.io/token/${addr}` }
+    }
+    if (c.includes("base")) {
+      return { name: "Basescan", url: `https://basescan.org/token/${addr}` }
+    }
+    if (c.includes("bsc") || c.includes("binance")) {
+      return { name: "BscScan", url: `https://bscscan.com/token/${addr}` }
+    }
+    if (c.includes("arbitrum")) {
+      return { name: "Arbiscan", url: `https://arbiscan.io/token/${addr}` }
+    }
+    if (c.includes("polygon")) {
+      return { name: "Polygonscan", url: `https://polygonscan.com/token/${addr}` }
+    }
+    return { name: "Solscan", url: `https://solscan.io/token/${addr}` }
+  }
 
   const riskLevel = report?.risk?.level || "UNKNOWN"
   const getRiskColor = (level?: string | null) => {
@@ -328,7 +370,7 @@ export default function InvestigatePage() {
           Intelligence Scanner
         </h1>
         <p className="text-xs text-neutral-400 max-w-2xl">
-          Deep on-chain security audit, liquidity validation, holder concentration, and honeypot risk assessment for Solana tokens.
+          Deep on-chain security audit, liquidity validation, holder concentration, and honeypot risk assessment for Solana and EVM tokens.
         </p>
       </div>
 
@@ -345,7 +387,7 @@ export default function InvestigatePage() {
             <Search className="absolute left-4 top-3.5 h-4 w-4 text-neutral-500" />
             <Input
               type="text"
-              placeholder="Paste Solana token contract address (e.g. DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263)..."
+              placeholder="Enter a Solana or EVM contract address (e.g. DezXAZ8z... or 0x698250...)..."
               value={caInput}
               onChange={(e) => setCaInput(e.target.value)}
               className="h-12 pl-11 pr-4 bg-neutral-900 border-neutral-700 rounded-full text-xs text-white placeholder:text-neutral-500 focus:border-[#00ff66] focus:ring-1 focus:ring-[#00ff66]"
@@ -682,7 +724,7 @@ export default function InvestigatePage() {
                   <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">
                     Token Investigation Report
                   </span>
-                  <span className="text-[10px] bg-neutral-800 text-neutral-300 px-2 py-0.5 rounded-full border border-neutral-700">
+                  <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${getChainBadgeStyle(report.chain)}`}>
                     {report.chain || "Solana"}
                   </span>
                 </div>
@@ -1138,100 +1180,197 @@ export default function InvestigatePage() {
             </Card>
 
             {/* 2. Security Checks Card */}
-            <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden">
-              <CardHeader className="p-6 border-b border-neutral-800">
-                <CardTitle className="text-base font-bold text-white flex items-center gap-2">
-                  <ShieldCheck className="h-4 w-4 text-[#00ff66]" />
-                  <span>On-Chain Security Checks</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6 space-y-4">
-                <div className="divide-y divide-neutral-800">
-                  {/* Mint Authority */}
-                  <div className="py-3 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <Lock className="h-4 w-4 text-neutral-400" />
-                      <div>
-                        <span className="font-semibold text-white block">Mint Authority</span>
-                        <span className="text-[11px] text-neutral-500">Fixed vs expandable supply</span>
+            {(() => {
+              const isEvm = (report.chain || "").toLowerCase() !== "solana"
+              const explorerInfo = getExplorerInfo(report.chain, report.ca)
+
+              return (
+                <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden">
+                  <CardHeader className="p-6 border-b border-neutral-800">
+                    <CardTitle className="text-base font-bold text-white flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4 text-[#00ff66]" />
+                        <span>On-Chain Security Checks</span>
                       </div>
-                    </div>
-                    {report.security?.mint_revoked === true ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
-                        <Check className="h-3 w-3" /> Revoked
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${getChainBadgeStyle(report.chain)}`}>
+                        {report.chain || "Solana"}
                       </span>
-                    ) : report.security?.mint_revoked === false ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                        <AlertTriangle className="h-3 w-3" /> Active (Inflation Risk)
-                      </span>
-                    ) : (
-                      <span className="text-neutral-500 font-medium">Unknown</span>
-                    )}
-                  </div>
-
-                  {/* Freeze Authority */}
-                  <div className="py-3 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <Unlock className="h-4 w-4 text-neutral-400" />
-                      <div>
-                        <span className="font-semibold text-white block">Freeze Authority</span>
-                        <span className="text-[11px] text-neutral-500">Ability to freeze holder tokens</span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-6 space-y-4">
+                    <div className="divide-y divide-neutral-800">
+                      {/* Honeypot Check (Universal) */}
+                      <div className="py-3 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <ShieldAlert className="h-4 w-4 text-neutral-400" />
+                          <div>
+                            <span className="font-semibold text-white block">Honeypot Detection</span>
+                            <span className="text-[11px] text-neutral-500">Unrestricted selling and transferability</span>
+                          </div>
+                        </div>
+                        {report.security?.is_honeypot ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                            <AlertTriangle className="h-3 w-3" /> Honeypot Detected!
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
+                            <Check className="h-3 w-3" /> No Honeypot
+                          </span>
+                        )}
                       </div>
-                    </div>
-                    {report.security?.freeze_revoked === true ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
-                        <Check className="h-3 w-3" /> Revoked
-                      </span>
-                    ) : report.security?.freeze_revoked === false ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
-                        <AlertTriangle className="h-3 w-3" /> Active (Can Freeze)
-                      </span>
-                    ) : (
-                      <span className="text-neutral-500 font-medium">Unknown</span>
-                    )}
-                  </div>
 
-                  {/* Top 10 Holder Concentration */}
-                  <div className="py-3 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-neutral-400" />
-                      <div>
-                        <span className="font-semibold text-white block">Top 10 Holders Share</span>
-                        <span className="text-[11px] text-neutral-500">Supply centralization ratio</span>
+                      {/* EVM-Specific Checks: Verification, Taxes, Mintable */}
+                      {isEvm ? (
+                        <>
+                          {/* Contract Verification (Open Source) */}
+                          <div className="py-3 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <Lock className="h-4 w-4 text-neutral-400" />
+                              <div>
+                                <span className="font-semibold text-white block">Contract Code Verification</span>
+                                <span className="text-[11px] text-neutral-500">Source code verified on explorer</span>
+                              </div>
+                            </div>
+                            {report.security?.is_open_source === true ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
+                                <Check className="h-3 w-3" /> Verified (Open Source)
+                              </span>
+                            ) : report.security?.is_open_source === false ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                                <AlertTriangle className="h-3 w-3" /> Unverified (Closed Source)
+                              </span>
+                            ) : (
+                              <span className="text-neutral-500 font-medium">Unknown</span>
+                            )}
+                          </div>
+
+                          {/* Trading Taxes */}
+                          <div className="py-3 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <TrendingUp className="h-4 w-4 text-neutral-400" />
+                              <div>
+                                <span className="font-semibold text-white block">Buy &amp; Sell Taxes</span>
+                                <span className="text-[11px] text-neutral-500">Deduction applied per trade</span>
+                              </div>
+                            </div>
+                            <span className="text-sm font-bold font-mono text-white">
+                              Buy: {report.security?.buy_tax ?? 0}% / Sell: {report.security?.sell_tax ?? 0}%
+                            </span>
+                          </div>
+
+                          {/* Mintable Check */}
+                          <div className="py-3 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <Unlock className="h-4 w-4 text-neutral-400" />
+                              <div>
+                                <span className="font-semibold text-white block">Minting Function</span>
+                                <span className="text-[11px] text-neutral-500">Can owner inflate circulating supply</span>
+                              </div>
+                            </div>
+                            {report.security?.is_mintable === true ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                <AlertTriangle className="h-3 w-3" /> Active (Inflation Risk)
+                              </span>
+                            ) : report.security?.is_mintable === false ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
+                                <Check className="h-3 w-3" /> Disabled (Fixed Supply)
+                              </span>
+                            ) : (
+                              <span className="text-neutral-500 font-medium">Standard</span>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* Solana: Mint Authority */}
+                          <div className="py-3 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <Lock className="h-4 w-4 text-neutral-400" />
+                              <div>
+                                <span className="font-semibold text-white block">Mint Authority</span>
+                                <span className="text-[11px] text-neutral-500">Fixed vs expandable supply</span>
+                              </div>
+                            </div>
+                            {report.security?.mint_revoked === true ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
+                                <Check className="h-3 w-3" /> Revoked
+                              </span>
+                            ) : report.security?.mint_revoked === false ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                <AlertTriangle className="h-3 w-3" /> Active (Inflation Risk)
+                              </span>
+                            ) : (
+                              <span className="text-neutral-500 font-medium">Unknown</span>
+                            )}
+                          </div>
+
+                          {/* Solana: Freeze Authority */}
+                          <div className="py-3 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                              <Unlock className="h-4 w-4 text-neutral-400" />
+                              <div>
+                                <span className="font-semibold text-white block">Freeze Authority</span>
+                                <span className="text-[11px] text-neutral-500">Ability to freeze holder tokens</span>
+                              </div>
+                            </div>
+                            {report.security?.freeze_revoked === true ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
+                                <Check className="h-3 w-3" /> Revoked
+                              </span>
+                            ) : report.security?.freeze_revoked === false ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                                <AlertTriangle className="h-3 w-3" /> Active (Can Freeze)
+                              </span>
+                            ) : (
+                              <span className="text-neutral-500 font-medium">Unknown</span>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {/* Top 10 Holder Concentration */}
+                      <div className="py-3 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-neutral-400" />
+                          <div>
+                            <span className="font-semibold text-white block">Top 10 Holders Share</span>
+                            <span className="text-[11px] text-neutral-500">Supply centralization ratio</span>
+                          </div>
+                        </div>
+                        <span className="text-sm font-bold font-mono text-white">
+                          {report.security?.top_10_holders_percent !== null && report.security?.top_10_holders_percent !== undefined
+                            ? `${report.security.top_10_holders_percent.toFixed(1)}%`
+                            : "N/A"}
+                        </span>
                       </div>
-                    </div>
-                    <span className="text-sm font-bold font-mono text-white">
-                      {report.security?.top_10_holders_percent !== null && report.security?.top_10_holders_percent !== undefined
-                        ? `${report.security.top_10_holders_percent.toFixed(1)}%`
-                        : "N/A"}
-                    </span>
-                  </div>
 
-                  {/* Total Holders */}
-                  {report.security?.holder_count && (
-                    <div className="py-3 flex items-center justify-between text-xs">
-                      <span className="text-neutral-400">Total Unique Holders</span>
-                      <span className="font-bold text-white font-mono">
-                        {report.security.holder_count.toLocaleString()}
-                      </span>
+                      {/* Total Holders */}
+                      {report.security?.holder_count && (
+                        <div className="py-3 flex items-center justify-between text-xs">
+                          <span className="text-neutral-400">Total Unique Holders</span>
+                          <span className="font-bold text-white font-mono">
+                            {report.security.holder_count.toLocaleString()}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                {/* External Explorer Button */}
-                <div className="pt-2 flex items-center gap-3">
-                  <a
-                    href={`https://solscan.io/token/${report.ca}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
-                  >
-                    <span>Inspect on Solscan</span>
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </div>
-              </CardContent>
-            </Card>
+                    {/* External Explorer Button */}
+                    <div className="pt-2 flex items-center gap-3">
+                      <a
+                        href={explorerInfo.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
+                      >
+                        <span>Inspect on {explorerInfo.name}</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })()}
           </div>
 
           {/* Mega-Module 2: Project OSINT & Founder Research Card (Pro Gated) */}

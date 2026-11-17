@@ -55,9 +55,9 @@ import {
 const SAMPLE_TOKENS = [
   { name: "Solana", symbol: "SOL", ca: "So11111111111111111111111111111111111111112" },
   { name: "Jupiter", symbol: "JUP", ca: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN" },
-  { name: "Raydium", symbol: "RAY", ca: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R" },
+  { name: "PEPE (ETH)", symbol: "PEPE", ca: "0x6982508145454Ce325dDbE47a25d4ec3d2311933" },
+  { name: "Virtuals (Base)", symbol: "VIRTUAL", ca: "0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b" },
   { name: "One Love", symbol: "ONELOVE", ca: "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon" },
-  { name: "Hummingbird", symbol: "FLY", ca: "5m6Z5B3z1xYQvWvA9aP8kE7dM2uC1tL3" },
 ]
 
 function TradingTerminalContent() {
@@ -75,6 +75,8 @@ function TradingTerminalContent() {
     name: string
     symbol: string
     price: number
+    chain?: string
+    chainId?: string
     liquidity?: number
     fdv?: number
   } | null>(null)
@@ -129,23 +131,31 @@ function TradingTerminalContent() {
           name: res.name || res.market?.name || "Unknown Token",
           symbol: res.symbol || res.market?.symbol || "TOKEN",
           price: res.market?.price_usd || 0.0,
+          chain: res.chain || "Solana",
+          chainId: res.market?.chain_id || (ca.startsWith("0x") ? "ethereum" : "solana"),
           liquidity: res.market?.liquidity_usd ?? undefined,
           fdv: res.market?.market_cap ?? undefined,
         })
       } else {
         // Default fallback price if scanner failed
+        const isEvm = ca.startsWith("0x")
         setTokenInfo({
-          name: res?.name || "Solana Asset",
-          symbol: res?.symbol || "SOL",
+          name: res?.name || (isEvm ? "EVM Asset" : "Solana Asset"),
+          symbol: res?.symbol || (isEvm ? "ETH" : "SOL"),
           price: 150.0,
+          chain: isEvm ? "Ethereum" : "Solana",
+          chainId: isEvm ? "ethereum" : "solana",
         })
       }
     } catch (err) {
       // Fallback
+      const isEvm = ca.startsWith("0x")
       setTokenInfo({
-        name: "Solana Asset",
-        symbol: "TOKEN",
+        name: isEvm ? "EVM Asset" : "Solana Asset",
+        symbol: isEvm ? "ETH" : "TOKEN",
         price: 1.0,
+        chain: isEvm ? "Ethereum" : "Solana",
+        chainId: isEvm ? "ethereum" : "solana",
       })
     } finally {
       setTokenLoading(false)
@@ -283,15 +293,26 @@ function TradingTerminalContent() {
     }
   }
 
-  // DexScreener Chart Embed URL
+  const getChainBadgeStyle = (chain?: string) => {
+    const c = (chain || "Solana").toLowerCase()
+    if (c.includes("eth")) return "bg-purple-500/10 text-purple-400 border-purple-500/30"
+    if (c.includes("base")) return "bg-blue-500/10 text-blue-400 border-blue-500/30"
+    if (c.includes("bsc") || c.includes("binance")) return "bg-amber-500/10 text-amber-400 border-amber-500/30"
+    if (c.includes("arbitrum")) return "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
+    if (c.includes("polygon")) return "bg-violet-500/10 text-violet-400 border-violet-500/30"
+    return "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30"
+  }
+
+  // DexScreener Chart Embed URL (Dynamically routes to solana, ethereum, base, bsc, etc.)
   const chartUrl = useMemo(() => {
-    return `https://dexscreener.com/solana/${tokenAddress}?embed=1&theme=dark&trades=0&info=0`
-  }, [tokenAddress])
+    const rawChain = (tokenInfo?.chainId || (tokenAddress.startsWith("0x") ? "ethereum" : "solana")).toLowerCase()
+    return `https://dexscreener.com/${rawChain}/${tokenAddress}?embed=1&theme=dark&trades=0&info=0`
+  }, [tokenAddress, tokenInfo])
 
   return (
     <div className="space-y-6 pb-16">
       {/* Mega-Module 11 Paper Trading Notice Banner */}
-      <div className="p-4 rounded-3xl bg-[#12161c] border border-[#00ff66]/30 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="p-4 rounded-3xl bg-[#121212] border border-[#00ff66]/30 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-2xl bg-[#00ff66]/10 border border-[#00ff66]/30 flex items-center justify-center text-[#00ff66] shrink-0">
             <Sparkles className="h-5 w-5" />
@@ -304,7 +325,7 @@ function TradingTerminalContent() {
               </span>
             </div>
             <p className="text-xs text-[#818c99] mt-0.5">
-              Practice trading Solana tokens with $10,000 USDT virtual money. Prices, liquidity, and charts streamed live from DexScreener.
+              Practice trading Solana &amp; EVM tokens with $10,000 USDT virtual money. Prices, liquidity, and charts streamed live from DexScreener.
             </p>
           </div>
         </div>
@@ -343,7 +364,7 @@ function TradingTerminalContent() {
               <div className="relative flex-1">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#818c99]" />
                 <Input
-                  placeholder="Paste Solana token mint address or CA..."
+                  placeholder="Paste Solana or EVM contract address (e.g. So11... or 0x6982...)..."
                   value={tokenSearchInput}
                   onChange={(e) => setTokenSearchInput(e.target.value)}
                   className="pl-10 bg-[#161b22] border-[#212833] text-white text-xs h-10 rounded-xl focus:border-[#00ff66] font-mono"
@@ -393,6 +414,9 @@ function TradingTerminalContent() {
                     </h2>
                     <span className="text-xs font-mono text-[#00ff66] font-semibold">
                       ${tokenInfo?.symbol || "TOKEN"}
+                    </span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${getChainBadgeStyle(tokenInfo?.chain)}`}>
+                      {tokenInfo?.chain || "Solana"}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-0.5">

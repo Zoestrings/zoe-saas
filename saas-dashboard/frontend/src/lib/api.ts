@@ -86,6 +86,8 @@ export interface InvestigationReport {
     volume_24h?: number | null
     pair_url?: string | null
     pair_created_at?: number | null
+    chain_id?: string | null
+    chain_name?: string | null
   }
   security?: {
     success: boolean
@@ -94,6 +96,10 @@ export interface InvestigationReport {
     top_10_holders_percent?: number | null
     holder_count?: number | null
     is_honeypot?: boolean
+    is_open_source?: boolean | null
+    buy_tax?: number | null
+    sell_tax?: number | null
+    is_mintable?: boolean | null
     lp_locked?: boolean
     lp_lock_percent?: number
     creator_address?: string | null

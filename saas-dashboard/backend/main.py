@@ -148,6 +148,30 @@ def get_dev_db() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dev_paper_wallets (
+            user_id TEXT PRIMARY KEY,
+            balance_usdt REAL NOT NULL DEFAULT 10000.0,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS dev_paper_trades (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            token_address TEXT NOT NULL,
+            token_name TEXT,
+            trade_type TEXT CHECK (trade_type IN ('buy', 'sell')),
+            amount_usdt REAL NOT NULL,
+            token_amount REAL NOT NULL,
+            price_at_trade REAL NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
     conn.commit()
 
     # Graceful migration for existing local dev databases
@@ -2875,6 +2899,446 @@ def get_admin_system_health(
         "engine": "Multi-Tenant Bot Orchestrator Ready",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+# ==============================================================================
+# Mega-Module 11: Paper Trading Engine (Simulated Web3 Trading)
+# ==============================================================================
+
+class PaperTradeRequest(BaseModel):
+    token_address: str
+    trade_type: str  # "buy" | "sell"
+    amount_usdt: float
+    token_name: Optional[str] = None
+
+
+class PaperPosition(BaseModel):
+    token_address: str
+    token_name: str
+    token_symbol: Optional[str] = None
+    token_amount: float
+    avg_buy_price: float
+    current_price: float
+    current_value_usdt: float
+    unrealized_pnl_usdt: float
+    unrealized_pnl_percent: float
+
+
+class PaperTradeItem(BaseModel):
+    id: str
+    token_address: str
+    token_name: Optional[str] = None
+    trade_type: str
+    amount_usdt: float
+    token_amount: float
+    price_at_trade: float
+    created_at: str
+
+
+class PaperWalletResponse(BaseModel):
+    balance_usdt: float
+    total_portfolio_value_usdt: float
+    total_pnl_usdt: float
+    total_pnl_percent: float
+    positions: List[PaperPosition]
+    recent_trades: List[PaperTradeItem]
+
+
+def _get_or_create_paper_wallet(user_id: str) -> float:
+    """Retrieve virtual USDT balance for user, initializing at $10,000 if not found."""
+    client = get_supabase()
+    if client:
+        try:
+            res = client.table("paper_wallets").select("balance_usdt").eq("user_id", user_id).execute()
+            if res.data and len(res.data) > 0:
+                return float(res.data[0].get("balance_usdt", 10000.0))
+            else:
+                now_iso = datetime.now(timezone.utc).isoformat()
+                client.table("paper_wallets").insert({
+                    "user_id": user_id,
+                    "balance_usdt": 10000.00,
+                    "updated_at": now_iso,
+                }).execute()
+                return 10000.00
+        except Exception as exc:
+            print(f"[WARNING] Supabase paper wallet fetch/insert: {exc}")
+
+    try:
+        conn = get_dev_db()
+        cur = conn.execute("SELECT balance_usdt FROM dev_paper_wallets WHERE user_id = ?", (str(user_id),))
+        row = cur.fetchone()
+        if row is not None:
+            return float(row[0])
+        else:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                "INSERT INTO dev_paper_wallets (user_id, balance_usdt, updated_at) VALUES (?, ?, ?)",
+                (str(user_id), 10000.00, now_iso),
+            )
+            conn.commit()
+            return 10000.00
+    except Exception as exc:
+        print(f"[WARNING] Dev DB paper wallet fetch/insert: {exc}")
+        return 10000.00
+
+
+def _update_paper_wallet_balance(user_id: str, new_balance: float):
+    """Persist updated virtual USDT balance."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    client = get_supabase()
+    if client:
+        try:
+            client.table("paper_wallets").upsert({
+                "user_id": user_id,
+                "balance_usdt": round(new_balance, 2),
+                "updated_at": now_iso,
+            }).execute()
+        except Exception as exc:
+            print(f"[WARNING] Supabase paper wallet update: {exc}")
+
+    try:
+        conn = get_dev_db()
+        conn.execute(
+            """
+            INSERT INTO dev_paper_wallets (user_id, balance_usdt, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                balance_usdt = excluded.balance_usdt,
+                updated_at = excluded.updated_at
+            """,
+            (str(user_id), round(new_balance, 2), now_iso),
+        )
+        conn.commit()
+    except Exception as exc:
+        print(f"[WARNING] Dev DB paper wallet update: {exc}")
+
+
+def _get_user_paper_trades(user_id: str) -> List[Dict[str, Any]]:
+    """Retrieve all paper trades for a user sorted chronologically."""
+    trades: List[Dict[str, Any]] = []
+    client = get_supabase()
+    if client:
+        try:
+            res = client.table("paper_trades").select("*").eq("user_id", user_id).order("created_at", desc=False).execute()
+            if res.data:
+                trades = res.data
+        except Exception as exc:
+            print(f"[WARNING] Supabase get paper trades: {exc}")
+
+    if not trades:
+        try:
+            conn = get_dev_db()
+            cur = conn.execute(
+                """
+                SELECT id, user_id, token_address, token_name, trade_type, amount_usdt, token_amount, price_at_trade, created_at
+                FROM dev_paper_trades
+                WHERE user_id = ?
+                ORDER BY created_at ASC
+                """,
+                (str(user_id),),
+            )
+            for r in cur.fetchall():
+                trades.append({
+                    "id": str(r[0]),
+                    "user_id": str(r[1]),
+                    "token_address": str(r[2]),
+                    "token_name": r[3],
+                    "trade_type": str(r[4]),
+                    "amount_usdt": float(r[5]),
+                    "token_amount": float(r[6]),
+                    "price_at_trade": float(r[7]),
+                    "created_at": str(r[8]),
+                })
+        except Exception as exc:
+            print(f"[WARNING] Dev DB get paper trades: {exc}")
+
+    return trades
+
+
+def _save_user_paper_trade(trade: Dict[str, Any]):
+    """Insert a new paper trade record."""
+    client = get_supabase()
+    if client:
+        try:
+            client.table("paper_trades").insert(trade).execute()
+        except Exception as exc:
+            print(f"[WARNING] Supabase insert paper trade: {exc}")
+
+    try:
+        conn = get_dev_db()
+        conn.execute(
+            """
+            INSERT INTO dev_paper_trades (id, user_id, token_address, token_name, trade_type, amount_usdt, token_amount, price_at_trade, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                trade["id"],
+                trade["user_id"],
+                trade["token_address"],
+                trade.get("token_name"),
+                trade["trade_type"],
+                trade["amount_usdt"],
+                trade["token_amount"],
+                trade["price_at_trade"],
+                trade["created_at"],
+            ),
+        )
+        conn.commit()
+    except Exception as exc:
+        print(f"[WARNING] Dev DB insert paper trade: {exc}")
+
+
+@app.get("/api/trading/wallet", response_model=PaperWalletResponse)
+async def get_paper_wallet(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retrieve the user's simulated USDT balance, open positions, and P&L."""
+    user_id = str(current_user.get("id"))
+    balance_usdt = _get_or_create_paper_wallet(user_id)
+    trades = _get_user_paper_trades(user_id)
+
+    # Group trades by token_address
+    token_groups: Dict[str, List[Dict[str, Any]]] = {}
+    for t in trades:
+        ca = t["token_address"]
+        token_groups.setdefault(ca, []).append(t)
+
+    from zoe.tools.scanner import fetch_dexscreener_market_data
+
+    positions: List[PaperPosition] = []
+    for ca, t_list in token_groups.items():
+        net_tokens = 0.0
+        total_cost_basis = 0.0
+        last_known_name = "Unknown Token"
+        last_trade_price = 0.0
+
+        for t in t_list:
+            ttype = (t.get("trade_type") or "buy").lower()
+            amt = float(t.get("token_amount") or 0.0)
+            usdt = float(t.get("amount_usdt") or 0.0)
+            price = float(t.get("price_at_trade") or 0.0)
+            last_trade_price = price
+            if t.get("token_name"):
+                last_known_name = t["token_name"]
+
+            if ttype == "buy":
+                net_tokens += amt
+                total_cost_basis += usdt
+            elif ttype == "sell":
+                if net_tokens > 0:
+                    unit_cost = total_cost_basis / net_tokens
+                    sold_amount = min(amt, net_tokens)
+                    net_tokens -= sold_amount
+                    total_cost_basis = max(0.0, total_cost_basis - (sold_amount * unit_cost))
+
+        if net_tokens > 1e-6:
+            avg_buy_price = (total_cost_basis / net_tokens) if net_tokens > 0 else last_trade_price
+
+            # Fetch live price from DexScreener
+            current_price = avg_buy_price
+            token_symbol = None
+            try:
+                market_data = await fetch_dexscreener_market_data(ca)
+                if market_data.get("price_usd") and market_data["price_usd"] > 0:
+                    current_price = market_data["price_usd"]
+                if market_data.get("name"):
+                    last_known_name = market_data["name"]
+                if market_data.get("symbol"):
+                    token_symbol = market_data["symbol"]
+            except Exception as exc:
+                print(f"[DEBUG] DexScreener price fetch for position {ca}: {exc}")
+
+            current_val = round(net_tokens * current_price, 2)
+            cost_basis = round(net_tokens * avg_buy_price, 2)
+            unrealized_pnl = round(current_val - cost_basis, 2)
+            pnl_pct = round(((current_price - avg_buy_price) / avg_buy_price * 100.0), 2) if avg_buy_price > 0 else 0.0
+
+            positions.append(
+                PaperPosition(
+                    token_address=ca,
+                    token_name=last_known_name,
+                    token_symbol=token_symbol,
+                    token_amount=round(net_tokens, 6),
+                    avg_buy_price=avg_buy_price,
+                    current_price=current_price,
+                    current_value_usdt=current_val,
+                    unrealized_pnl_usdt=unrealized_pnl,
+                    unrealized_pnl_percent=pnl_pct,
+                )
+            )
+
+    total_portfolio_val = round(balance_usdt + sum(p.current_value_usdt for p in positions), 2)
+    total_pnl = round(total_portfolio_val - 10000.00, 2)
+    total_pnl_pct = round((total_pnl / 10000.00) * 100.0, 2)
+
+    # Convert trades to response items (reversed, newest first)
+    recent_items = [
+        PaperTradeItem(
+            id=t["id"],
+            token_address=t["token_address"],
+            token_name=t.get("token_name"),
+            trade_type=t["trade_type"],
+            amount_usdt=float(t["amount_usdt"]),
+            token_amount=float(t["token_amount"]),
+            price_at_trade=float(t["price_at_trade"]),
+            created_at=str(t["created_at"]),
+        )
+        for t in reversed(trades[-20:])
+    ]
+
+    return PaperWalletResponse(
+        balance_usdt=round(balance_usdt, 2),
+        total_portfolio_value_usdt=total_portfolio_val,
+        total_pnl_usdt=total_pnl,
+        total_pnl_percent=total_pnl_pct,
+        positions=positions,
+        recent_trades=recent_items,
+    )
+
+
+@app.post("/api/trading/execute", response_model=Dict[str, Any])
+async def execute_paper_trade(
+    payload: PaperTradeRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Execute a simulated paper trade (buy/sell) using live DexScreener pricing."""
+    user_id = str(current_user.get("id"))
+    ca = payload.token_address.strip()
+    if not ca:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Token contract address is required.")
+
+    trade_type = payload.trade_type.strip().lower()
+    if trade_type not in ("buy", "sell"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Trade type must be 'buy' or 'sell'.")
+
+    amount_usdt = float(payload.amount_usdt)
+    if amount_usdt <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Amount in USDT must be greater than zero.")
+
+    # 1. Fetch live DexScreener price
+    from zoe.tools.scanner import fetch_dexscreener_market_data
+    market_data = await fetch_dexscreener_market_data(ca)
+    price_at_trade = market_data.get("price_usd")
+
+    if not price_at_trade or price_at_trade <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not retrieve live price for token '{ca}'. Please verify the contract address on DexScreener.",
+        )
+
+    token_name = payload.token_name or market_data.get("name") or market_data.get("symbol") or "Unknown Token"
+    current_balance = _get_or_create_paper_wallet(user_id)
+
+    # 2. Process BUY
+    if trade_type == "buy":
+        if current_balance < amount_usdt:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Insufficient virtual balance. You have ${current_balance:.2f} USDT, but attempted to buy ${amount_usdt:.2f} USDT.",
+            )
+        token_amount = amount_usdt / price_at_trade
+        new_balance = round(current_balance - amount_usdt, 2)
+        _update_paper_wallet_balance(user_id, new_balance)
+
+    # 3. Process SELL
+    else:
+        # Calculate current net position for this token
+        existing_trades = _get_user_paper_trades(user_id)
+        owned_tokens = 0.0
+        for t in existing_trades:
+            if t["token_address"].lower() == ca.lower():
+                ttype = (t.get("trade_type") or "buy").lower()
+                amt = float(t.get("token_amount") or 0.0)
+                if ttype == "buy":
+                    owned_tokens += amt
+                elif ttype == "sell":
+                    owned_tokens -= amt
+
+        if owned_tokens <= 1e-6:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"You do not hold any shares of {token_name} to sell.",
+            )
+
+        max_sellable_usdt = owned_tokens * price_at_trade
+        if amount_usdt >= max_sellable_usdt - 0.01:
+            # Sell entire position
+            token_amount = owned_tokens
+            amount_usdt = round(max_sellable_usdt, 2)
+        else:
+            token_amount = amount_usdt / price_at_trade
+
+        new_balance = round(current_balance + amount_usdt, 2)
+        _update_paper_wallet_balance(user_id, new_balance)
+
+    # 4. Save simulated trade record
+    trade_id = str(uuid.uuid4())
+    now_iso = datetime.now(timezone.utc).isoformat()
+    trade_record = {
+        "id": trade_id,
+        "user_id": user_id,
+        "token_address": ca,
+        "token_name": token_name,
+        "trade_type": trade_type,
+        "amount_usdt": round(amount_usdt, 2),
+        "token_amount": round(token_amount, 6),
+        "price_at_trade": price_at_trade,
+        "created_at": now_iso,
+    }
+    _save_user_paper_trade(trade_record)
+
+    return {
+        "status": "success",
+        "trade": trade_record,
+        "balance_usdt": new_balance,
+        "message": f"Simulated {trade_type.upper()} executed: {token_amount:.4f} {token_name} at ${price_at_trade:.6f} (${amount_usdt:.2f} USDT).",
+    }
+
+
+@app.post("/api/trading/reset", response_model=Dict[str, Any])
+def reset_paper_wallet(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Reset the user's paper trading wallet to initial $10,000 USDT and purge simulated trades."""
+    user_id = str(current_user.get("id"))
+
+    # Reset Supabase
+    client = get_supabase()
+    if client:
+        try:
+            client.table("paper_trades").delete().eq("user_id", user_id).execute()
+            client.table("paper_wallets").upsert({
+                "user_id": user_id,
+                "balance_usdt": 10000.00,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+        except Exception as exc:
+            print(f"[WARNING] Supabase reset paper wallet: {exc}")
+
+    # Reset Dev DB
+    try:
+        conn = get_dev_db()
+        conn.execute("DELETE FROM dev_paper_trades WHERE user_id = ?", (user_id,))
+        conn.execute(
+            """
+            INSERT INTO dev_paper_wallets (user_id, balance_usdt, updated_at)
+            VALUES (?, 10000.0, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                balance_usdt = 10000.0,
+                updated_at = excluded.updated_at
+            """,
+            (user_id, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+    except Exception as exc:
+        print(f"[WARNING] Dev DB reset paper wallet: {exc}")
+
+    return {
+        "status": "reset",
+        "balance_usdt": 10000.00,
+        "message": "Paper trading account successfully reset to $10,000.00 USDT virtual funds.",
+    }
+
 
 
 @app.on_event("startup")

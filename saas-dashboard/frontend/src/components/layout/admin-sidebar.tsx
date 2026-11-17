@@ -14,7 +14,8 @@ import {
   Radar,
   Bookmark,
   Crown,
-  DollarSign
+  DollarSign,
+  TrendingUp
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { logout } from "@/lib/api"
@@ -39,6 +40,11 @@ const adminNav = [
     name: "Intelligence Scanner", 
     href: "/investigate", 
     icon: Radar,
+  },
+  { 
+    name: "Trading Terminal", 
+    href: "/trading", 
+    icon: TrendingUp,
   },
   { 
     name: "Watchlist", 

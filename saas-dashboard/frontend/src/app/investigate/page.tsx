@@ -702,12 +702,22 @@ export default function InvestigatePage() {
                 </div>
               </div>
 
-              {/* Large Risk Badge, Watchlist & PDF Download */}
+              {/* Large Risk Badge, Watchlist, Trade & PDF Download */}
               <div className="flex flex-wrap items-center gap-3">
                 <div className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border text-sm font-black tracking-wider ${riskMeta.pill}`}>
                   <RiskIcon className="h-5 w-5" />
                   <span>RISK LEVEL: {riskLevel}</span>
                 </div>
+
+                <Link href={`/trading?ca=${encodeURIComponent(report.ca || "")}`}>
+                  <Button
+                    type="button"
+                    className="h-11 px-4 rounded-2xl bg-[#00ff66] hover:bg-[#00e65c] text-black text-xs font-bold cursor-pointer transition-all flex items-center gap-2 no-print shadow-lg shadow-[#00ff66]/20"
+                  >
+                    <TrendingUp className="h-4 w-4 stroke-[2.5]" />
+                    <span>Trade this Token</span>
+                  </Button>
+                </Link>
 
                 <Button
                   type="button"

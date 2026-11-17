@@ -307,6 +307,45 @@ export interface SecurityAlert {
   created_at: string
 }
 
+export interface PaperPosition {
+  token_address: string
+  token_name: string
+  token_symbol?: string | null
+  token_amount: number
+  avg_buy_price: number
+  current_price: number
+  current_value_usdt: number
+  unrealized_pnl_usdt: number
+  unrealized_pnl_percent: number
+}
+
+export interface PaperTradeItem {
+  id: string
+  token_address: string
+  token_name?: string | null
+  trade_type: "buy" | "sell"
+  amount_usdt: number
+  token_amount: number
+  price_at_trade: number
+  created_at: string
+}
+
+export interface PaperWalletResponse {
+  balance_usdt: number
+  total_portfolio_value_usdt: number
+  total_pnl_usdt: number
+  total_pnl_percent: number
+  positions: PaperPosition[]
+  recent_trades: PaperTradeItem[]
+}
+
+export interface ExecutePaperTradeResponse {
+  status: string
+  message: string
+  trade: PaperTradeItem
+  balance_usdt: number
+}
+
 // --- Local Storage Helpers ---
 
 export function getToken(): string | null {
@@ -628,6 +667,31 @@ export const api = {
   async getSystemHealth(): Promise<SystemHealthResponse> {
     return apiRequest<SystemHealthResponse>("/api/admin/health", {
       method: "GET",
+    })
+  },
+
+  // Paper Trading Engine (Mega-Module 11)
+  async getPaperWallet(): Promise<PaperWalletResponse> {
+    return apiRequest<PaperWalletResponse>("/api/trading/wallet", {
+      method: "GET",
+    })
+  },
+
+  async executePaperTrade(payload: {
+    token_address: string
+    trade_type: "buy" | "sell"
+    amount_usdt: number
+    token_name?: string
+  }): Promise<ExecutePaperTradeResponse> {
+    return apiRequest<ExecutePaperTradeResponse>("/api/trading/execute", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async resetPaperWallet(): Promise<{ status: string; balance_usdt: number; message: string }> {
+    return apiRequest<{ status: string; balance_usdt: number; message: string }>("/api/trading/reset", {
+      method: "POST",
     })
   },
 }

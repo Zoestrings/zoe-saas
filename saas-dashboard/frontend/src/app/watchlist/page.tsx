@@ -371,6 +371,9 @@ export default function WatchlistPage() {
                   Initial Price
                 </TableHead>
                 <TableHead className="text-neutral-400 text-xs py-3.5 px-5 font-bold uppercase tracking-wider">
+                  Alerts &amp; Status
+                </TableHead>
+                <TableHead className="text-neutral-400 text-xs py-3.5 px-5 font-bold uppercase tracking-wider">
                   Added Date
                 </TableHead>
                 <TableHead className="text-neutral-400 text-xs py-3.5 px-5 font-bold uppercase tracking-wider text-right">
@@ -382,7 +385,7 @@ export default function WatchlistPage() {
             <TableBody>
               {loading && items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-neutral-500">
+                  <TableCell colSpan={7} className="h-32 text-center text-neutral-500">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <Loader2 className="h-5 w-5 animate-spin text-[#00ff66]" />
                       <span className="text-xs">Loading surveillance watchlist...</span>
@@ -392,6 +395,9 @@ export default function WatchlistPage() {
               ) : items.length > 0 ? (
                 items.map((item) => {
                   const shortCa = `${item.contract_address.slice(0, 4)}...${item.contract_address.slice(-4)}`
+                  const matchingAlert = alerts.find(
+                    (a) => a.contract_address.toLowerCase() === item.contract_address.toLowerCase()
+                  )
 
                   return (
                     <TableRow
@@ -442,6 +448,26 @@ export default function WatchlistPage() {
                       {/* Initial Price */}
                       <TableCell className="py-4 px-5 text-xs font-mono text-neutral-300">
                         {formatCurrency(item.initial_price)}
+                      </TableCell>
+
+                      {/* Alerts & Risk Status Column */}
+                      <TableCell className="py-4 px-5 text-xs">
+                        {matchingAlert ? (
+                          <div 
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30 animate-pulse cursor-help"
+                            title={matchingAlert.message}
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-400" />
+                            <span className="truncate max-w-[110px]">
+                              {matchingAlert.alert_type === "liquidity_drop" ? "Liquidity Drop" : "Risk Alert"}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
+                            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-[#00ff66]" />
+                            <span>Healthy</span>
+                          </div>
+                        )}
                       </TableCell>
 
                       {/* Added Date */}

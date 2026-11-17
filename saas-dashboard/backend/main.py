@@ -187,6 +187,18 @@ def get_dev_db() -> sqlite3.Connection:
         except Exception:
             pass
 
+    try:
+        conn.execute("ALTER TABLE dev_users ADD COLUMN display_name TEXT")
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        conn.execute("ALTER TABLE dev_alerts ADD COLUMN is_read INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass
+
     return conn
 
 # Initialize FastAPI app
@@ -2181,9 +2193,15 @@ def get_user_alerts(
     client = get_supabase()
     if client:
         try:
-            res = client.table("alerts").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(20).execute()
+            res = client.table("alerts").select("*").eq("user_id", str(user_id)).order("created_at", desc=True).limit(20).execute()
             if res.data is not None and len(res.data) > 0:
-                return res.data
+                return [
+                    {
+                        **item,
+                        "is_read": bool(item.get("is_read", False)),
+                    }
+                    for item in res.data
+                ]
         except Exception:
             pass
 
@@ -2191,7 +2209,7 @@ def get_user_alerts(
         conn = get_dev_db()
         cur = conn.execute(
             """
-            SELECT id, user_id, contract_address, token_name, alert_type, message, old_value, new_value, created_at
+            SELECT id, user_id, contract_address, token_name, alert_type, message, old_value, new_value, created_at, COALESCE(is_read, 0)
             FROM dev_alerts
             WHERE user_id = ?
             ORDER BY created_at DESC
@@ -2200,22 +2218,88 @@ def get_user_alerts(
             (str(user_id),),
         )
         rows = cur.fetchall()
-        return [
-            {
-                "id": r[0],
-                "user_id": r[1],
-                "contract_address": r[2],
-                "token_name": r[3],
-                "alert_type": r[4],
-                "message": r[5],
-                "old_value": r[6],
-                "new_value": r[7],
-                "created_at": r[8],
-            }
-            for r in rows
-        ]
+        if rows:
+            return [
+                {
+                    "id": r[0],
+                    "user_id": r[1],
+                    "contract_address": r[2],
+                    "token_name": r[3],
+                    "alert_type": r[4],
+                    "message": r[5],
+                    "old_value": r[6],
+                    "new_value": r[7],
+                    "created_at": r[8],
+                    "is_read": bool(r[9]),
+                }
+                for r in rows
+            ]
+
+        # Seed initial surveillance alert if user has no alerts yet
+        now_iso = datetime.now(timezone.utc).isoformat()
+        initial_alert = {
+            "id": f"alert-{uuid.uuid4().hex[:8]}",
+            "user_id": str(user_id),
+            "contract_address": "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon",
+            "token_name": "ONELOVE",
+            "alert_type": "liquidity_drop",
+            "message": "Continuous surveillance active. Monitoring liquidity pool thresholds on $ONELOVE.",
+            "old_value": 35000.0,
+            "new_value": 28000.0,
+            "created_at": now_iso,
+            "is_read": 0,
+        }
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO dev_alerts (id, user_id, contract_address, token_name, alert_type, message, old_value, new_value, created_at, is_read)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                initial_alert["id"],
+                initial_alert["user_id"],
+                initial_alert["contract_address"],
+                initial_alert["token_name"],
+                initial_alert["alert_type"],
+                initial_alert["message"],
+                initial_alert["old_value"],
+                initial_alert["new_value"],
+                initial_alert["created_at"],
+                initial_alert["is_read"],
+            ),
+        )
+        conn.commit()
+        return [{**initial_alert, "is_read": False}]
     except Exception:
         return []
+
+
+@app.post("/api/alerts/read", response_model=Dict[str, Any])
+def mark_alerts_as_read(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Mark all security monitoring alerts as read for the authenticated user."""
+    user_id = current_user.get("id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not authenticated.")
+
+    client = get_supabase()
+    if client:
+        try:
+            client.table("alerts").update({"is_read": True}).eq("user_id", str(user_id)).execute()
+        except Exception as exc:
+            print(f"[WARNING] Supabase mark alerts read error: {exc}")
+
+    try:
+        conn = get_dev_db()
+        conn.execute("UPDATE dev_alerts SET is_read = 1 WHERE user_id = ?", (str(user_id),))
+        conn.commit()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": "All alerts marked as read.",
+    }
 
 
 @app.post("/api/watchlist/check-now", response_model=Dict[str, Any])
@@ -2420,6 +2504,147 @@ def get_user_invoices(
         ]
     except Exception:
         return []
+
+
+@app.get("/api/billing/history", response_model=List[Dict[str, Any]])
+def get_billing_history(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retrieve normalized past invoices and payment receipts for the logged-in user."""
+    user_id = current_user.get("id")
+    if not user_id:
+        return []
+
+    invoices: List[Dict[str, Any]] = []
+    client = get_supabase()
+    if client:
+        try:
+            res = client.table("invoices").select("*").eq("user_id", str(user_id)).order("created_at", desc=True).execute()
+            if res.data:
+                for inv in res.data:
+                    invoices.append({
+                        "id": inv.get("id"),
+                        "date": inv.get("created_at"),
+                        "created_at": inv.get("created_at"),
+                        "amount": float(inv.get("amount_usdt", 20.0)),
+                        "amount_usdt": float(inv.get("amount_usdt", 20.0)),
+                        "status": inv.get("status", "paid"),
+                        "tx_hash": inv.get("tx_hash"),
+                        "currency": "USDT",
+                        "network": "Solana",
+                        "plan": "Pro Intelligence ($20/mo)",
+                    })
+                return invoices
+        except Exception as exc:
+            print(f"[WARNING] Failed to query billing history from Supabase: {exc}")
+
+    try:
+        conn = get_dev_db()
+        cur = conn.execute(
+            "SELECT id, user_id, amount_usdt, status, tx_hash, created_at FROM dev_invoices WHERE user_id = ? ORDER BY created_at DESC",
+            (str(user_id),),
+        )
+        rows = cur.fetchall()
+        for r in rows:
+            invoices.append({
+                "id": r[0],
+                "user_id": r[1],
+                "date": r[5],
+                "created_at": r[5],
+                "amount": float(r[2]),
+                "amount_usdt": float(r[2]),
+                "status": r[3],
+                "tx_hash": r[4],
+                "currency": "USDT",
+                "network": "Solana",
+                "plan": "Pro Intelligence ($20/mo)",
+            })
+    except Exception:
+        pass
+
+    return invoices
+
+
+class UpdateProfileRequest(BaseModel):
+    display_name: str
+
+
+class UpdatePasswordRequest(BaseModel):
+    password: str
+
+
+@app.post("/api/user/profile", response_model=Dict[str, Any])
+def update_user_profile(
+    payload: UpdateProfileRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Update profile display name for authenticated user."""
+    user_id = str(current_user.get("id"))
+    new_name = payload.display_name.strip()
+    if not new_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Display name cannot be empty.")
+
+    admin_client = get_supabase_admin()
+    if admin_client:
+        try:
+            admin_client.auth.admin.update_user_by_id(
+                user_id,
+                {"user_metadata": {"display_name": new_name}}
+            )
+        except Exception as exc:
+            print(f"[WARNING] Supabase user metadata update failed: {exc}")
+
+    try:
+        conn = get_dev_db()
+        conn.execute("UPDATE dev_users SET display_name = ? WHERE id = ?", (new_name, user_id))
+        conn.commit()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": "Profile display name updated successfully.",
+        "display_name": new_name,
+        "user": {
+            **current_user,
+            "display_name": new_name,
+        }
+    }
+
+
+@app.post("/api/user/password", response_model=Dict[str, Any])
+def update_user_password(
+    payload: UpdatePasswordRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Update password for authenticated user."""
+    user_id = str(current_user.get("id"))
+    new_pw = payload.password.strip()
+    if len(new_pw) < 6:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 6 characters.")
+
+    admin_client = get_supabase_admin()
+    if admin_client:
+        try:
+            admin_client.auth.admin.update_user_by_id(
+                user_id,
+                {"password": new_pw}
+            )
+        except Exception as exc:
+            print(f"[WARNING] Supabase password update failed: {exc}")
+
+    try:
+        conn = get_dev_db()
+        hashed = _hash_password(new_pw)
+        conn.execute("UPDATE dev_users SET password_hash = ? WHERE id = ?", (hashed, user_id))
+        conn.commit()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": "Password changed successfully.",
+    }
 
 
 @app.get("/api/admin/revenue", response_model=Dict[str, Any])

@@ -58,7 +58,7 @@ const adminNav = [
   },
   { 
     name: "Settings", 
-    href: "/admin/settings", 
+    href: "/settings", 
     icon: Settings,
   },
 ]
@@ -130,11 +130,11 @@ export function AdminSidebar() {
         {/* Bottom Actions */}
         <div className="space-y-1 pt-1">
           <Link
-            href="/admin/settings"
+            href="/settings"
             className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs text-neutral-400 hover:text-white hover:bg-neutral-900 transition-colors"
           >
             <Settings className="h-4 w-4" />
-            <span>Settings</span>
+            <span>Account Settings</span>
           </Link>
           <button
             onClick={logout}

@@ -14,6 +14,7 @@ export interface User {
   id: string
   email: string
   role?: "super_admin" | "project_owner" | string
+  display_name?: string | null
 }
 
 export function isSuperAdmin(user?: User | null): boolean {
@@ -311,6 +312,21 @@ export interface SecurityAlert {
   old_value?: number | null
   new_value?: number | null
   created_at: string
+  is_read?: boolean
+}
+
+export interface BillingHistoryItem {
+  id: string
+  user_id?: string
+  date: string
+  created_at: string
+  amount: number
+  amount_usdt: number
+  status: "pending" | "paid" | "expired" | string
+  tx_hash?: string | null
+  currency?: string
+  network?: string
+  plan?: string
 }
 
 export interface PaperPosition {
@@ -607,13 +623,44 @@ export const api = {
     })
   },
 
+  async markAlertsRead(): Promise<{ success: boolean; message: string }> {
+    return apiRequest<{ success: boolean; message: string }>("/api/alerts/read", {
+      method: "POST",
+    })
+  },
+
   async triggerWatchlistCheck(): Promise<{ status: string; message: string; alerts_count: number; alerts: SecurityAlert[] }> {
     return apiRequest<{ status: string; message: string; alerts_count: number; alerts: SecurityAlert[] }>("/api/watchlist/check-now", {
       method: "POST",
     })
   },
 
-  // Billing & Entitlements (Mega-Module 6)
+  // User Profile & Security Settings (Mega-Module 12)
+  async updateProfile(displayName: string): Promise<{ success: boolean; message: string; display_name: string; user?: User }> {
+    const res = await apiRequest<{ success: boolean; message: string; display_name: string; user?: User }>("/api/user/profile", {
+      method: "POST",
+      body: JSON.stringify({ display_name: displayName }),
+    })
+    const cur = getUser()
+    if (cur) {
+      setUser({ ...cur, display_name: displayName })
+    }
+    return res
+  },
+
+  async updatePassword(password: string): Promise<{ success: boolean; message: string }> {
+    return apiRequest<{ success: boolean; message: string }>("/api/user/password", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    })
+  },
+
+  // Billing & Entitlements (Mega-Module 6 & 12)
+  async getBillingHistory(): Promise<BillingHistoryItem[]> {
+    return apiRequest<BillingHistoryItem[]>("/api/billing/history", {
+      method: "GET",
+    })
+  },
   async getEntitlement(): Promise<EntitlementResponse> {
     return apiRequest<EntitlementResponse>("/api/billing/entitlement", {
       method: "GET",

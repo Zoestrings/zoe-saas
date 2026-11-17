@@ -770,10 +770,16 @@ def process_message(
                     "/ca — Show this community's contract address\n"
                     "/setca — Admins: save this community's contract address\n"
                     "/price — Get live token price, market cap & liquidity\n"
+                    "/leaderboard — Top callers in this community\n"
                     "/links — Official website, Twitter, Telegram & TikTok\n"
                     "/help — Show all commands"
                 )
                 intent = "command_help"
+
+            elif cmd in ("leaderboard", "topcallers", "callers"):
+                from zoe.tools.caller_reputation import get_leaderboard_text
+                generated_text = get_leaderboard_text(project_id=norm_msg.project_id)
+                intent = "command_leaderboard"
 
             elif cmd in ("investigate", "scan"):
                 from zoe.tools.scanner import (
@@ -1056,6 +1062,32 @@ def process_message(
                     intel = get_token_intel_sync(ca=ca)
                     generated_text = format_token_intel_response(intel)
                     inline_keyboard = generate_ca_inline_keyboard(ca, intel)
+
+                # Record token call in Caller Reputation engine (Phase 3)
+                try:
+                    from zoe.tools.caller_reputation import record_token_call
+                    sender_uname = getattr(norm_msg, "username", None) or f"user_{str(norm_msg.pseudonymous_user_id)[:6]}"
+                    sender_uid = str(getattr(norm_msg, "raw_user_id", None) or norm_msg.pseudonymous_user_id)
+                    call_tok_price = None
+                    call_tok_name = None
+                    if 'intel' in locals() and isinstance(intel, dict):
+                        call_tok_name = intel.get("name") or intel.get("symbol")
+                        p_val = intel.get("price_usd")
+                        if p_val not in (None, "N/A"):
+                            try:
+                                call_tok_price = float(p_val)
+                            except (ValueError, TypeError):
+                                pass
+                    record_token_call(
+                        project_id=norm_msg.project_id,
+                        telegram_user_id=sender_uid,
+                        contract_address=ca,
+                        username=sender_uname,
+                        token_name=call_tok_name,
+                        call_price=call_tok_price,
+                    )
+                except Exception as call_err:
+                    logger.debug("Could not record caller reputation call: %s", call_err)
 
                 # Persist a clean summary of the scanned token into community memory for follow-up questions
                 try:

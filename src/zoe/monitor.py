@@ -650,13 +650,20 @@ async def run_buy_monitoring_loop(interval_seconds: int = 30) -> None:
         await asyncio.sleep(interval_seconds)
 
 
+async def update_caller_ath(client: Optional[httpx.AsyncClient] = None) -> List[Dict[str, Any]]:
+    """Scan active token_calls in tracking status, fetch current DexScreener ATH, and update multipliers."""
+    from zoe.tools.caller_reputation import update_ath_for_calls
+    return await update_ath_for_calls(client=client)
+
+
 async def run_monitoring_loop(interval_seconds: int = 900) -> None:
-    """Continuous background loop checking watchlists and active buy monitors."""
-    logger.info("Watchlist Continuous Monitoring daemon active (interval: %ds).", interval_seconds)
+    """Continuous background loop checking watchlists, active buy monitors, and caller ATH prices."""
+    logger.info("Watchlist & Intelligence Monitoring daemon active (interval: %ds).", interval_seconds)
     while True:
         try:
             await check_watchlist_tokens()
             await check_recent_buys()
+            await update_caller_ath()
         except asyncio.CancelledError:
             logger.info("Watchlist monitor loop cancelled.")
             break

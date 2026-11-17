@@ -109,6 +109,7 @@ class NormalizedMessage:
     timestamp: str  # "YYYY-MM-DD HH:MM:SS" UTC
     is_voice: bool = False
     raw_user_id: Optional[int] = None
+    username: Optional[str] = None
 
 
 def _download_and_transcribe_sync(
@@ -359,6 +360,7 @@ def normalize_update(
         return None
 
     pseudonymous_user_id = compute_pseudonym(raw_user_id, hmac_key)
+    username = sender.get("username")
 
     return NormalizedMessage(
         project_id=project_id,
@@ -372,6 +374,7 @@ def normalize_update(
         timestamp=timestamp,
         is_voice=is_voice,
         raw_user_id=int(raw_user_id) if str(raw_user_id).isdigit() else None,
+        username=username,
     )
 
 
@@ -495,6 +498,7 @@ async def normalize_update_async(
         return None
 
     pseudonymous_user_id = compute_pseudonym(raw_user_id, hmac_key)
+    username = sender.get("username")
 
     return NormalizedMessage(
         project_id=project_id,
@@ -508,5 +512,6 @@ async def normalize_update_async(
         timestamp=timestamp,
         is_voice=is_voice,
         raw_user_id=int(raw_user_id) if str(raw_user_id).isdigit() else None,
+        username=username,
     )
 

@@ -771,10 +771,103 @@ def process_message(
                     "/setca — Admins: save this community's contract address\n"
                     "/price — Get live token price, market cap & liquidity\n"
                     "/leaderboard — Top callers in this community\n"
+                    "/watch <CA> <above|below> <price> — Set custom price alert\n"
+                    "/unwatch <CA> — Deactivate price alerts for a token\n"
+                    "/follow <wallet> — Follow whale wallet on Solana\n"
+                    "/unfollow <wallet> — Stop following a wallet\n"
                     "/links — Official website, Twitter, Telegram & TikTok\n"
                     "/help — Show all commands"
                 )
                 intent = "command_help"
+
+            elif cmd == "watch":
+                from zoe.tools.alerts import add_price_alert
+                from zoe.tools.crypto_intel import get_token_intel_sync
+                sender_uid = str(getattr(norm_msg, "raw_user_id", None) or norm_msg.pseudonymous_user_id)
+                # Parse: /watch <CA|ticker> <above|below> <price>
+                parts = cmd_arg.split()
+                if len(parts) >= 3:
+                    raw_target = parts[0].strip()
+                    direction = parts[1].strip().lower()
+                    try:
+                        price_val = float(parts[2].strip().replace("$", "").replace(",", ""))
+                    except ValueError:
+                        price_val = 0.0
+
+                    if direction not in ("above", "below") or price_val <= 0:
+                        generated_text = "❌ **Usage:** `/watch <Contract_Address> <above|below> <price>`\nExample: `/watch SOL above 200`"
+                    else:
+                        target_ca = raw_target
+                        token_name = raw_target
+                        if raw_target.upper() == "SOL":
+                            target_ca = "So11111111111111111111111111111111111111112"
+                            token_name = "SOL"
+                        else:
+                            intel = get_token_intel_sync(ca=target_ca)
+                            if isinstance(intel, dict) and (intel.get("name") or intel.get("symbol")):
+                                token_name = intel.get("name") or intel.get("symbol")
+
+                        add_price_alert(
+                            project_id=norm_msg.project_id,
+                            telegram_user_id=sender_uid,
+                            contract_address=target_ca,
+                            target_price=price_val,
+                            direction=direction,
+                            token_name=token_name,
+                        )
+                        generated_text = f"✅ Alert set! I will notify you when ${token_name} goes {direction} ${price_val:,.4f}."
+                else:
+                    generated_text = "❌ **Usage:** `/watch <Contract_Address> <above|below> <price>`\nExample: `/watch SOL above 200`"
+                intent = "command_watch"
+
+            elif cmd == "unwatch":
+                from zoe.tools.alerts import deactivate_price_alerts
+                sender_uid = str(getattr(norm_msg, "raw_user_id", None) or norm_msg.pseudonymous_user_id)
+                target_ca = cmd_arg.strip()
+                if target_ca.upper() == "SOL":
+                    target_ca = "So11111111111111111111111111111111111111112"
+                if target_ca:
+                    cnt = deactivate_price_alerts(
+                        project_id=norm_msg.project_id,
+                        telegram_user_id=sender_uid,
+                        contract_address=target_ca,
+                    )
+                    generated_text = f"🛑 Alerts deactivated for `{cmd_arg.strip()}`."
+                else:
+                    generated_text = "❌ **Usage:** `/unwatch <Contract_Address>`"
+                intent = "command_unwatch"
+
+            elif cmd == "follow":
+                from zoe.tools.alerts import add_wallet_follow
+                from zoe.tools.scanner import is_valid_solana_ca
+                sender_uid = str(getattr(norm_msg, "raw_user_id", None) or norm_msg.pseudonymous_user_id)
+                target_wallet = cmd_arg.strip()
+                if not target_wallet or not is_valid_solana_ca(target_wallet):
+                    generated_text = "❌ Please provide a valid Solana wallet address:\n`/follow <Solana_Wallet_Address>`"
+                else:
+                    add_wallet_follow(
+                        project_id=norm_msg.project_id,
+                        telegram_user_id=sender_uid,
+                        wallet_address=target_wallet,
+                    )
+                    short_w = f"{target_wallet[:4]}...{target_wallet[-4:]}"
+                    generated_text = f"🐋 Now following wallet `{short_w}`. I will alert the group when new transactions are detected!"
+                intent = "command_follow"
+
+            elif cmd == "unfollow":
+                from zoe.tools.alerts import deactivate_wallet_follow
+                sender_uid = str(getattr(norm_msg, "raw_user_id", None) or norm_msg.pseudonymous_user_id)
+                target_wallet = cmd_arg.strip()
+                if target_wallet:
+                    deactivate_wallet_follow(
+                        project_id=norm_msg.project_id,
+                        telegram_user_id=sender_uid,
+                        wallet_address=target_wallet,
+                    )
+                    generated_text = f"🛑 Stopped following wallet `{target_wallet}`."
+                else:
+                    generated_text = "❌ **Usage:** `/unfollow <Solana_Wallet_Address>`"
+                intent = "command_unfollow"
 
             elif cmd in ("leaderboard", "topcallers", "callers"):
                 from zoe.tools.caller_reputation import get_leaderboard_text

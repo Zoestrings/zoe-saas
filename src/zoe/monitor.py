@@ -656,14 +656,210 @@ async def update_caller_ath(client: Optional[httpx.AsyncClient] = None) -> List[
     return await update_ath_for_calls(client=client)
 
 
-async def run_monitoring_loop(interval_seconds: int = 900) -> None:
-    """Continuous background loop checking watchlists, active buy monitors, and caller ATH prices."""
+async def check_custom_alerts(
+    client: Optional[httpx.AsyncClient] = None,
+    op_db_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Check active custom price alerts against live DexScreener spot prices."""
+    from zoe.tools.alerts import get_active_price_alerts, mark_price_alert_triggered
+    active_alerts = get_active_price_alerts()
+    if not active_alerts:
+        return []
+
+    triggered = []
+    price_cache: Dict[str, Tuple[Optional[float], str]] = {}
+
+    async with httpx.AsyncClient(timeout=10.0) as local_http:
+        http_client = client or local_http
+        for alert in active_alerts:
+            ca = alert.get("contract_address")
+            target = float(alert.get("target_price") or 0.0)
+            direction = str(alert.get("direction") or "above").lower()
+            proj_id = alert.get("project_id")
+            uid = alert.get("telegram_user_id")
+
+            if not ca or target <= 0:
+                continue
+
+            if ca not in price_cache:
+                try:
+                    m = await fetch_dexscreener_market_data(ca, client=http_client)
+                    cur_p = m.get("price_usd")
+                    t_name = alert.get("token_name") or m.get("symbol") or m.get("name") or "Token"
+                    price_cache[ca] = (float(cur_p) if cur_p is not None else None, t_name)
+                except Exception as exc:
+                    logger.debug("Market data fetch failed for alert CA %s: %s", ca, exc)
+                    price_cache[ca] = (None, alert.get("token_name") or "Token")
+
+            current_price, token_name = price_cache[ca]
+            if current_price is None or current_price <= 0:
+                continue
+
+            hit = False
+            if direction == "above" and current_price >= target:
+                hit = True
+            elif direction == "below" and current_price <= target:
+                hit = True
+
+            if hit:
+                tag = f"@{uid}" if not uid.startswith("user_") and not uid.isdigit() else f"User {uid[:6]}"
+                msg = (
+                    f"🔔 **PRICE ALERT!** Hey {tag}, **${token_name}** just crossed **{direction}** **${target:,.4f}**!\n"
+                    f"📈 **Current Price:** ${current_price:,.4f}"
+                )
+                group_id = None
+                try:
+                    dev_conn = get_dev_db_conn()
+                    row_p = dev_conn.execute("SELECT telegram_group_id FROM dev_projects WHERE id = ?", (proj_id,)).fetchone()
+                    if row_p and row_p[0]:
+                        group_id = row_p[0]
+                except Exception:
+                    pass
+                if not group_id:
+                    try:
+                        op_p = get_operational_db_path(op_db_path)
+                        if op_p.exists():
+                            op_conn = open_operational_db(op_p)
+                            row_op = op_conn.execute("SELECT telegram_group_id FROM projects WHERE project_id = ?", (proj_id,)).fetchone()
+                            if row_op and row_op[0]:
+                                group_id = row_op[0]
+                            op_conn.close()
+                    except Exception:
+                        pass
+
+                if group_id:
+                    outbox_id = enqueue_proactive_alert(
+                        project_id=proj_id,
+                        group_id=group_id,
+                        text=msg,
+                        op_db_path=op_db_path,
+                    )
+                    mark_price_alert_triggered(alert["id"])
+                    triggered.append({
+                        "alert_id": alert["id"],
+                        "project_id": proj_id,
+                        "token_name": token_name,
+                        "current_price": current_price,
+                        "target_price": target,
+                        "direction": direction,
+                        "message": msg,
+                    })
+
+    logger.info("Custom price alerts check complete. %d alerts triggered.", len(triggered))
+    return triggered
+
+
+async def check_wallet_follows(
+    client: Optional[httpx.AsyncClient] = None,
+    op_db_path: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Scan active wallet follows and alert when a new transaction is detected."""
+    from zoe.tools.alerts import get_active_wallet_follows, update_wallet_follow_signature
+    follows = get_active_wallet_follows()
+    if not follows:
+        return []
+
+    triggered = []
+    rpc_url = os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com").strip()
+
+    async with httpx.AsyncClient(timeout=8.0) as local_http:
+        http_client = client or local_http
+        for follow in follows:
+            w_addr = follow.get("wallet_address")
+            proj_id = follow.get("project_id")
+            last_sig = follow.get("last_tx_signature")
+
+            if not w_addr or not is_valid_solana_ca(w_addr):
+                continue
+
+            sig_payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "getSignaturesForAddress",
+                "params": [
+                    w_addr,
+                    {"limit": 5}
+                ]
+            }
+            if last_sig:
+                sig_payload["params"][1]["until"] = last_sig
+
+            try:
+                resp = await http_client.post(rpc_url, json=sig_payload)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    signatures = []
+                    if isinstance(data, dict) and "signatures" in data:
+                        signatures = data["signatures"]
+                    elif isinstance(data, dict):
+                        signatures = data.get("result") or []
+
+                    if signatures and isinstance(signatures, list):
+                        newest_sig = signatures[0].get("signature") if isinstance(signatures[0], dict) else str(signatures[0])
+                        if last_sig is None:
+                            update_wallet_follow_signature(follow["id"], newest_sig)
+                            continue
+
+                        if newest_sig and newest_sig != last_sig:
+                            short_w = f"{w_addr[:4]}...{w_addr[-4:]}"
+                            short_sig = f"{newest_sig[:6]}...{newest_sig[-6:]}" if len(newest_sig) > 12 else newest_sig
+                            msg = (
+                                f"🐋 **WHALE ALERT!** Followed wallet `{short_w}` just made a new transaction!\n"
+                                f"🔗 [View Tx](https://solscan.io/tx/{newest_sig}) (`{short_sig}`)"
+                            )
+
+                            group_id = None
+                            try:
+                                dev_conn = get_dev_db_conn()
+                                row_p = dev_conn.execute("SELECT telegram_group_id FROM dev_projects WHERE id = ?", (proj_id,)).fetchone()
+                                if row_p and row_p[0]:
+                                    group_id = row_p[0]
+                            except Exception:
+                                pass
+                            if not group_id:
+                                try:
+                                    op_p = get_operational_db_path(op_db_path)
+                                    if op_p.exists():
+                                        op_conn = open_operational_db(op_p)
+                                        row_op = op_conn.execute("SELECT telegram_group_id FROM projects WHERE project_id = ?", (proj_id,)).fetchone()
+                                        if row_op and row_op[0]:
+                                            group_id = row_op[0]
+                                        op_conn.close()
+                                except Exception:
+                                    pass
+
+                            if group_id:
+                                outbox_id = enqueue_proactive_alert(
+                                    project_id=proj_id,
+                                    group_id=group_id,
+                                    text=msg,
+                                    op_db_path=op_db_path,
+                                )
+                                update_wallet_follow_signature(follow["id"], newest_sig)
+                                triggered.append({
+                                    "follow_id": follow["id"],
+                                    "project_id": proj_id,
+                                    "wallet_address": w_addr,
+                                    "tx_signature": newest_sig,
+                                    "message": msg,
+                                })
+            except Exception as exc:
+                logger.debug("RPC error for followed wallet %s: %s", w_addr, exc)
+
+    logger.info("Wallet follows check complete. %d alerts triggered.", len(triggered))
+    return triggered
+
+
+async def run_monitoring_loop(interval_seconds: int = 60) -> None:
+    """Continuous background loop checking watchlists, buy monitors, custom price alerts, and wallet follows."""
     logger.info("Watchlist & Intelligence Monitoring daemon active (interval: %ds).", interval_seconds)
     while True:
         try:
             await check_watchlist_tokens()
             await check_recent_buys()
             await update_caller_ath()
+            await check_custom_alerts()
+            await check_wallet_follows()
         except asyncio.CancelledError:
             logger.info("Watchlist monitor loop cancelled.")
             break

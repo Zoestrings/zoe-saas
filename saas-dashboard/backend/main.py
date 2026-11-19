@@ -346,7 +346,19 @@ def get_supabase_admin():
 # --- Role-Based Access Control (RBAC) Helpers ---
 def _fetch_user_role(user_id: str, email: str, metadata: Optional[Dict[str, Any]] = None) -> str:
     """Fetch user's role from Supabase public.users table or fallback to defaults."""
-    # 1. Query Supabase public.users table if client is available
+    # 1. Master Super Admin Override by Email
+    super_admin_emails = {
+        e.strip().lower()
+        for e in os.getenv(
+            "SUPER_ADMIN_EMAILS", 
+            "admin@zoe.com,founder@zoe.com,defimaverick7@gmail.com,akpodomagoodluck7@gmail.com"
+        ).split(",")
+        if e.strip()
+    }
+    if email and email.lower().strip() in super_admin_emails:
+        return "super_admin"
+
+    # 2. Query Supabase public.users table if client is available
     client = get_supabase()
     if client is not None and user_id:
         try:
@@ -356,31 +368,22 @@ def _fetch_user_role(user_id: str, email: str, metadata: Optional[Dict[str, Any]
         except Exception:
             pass
 
-    # 2. Check local dev SQLite
-    conn = get_dev_db()
-    if conn is not None and user_id:
-        try:
-            cur = conn.cursor()
-            row = cur.execute("SELECT role FROM dev_users WHERE id = ?", (user_id,)).fetchone()
-            if row and row[0]:
-                return str(row[0])
-        except Exception:
-            pass
-
     # 3. Check auth metadata if provided
     if metadata and isinstance(metadata, dict):
         role_meta = metadata.get("role") or metadata.get("user_role")
         if role_meta in ("super_admin", "project_owner"):
             return str(role_meta)
 
-    # 4. Fallback to SUPER_ADMIN_EMAILS env configuration
-    super_admin_emails = {
-        e.strip().lower()
-        for e in os.getenv("SUPER_ADMIN_EMAILS", "admin@zoe.com,founder@zoe.com,defimaverick7@gmail.com").split(",")
-        if e.strip()
-    }
-    if email and email.lower().strip() in super_admin_emails:
-        return "super_admin"
+    # 4. Check local dev SQLite
+    conn = get_dev_db()
+    if conn is not None:
+        try:
+            cur = conn.cursor()
+            row = cur.execute("SELECT role FROM dev_users WHERE id = ? OR email = ?", (user_id, email)).fetchone()
+            if row and row[0]:
+                return str(row[0])
+        except Exception:
+            pass
 
     return "project_owner"
 
@@ -711,48 +714,49 @@ def register_user(req: AuthRequest):
 
 @app.post("/api/auth/login", response_model=AuthResponse)
 def login_user(req: AuthRequest):
-    """Authenticate an existing user with Supabase Auth or local dev fallback."""
-    client = get_supabase()
-    if client is None:
-        conn = get_dev_db()
-        cur = conn.cursor()
-        row = cur.execute(
-            "SELECT id, password_hash, role FROM dev_users WHERE email = ?", (req.email,)
-        ).fetchone()
-        if not row or row[1] != _hash_password(req.password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password.",
-            )
-        user_id = row[0]
-        role = row[2] if len(row) > 2 and row[2] else _fetch_user_role(user_id, req.email)
-        token = _mint_dev_jwt(user_id, req.email)
-        return AuthResponse(
-            access_token=token,
-            user={"id": user_id, "email": req.email, "role": role},
-        )
+    """Authenticate an existing user with SQL dev database or Supabase Auth."""
+    clean_email = req.email.strip().lower()
+    clean_pw = req.password
 
-    try:
-        res = client.auth.sign_in_with_password({"email": req.email, "password": req.password})
-        if not res.session:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Login succeeded but no active session was returned.",
-            )
-        user_id = str(getattr(res.user, "id", ""))
-        user_meta = getattr(res.user, "user_metadata", {}) or getattr(res.user, "app_metadata", {})
-        role = _fetch_user_role(user_id, req.email, user_meta)
-        return AuthResponse(
-            access_token=res.session.access_token,
-            user={"id": user_id, "email": req.email, "role": role},
-        )
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Authentication failed: {str(exc)}",
-        )
+    # 1. First check local SQL database credentials (handles pre-seeded and SQL users)
+    conn = get_dev_db()
+    if conn is not None:
+        try:
+            cur = conn.cursor()
+            row = cur.execute(
+                "SELECT id, password_hash, role FROM dev_users WHERE LOWER(email) = ?", (clean_email,)
+            ).fetchone()
+            if row and row[1] == _hash_password(clean_pw):
+                user_id = str(row[0])
+                role = _fetch_user_role(user_id, clean_email)
+                token = _mint_dev_jwt(user_id, clean_email)
+                return AuthResponse(
+                    access_token=token,
+                    user={"id": user_id, "email": clean_email, "role": role},
+                )
+        except Exception as exc:
+            logger.warning("Local dev SQL login check error: %s", exc)
+
+    # 2. Check Supabase Cloud Auth
+    client = get_supabase()
+    if client is not None:
+        try:
+            res = client.auth.sign_in_with_password({"email": clean_email, "password": clean_pw})
+            if res and res.session:
+                user_id = str(getattr(res.user, "id", ""))
+                user_meta = getattr(res.user, "user_metadata", {}) or getattr(res.user, "app_metadata", {})
+                role = _fetch_user_role(user_id, clean_email, user_meta)
+                return AuthResponse(
+                    access_token=res.session.access_token,
+                    user={"id": user_id, "email": clean_email, "role": role},
+                )
+        except Exception as exc:
+            logger.warning("Supabase auth sign in failed for %s: %s", clean_email, exc)
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid email or password.",
+    )
 
 
 def _update_project_status(project_id: str, new_status: str, error_msg: Optional[str] = None, client: Any = None):

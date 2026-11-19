@@ -13,17 +13,17 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table"
-import { 
-  Bot, 
-  Plus, 
-  Search, 
-  RefreshCw, 
-  MoreHorizontal, 
-  Edit, 
-  Trash2, 
-  Calendar, 
-  ArrowUpDown, 
-  AlertCircle, 
+import {
+  Bot,
+  Plus,
+  Search,
+  RefreshCw,
+  MoreHorizontal,
+  Edit,
+  Trash2,
+  Calendar,
+  ArrowUpDown,
+  AlertCircle,
   Loader2,
   Copy,
   Check,
@@ -284,11 +284,10 @@ export default function AdminProjectsPage() {
           const plan = (row.original.plan || "free").toLowerCase()
           const isPro = plan === "pro"
           return (
-            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-              isPro 
-                ? "bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30 shadow-sm shadow-[#00ff66]/10" 
+            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${isPro
+                ? "bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30 shadow-sm shadow-[#00ff66]/10"
                 : "bg-neutral-800 text-neutral-400 border border-neutral-700"
-            }`}>
+              }`}>
               {isPro && <Crown className="h-3 w-3 text-[#00ff66]" />}
               {isPro ? "PRO" : "FREE"}
             </span>
@@ -356,7 +355,7 @@ export default function AdminProjectsPage() {
                 day: "numeric",
                 year: "numeric",
               })
-            } catch {}
+            } catch { }
           }
           return (
             <div className="flex items-center gap-1.5 text-xs text-[#818c99]">
@@ -631,31 +630,28 @@ export default function AdminProjectsPage() {
         <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
           <button
             onClick={() => setStatusFilter("all")}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-              statusFilter === "all"
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${statusFilter === "all"
                 ? "bg-[#00ff66] text-black shadow-md shadow-[#00ff66]/10"
                 : "bg-[#12161c] border border-[#212833] text-[#818c99] hover:text-white"
-            }`}
+              }`}
           >
             All Projects ({data.length})
           </button>
           <button
             onClick={() => setStatusFilter("online")}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-              statusFilter === "online"
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${statusFilter === "online"
                 ? "bg-[#00ff66] text-black shadow-md shadow-[#00ff66]/10"
                 : "bg-[#12161c] border border-[#212833] text-[#818c99] hover:text-white"
-            }`}
+              }`}
           >
             Online
           </button>
           <button
             onClick={() => setStatusFilter("suspended")}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-              statusFilter === "suspended"
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${statusFilter === "suspended"
                 ? "bg-rose-500 text-white shadow-md shadow-rose-500/10"
                 : "bg-[#12161c] border border-[#212833] text-[#818c99] hover:text-white"
-            }`}
+              }`}
           >
             Suspended
           </button>

@@ -224,3 +224,19 @@ CREATE INDEX IF NOT EXISTS idx_buy_monitors_active ON buy_monitors(project_id, i
 CREATE INDEX IF NOT EXISTS idx_paper_trades_user ON paper_trades(user_id);
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_investigations_user ON investigations(user_id);
+
+-- 9. GRANT PERMISSIONS (Ensures backend API access via anon and authenticated roles)
+GRANT ALL ON TABLE callers TO anon, authenticated, service_role;
+GRANT ALL ON TABLE token_calls TO anon, authenticated, service_role;
+GRANT ALL ON TABLE predictions TO anon, authenticated, service_role;
+GRANT ALL ON TABLE prediction_votes TO anon, authenticated, service_role;
+GRANT ALL ON TABLE price_alerts TO anon, authenticated, service_role;
+GRANT ALL ON TABLE wallet_follows TO anon, authenticated, service_role;
+GRANT ALL ON TABLE paper_wallets TO anon, authenticated, service_role;
+GRANT ALL ON TABLE paper_trades TO anon, authenticated, service_role;
+GRANT ALL ON TABLE buy_monitors TO anon, authenticated, service_role;
+GRANT ALL ON TABLE subscriptions TO anon, authenticated, service_role;
+GRANT ALL ON TABLE invoices TO anon, authenticated, service_role;
+GRANT ALL ON TABLE watchlists TO anon, authenticated, service_role;
+GRANT ALL ON TABLE alerts TO anon, authenticated, service_role;
+GRANT ALL ON TABLE investigations TO anon, authenticated, service_role;

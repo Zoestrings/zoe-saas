@@ -752,4 +752,55 @@ export const api = {
       method: "POST",
     })
   },
+
+  // Community Intelligence (Coral Parity)
+  async getCommunityLeaderboard(projectId?: string, timeframe: string = "7d"): Promise<any[]> {
+    const q = new URLSearchParams()
+    if (projectId) q.append("project_id", projectId)
+    q.append("timeframe", timeframe)
+    return apiRequest<any[]>(`/api/community/leaderboard?${q.toString()}`, {
+      method: "GET",
+    })
+  },
+
+  async getCommunityPredictions(projectId?: string): Promise<any[]> {
+    const q = new URLSearchParams()
+    if (projectId) q.append("project_id", projectId)
+    return apiRequest<any[]>(`/api/community/predictions?${q.toString()}`, {
+      method: "GET",
+    })
+  },
+
+  async createPredictionMarket(payload: {
+    project_id: string
+    question: string
+    target_token?: string
+    target_metric?: string
+    target_value?: number
+    duration_hours?: number
+  }): Promise<any> {
+    return apiRequest<any>("/api/community/predictions", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async votePredictionMarket(predictionId: string, choice: "yes" | "no"): Promise<any> {
+    return apiRequest<any>(`/api/community/predictions/${predictionId}/vote`, {
+      method: "POST",
+      body: JSON.stringify({ choice }),
+    })
+  },
+
+  async getWalletIntelligence(address: string): Promise<any> {
+    return apiRequest<any>(`/api/community/wallet/${encodeURIComponent(address)}`, {
+      method: "GET",
+    })
+  },
+
+  async getXAccountIntelligence(username: string): Promise<any> {
+    return apiRequest<any>(`/api/community/x/${encodeURIComponent(username)}`, {
+      method: "GET",
+    })
+  },
 }

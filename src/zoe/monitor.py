@@ -850,6 +850,110 @@ async def check_wallet_follows(
     return triggered
 
 
+async def check_prediction_markets(client: Optional[httpx.AsyncClient] = None, op_db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Scan active community prediction markets and auto-resolve targets via DexScreener."""
+    from zoe.tools.games import get_games_db_conn
+    conn = get_games_db_conn()
+    cur = conn.execute(
+        """
+        SELECT id, project_id, question, target_token, target_metric, target_value, deadline, yes_votes, no_votes, total_votes
+        FROM dev_predictions
+        WHERE status = 'active'
+        """
+    )
+    rows = cur.fetchall()
+    if not rows:
+        return []
+
+    resolved = []
+    now_utc = datetime.now(timezone.utc)
+
+    for r in rows:
+        p_id = r[0]
+        proj_id = r[1]
+        q = r[2]
+        target_token = r[3]
+        target_metric = r[4] or "market_cap"
+        target_val = float(r[5] or 0.0)
+        deadline_str = r[6]
+        yes_v = int(r[7] or 0)
+        no_v = int(r[8] or 0)
+        tot_v = int(r[9] or 0)
+
+        # Check deadline
+        is_expired = False
+        if deadline_str:
+            try:
+                dl_dt = datetime.fromisoformat(deadline_str.replace("Z", "+00:00"))
+                if dl_dt.tzinfo is None:
+                    dl_dt = dl_dt.replace(tzinfo=timezone.utc)
+                if now_utc >= dl_dt:
+                    is_expired = True
+            except Exception:
+                pass
+
+        # Check market data if token specified
+        hit_target = False
+        current_metric_val = 0.0
+        if target_token:
+            try:
+                dex_data = await fetch_dexscreener_market_data(target_token, client=client)
+                if dex_data and dex_data.get("found"):
+                    if target_metric == "market_cap":
+                        current_metric_val = float(dex_data.get("market_cap") or 0.0)
+                    else:
+                        current_metric_val = float(dex_data.get("price_usd") or 0.0)
+
+                    if target_val > 0 and current_metric_val >= target_val:
+                        hit_target = True
+            except Exception as exc:
+                logger.debug("Error checking DexScreener for prediction %s: %s", p_id, exc)
+
+        outcome = None
+        if hit_target:
+            outcome = "resolved_yes"
+        elif is_expired:
+            outcome = "resolved_no"
+
+        if outcome:
+            winning_side = "🚀 YES" if outcome == "resolved_yes" else "📉 NO"
+            conn.execute(
+                "UPDATE dev_predictions SET status = ?, resolved_outcome = ? WHERE id = ?",
+                (outcome, winning_side, p_id),
+            )
+            conn.commit()
+
+            msg = (
+                f"🎉 **PREDICTION MARKET RESOLVED!** 🎉\n\n"
+                f"❓ **Question**: {q}\n"
+                f"🏆 **Winning Outcome**: **{winning_side}**\n"
+                f"📊 **Final Vote**: {yes_v} YES vs {no_v} NO ({tot_v} total voters)\n"
+                f"💡 All winning predictors have earned community reputation credits!"
+            )
+
+            # Route to group
+            group_id = None
+            try:
+                row_p = conn.execute("SELECT telegram_group_id FROM dev_projects WHERE id = ?", (proj_id,)).fetchone()
+                if row_p and row_p[0]:
+                    group_id = row_p[0]
+            except Exception:
+                pass
+
+            if group_id:
+                enqueue_proactive_alert(
+                    project_id=proj_id,
+                    group_id=group_id,
+                    text=msg,
+                    op_db_path=op_db_path,
+                )
+
+            resolved.append({"id": p_id, "outcome": outcome, "message": msg})
+            logger.info("Resolved prediction %s with outcome %s", p_id, outcome)
+
+    return resolved
+
+
 async def run_monitoring_loop(interval_seconds: int = 60) -> None:
     """Continuous background loop checking watchlists, buy monitors, custom price alerts, and wallet follows."""
     logger.info("Watchlist & Intelligence Monitoring daemon active (interval: %ds).", interval_seconds)
@@ -860,6 +964,7 @@ async def run_monitoring_loop(interval_seconds: int = 60) -> None:
             await update_caller_ath()
             await check_custom_alerts()
             await check_wallet_follows()
+            await check_prediction_markets()
         except asyncio.CancelledError:
             logger.info("Watchlist monitor loop cancelled.")
             break

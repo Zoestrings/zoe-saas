@@ -767,10 +767,16 @@ def process_message(
                     "/holders <CA> — Holder concentration & Top 10 supply ratio\n"
                     "/liquidity <CA> — Live market price, market cap & LP lock status\n"
                     "/osint <CA> — Project web presence, founder & verified socials\n"
+                    "/x <username> — X/Twitter Account Scorer & Trust Meter\n"
+                    "/pnl <wallet> — Realized & Unrealized Solana Wallet PnL\n"
+                    "/flex <wallet> — On-Chain Whale Tier & Net Worth Sparkline\n"
+                    "/call <CA> [1-5] — Formal conviction call tracked for leaderboard\n"
+                    "/play — Interactive Crypto Trivia & Price Showdown\n"
+                    "/pm <question> — Decentralized Community Prediction Markets\n"
                     "/ca — Show this community's contract address\n"
                     "/setca — Admins: save this community's contract address\n"
                     "/price — Get live token price, market cap & liquidity\n"
-                    "/leaderboard — Top callers in this community\n"
+                    "/leaderboard — Top callers in this community (Conviction weighted)\n"
                     "/watch <CA> <above|below> <price> — Set custom price alert\n"
                     "/unwatch <CA> — Deactivate price alerts for a token\n"
                     "/follow <wallet> — Follow whale wallet on Solana\n"
@@ -873,6 +879,140 @@ def process_message(
                 from zoe.tools.caller_reputation import get_leaderboard_text
                 generated_text = get_leaderboard_text(project_id=norm_msg.project_id)
                 intent = "command_leaderboard"
+
+            elif cmd in ("x", "twitter"):
+                from zoe.tools.x_scraper import analyze_x_account_sync, format_x_intel_card
+                target_handle = cmd_arg.strip() if cmd_arg else ""
+                if not target_handle:
+                    generated_text = (
+                        "🐦 **X / Twitter Account Intelligence**\n\n"
+                        "Please provide an X/Twitter username to score:\n"
+                        "`/x <username>` (e.g. `/x elonmusk`)"
+                    )
+                else:
+                    x_data = analyze_x_account_sync(target_handle)
+                    generated_text = format_x_intel_card(x_data)
+                intent = "command_x"
+
+            elif cmd == "pnl":
+                from zoe.tools.wallet_intel import get_wallet_pnl_sync, format_pnl_card
+                target_wallet = cmd_arg.strip() if cmd_arg else ""
+                if not target_wallet:
+                    generated_text = (
+                        "📊 **Wallet PnL Performance Audit**\n\n"
+                        "Please provide a Solana wallet address:\n"
+                        "`/pnl <wallet_address>`"
+                    )
+                else:
+                    pnl_data = get_wallet_pnl_sync(target_wallet)
+                    generated_text = format_pnl_card(pnl_data)
+                intent = "command_pnl"
+
+            elif cmd == "flex":
+                from zoe.tools.wallet_intel import get_wallet_flex_sync, format_flex_card
+                target_wallet = cmd_arg.strip() if cmd_arg else ""
+                if not target_wallet:
+                    generated_text = (
+                        "🐋 **On-Chain Net Worth Flex**\n\n"
+                        "Please provide a Solana wallet address:\n"
+                        "`/flex <wallet_address>`"
+                    )
+                else:
+                    flex_data = get_wallet_flex_sync(target_wallet)
+                    generated_text = format_flex_card(flex_data)
+                intent = "command_flex"
+
+            elif cmd == "call":
+                from zoe.tools.caller_reputation import record_token_call
+                from zoe.tools.scanner import detect_chain
+                from zoe.tools.crypto_intel import get_token_intel_sync
+                parts = cmd_arg.split() if cmd_arg else []
+                if not parts:
+                    generated_text = (
+                        "🎯 **Formal Conviction Token Call**\n\n"
+                        "Usage:\n"
+                        "`/call <Contract_Address> [Conviction 1-5]`\n\n"
+                        "Example:\n"
+                        "`/call F1r5AqRj8bJyzM4nU2pV8H1JQT8ToR4rvjj2YwxHmoon 5`\n\n"
+                        "🔥 *Higher conviction calls multiply your leaderboard score faster!*"
+                    )
+                else:
+                    target_ca = parts[0].strip()
+                    conviction = 3
+                    if len(parts) >= 2:
+                        try:
+                            conviction = max(1, min(5, int(parts[1])))
+                        except Exception:
+                            conviction = 3
+
+                    if detect_chain(target_ca) == "unknown":
+                        generated_text = f"❌ `{target_ca}` is not a valid Solana or EVM contract address."
+                    else:
+                        sender_uname = getattr(norm_msg, "username", None) or f"user_{str(norm_msg.pseudonymous_user_id)[:6]}"
+                        sender_uid = str(getattr(norm_msg, "raw_user_id", None) or norm_msg.pseudonymous_user_id)
+                        intel = get_token_intel_sync(target_ca)
+                        t_name = (intel.get("name") or intel.get("symbol") or "Token") if isinstance(intel, dict) else "Token"
+                        t_price = float(intel.get("price_usd") or 0.0) if isinstance(intel, dict) else 0.0
+
+                        call_res = record_token_call(
+                            project_id=norm_msg.project_id,
+                            telegram_user_id=sender_uid,
+                            contract_address=target_ca,
+                            username=sender_uname,
+                            token_name=t_name,
+                            call_price=t_price,
+                            conviction=conviction,
+                        )
+                        flames = "🔥" * conviction
+                        price_display = f"${t_price:,.6f}" if t_price < 1.0 else f"${t_price:,.2f}"
+                        uname_display = sender_uname if sender_uname.startswith("@") else f"@{sender_uname}"
+                        generated_text = (
+                            f"🎯 **FORMAL TOKEN CALL RECORDED** 🎯\n\n"
+                            f"🪙 **Token**: **{t_name}**\n"
+                            f"📍 **CA**: `{target_ca}`\n"
+                            f"💵 **Entry Price**: `{price_display}`\n"
+                            f"⚡ **Conviction**: {flames} `{conviction}/5`\n"
+                            f"👤 **Caller**: {uname_display}\n\n"
+                            f"📈 Zoe is now monitoring this call for ATH and the Community Leaderboard!\n"
+                            f"Check ranks anytime with `/leaderboard`"
+                        )
+                intent = "command_call"
+
+            elif cmd in ("play", "game", "trivia"):
+                from zoe.tools.games import generate_play_challenge
+                challenge = generate_play_challenge()
+                generated_text = challenge["text"]
+                inline_keyboard = challenge["reply_markup"]["inline_keyboard"]
+                intent = "command_play"
+
+            elif cmd in ("pm", "predict", "prediction"):
+                from zoe.tools.games import create_prediction, get_active_predictions, format_prediction_card
+                raw_q = cmd_arg.strip() if cmd_arg else ""
+                if not raw_q or raw_q.lower() == "list":
+                    preds = get_active_predictions(project_id=norm_msg.project_id, limit=3)
+                    if preds:
+                        top_pred = preds[0]
+                        p_text, p_markup = format_prediction_card(top_pred)
+                        generated_text = p_text
+                        inline_keyboard = p_markup["inline_keyboard"]
+                    else:
+                        generated_text = (
+                            "🔮 **Zoe Community Prediction Markets**\n\n"
+                            "No active prediction markets yet. Admins can create one with:\n"
+                            "`/pm Will $ONELOVE hit $1M MC by Friday?`"
+                        )
+                else:
+                    new_pred = create_prediction(
+                        project_id=norm_msg.project_id,
+                        question=raw_q,
+                        creator_id=str(getattr(norm_msg, "raw_user_id", None) or norm_msg.pseudonymous_user_id),
+                    )
+                    p_text, p_markup = format_prediction_card(new_pred)
+                    generated_text = (
+                        f"✨ **New Prediction Market Launched!** ✨\n\n" + p_text
+                    )
+                    inline_keyboard = p_markup["inline_keyboard"]
+                intent = "command_pm"
 
             elif cmd in ("investigate", "scan"):
                 from zoe.tools.scanner import (

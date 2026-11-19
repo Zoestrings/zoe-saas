@@ -3592,6 +3592,116 @@ def reset_paper_wallet(
     }
 
 
+# ==========================================
+# Phase 4 / Coral Parity: Community Intelligence Endpoints
+# ==========================================
+
+class CreatePredictionRequest(BaseModel):
+    project_id: str
+    question: str
+    target_token: Optional[str] = None
+    target_metric: Optional[str] = "market_cap"
+    target_value: Optional[float] = 0.0
+    duration_hours: Optional[int] = 48
+
+
+class VotePredictionRequest(BaseModel):
+    choice: str  # 'yes' or 'no'
+
+
+@app.get("/api/community/leaderboard", response_model=List[Dict[str, Any]])
+def get_community_leaderboard_endpoint(
+    project_id: Optional[str] = None,
+    timeframe: str = "7d",
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retrieve community top callers leaderboard with conviction weighting."""
+    from zoe.tools.caller_reputation import get_community_leaderboard_data
+    target_project = project_id
+    if not target_project:
+        try:
+            conn = get_dev_db()
+            row = conn.execute("SELECT id FROM dev_projects LIMIT 1").fetchone()
+            if row:
+                target_project = row[0]
+        except Exception:
+            target_project = "default_project"
+
+    return get_community_leaderboard_data(target_project or "default_project", timeframe=timeframe)
+
+
+@app.get("/api/community/predictions", response_model=List[Dict[str, Any]])
+def get_community_predictions_endpoint(
+    project_id: Optional[str] = None,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retrieve active and historical community prediction markets."""
+    from zoe.tools.games import get_active_predictions
+    target_project = project_id or "default_project"
+    return get_active_predictions(target_project)
+
+
+@app.post("/api/community/predictions", response_model=Dict[str, Any])
+def create_prediction_endpoint(
+    req: CreatePredictionRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Create a new community prediction market."""
+    from zoe.tools.games import create_prediction
+    user_id = str(current_user.get("id"))
+    res = create_prediction(
+        project_id=req.project_id,
+        question=req.question,
+        creator_id=user_id,
+        target_token=req.target_token,
+        target_metric=req.target_metric or "market_cap",
+        target_value=req.target_value or 0.0,
+        duration_hours=req.duration_hours or 48,
+    )
+    return res
+
+
+@app.post("/api/community/predictions/{prediction_id}/vote", response_model=Dict[str, Any])
+def vote_prediction_endpoint(
+    prediction_id: str,
+    req: VotePredictionRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Vote YES or NO on a community prediction market."""
+    from zoe.tools.games import vote_prediction
+    user_id = str(current_user.get("id"))
+    res = vote_prediction(prediction_id, user_id=user_id, choice=req.choice)
+    if "error" in res:
+        raise HTTPException(status_code=400, detail=res["error"])
+    return res
+
+
+@app.get("/api/community/wallet/{address}", response_model=Dict[str, Any])
+async def get_wallet_intelligence_endpoint(
+    address: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Audit Solana wallet portfolio, PnL, holdings, whale tier, and flex curve."""
+    from zoe.tools.wallet_intel import get_wallet_flex
+    data = await get_wallet_flex(address)
+    if "error" in data:
+        raise HTTPException(status_code=400, detail=data["error"])
+    return data
+
+
+@app.get("/api/community/x/{username}", response_model=Dict[str, Any])
+async def get_x_account_intelligence_endpoint(
+    username: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Score an X / Twitter profile for follower credibility, account age, and Sybil risk."""
+    from zoe.tools.x_scraper import analyze_x_account
+    data = await analyze_x_account(username)
+    if "error" in data:
+        raise HTTPException(status_code=400, detail=data["error"])
+    return data
+
+
 
 @app.on_event("startup")
 async def start_background_monitoring():

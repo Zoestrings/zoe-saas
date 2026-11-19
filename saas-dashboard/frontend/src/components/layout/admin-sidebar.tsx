@@ -15,7 +15,8 @@ import {
   Bookmark,
   Crown,
   DollarSign,
-  TrendingUp
+  TrendingUp,
+  Users
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { logout } from "@/lib/api"
@@ -35,6 +36,11 @@ const adminNav = [
     name: "Projects", 
     href: "/admin/projects", 
     icon: Bot,
+  },
+  { 
+    name: "Community", 
+    href: "/community", 
+    icon: Users,
   },
   { 
     name: "Intelligence Scanner", 

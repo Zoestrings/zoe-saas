@@ -79,10 +79,15 @@ def get_dev_db() -> sqlite3.Connection:
             custom_instructions TEXT,
             status TEXT DEFAULT 'live',
             status_error TEXT,
+            api_key TEXT,
             created_at TEXT NOT NULL
         )
         """
     )
+    try:
+        conn.execute("ALTER TABLE dev_projects ADD COLUMN api_key TEXT")
+    except Exception:
+        pass
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS dev_investigations (
@@ -489,11 +494,12 @@ class CreateProjectRequest(BaseModel):
     name: str
     telegram_bot_token: str
     telegram_group_id: Optional[str] = None
-    token_address: str
+    token_address: Optional[str] = None
     token_symbol: Optional[str] = None
     knowledge_base: Optional[str] = None
     custom_instructions: Optional[str] = None
     owner_id: Optional[str] = None
+    api_key: Optional[str] = None
 
     @field_validator("telegram_group_id", mode="before")
     def normalize_group_id(cls, v):
@@ -501,8 +507,10 @@ class CreateProjectRequest(BaseModel):
             return None
         return str(v).strip()
 
-    @field_validator("token_address")
+    @field_validator("token_address", mode="before")
     def validate_token_address(cls, v):
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return None
         val = str(v).strip()
         if not re.match(r"^(0x[a-fA-F0-9]{40}|[A-Za-z0-9]{32,64})$", val):
             raise ValueError("Token address must be a valid Solana (base58, 32-64 chars) or EVM (0x..., 42 chars) contract address.")
@@ -880,14 +888,16 @@ async def create_project(
 
     # 2. Encrypt token for persistence
     encrypted_token = encrypt_token(req.telegram_bot_token)
+    encrypted_api_key = encrypt_token(req.api_key.strip()) if req.api_key and req.api_key.strip() else None
+    token_addr = req.token_address.strip() if req.token_address else ""
 
     # 3. Save initial record with status "deploying"
     if client is None:
         conn = get_dev_db()
         conn.execute(
             """
-            INSERT INTO dev_projects (id, owner_id, name, telegram_bot_token, telegram_group_id, token_address, custom_instructions, status, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'deploying', ?)
+            INSERT INTO dev_projects (id, owner_id, name, telegram_bot_token, telegram_group_id, token_address, custom_instructions, status, api_key, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'deploying', ?, ?)
             """,
             (
                 proj_id,
@@ -895,8 +905,9 @@ async def create_project(
                 req.name.strip(),
                 encrypted_token,
                 req.telegram_group_id,
-                req.token_address.strip(),
+                token_addr,
                 req.custom_instructions.strip() if req.custom_instructions else None,
+                encrypted_api_key,
                 now_str,
             ),
         )
@@ -908,7 +919,7 @@ async def create_project(
             "name": req.name.strip(),
             "telegram_bot_token": encrypted_token,
             "telegram_group_id": req.telegram_group_id,
-            "token_address": req.token_address.strip(),
+            "token_address": token_addr,
             "custom_instructions": req.custom_instructions.strip() if req.custom_instructions else None,
             "status": "deploying",
         }
@@ -930,8 +941,9 @@ async def create_project(
     engine_payload = {
         "project_id": proj_id,
         "bot_token": req.telegram_bot_token.strip(),
+        "api_key": req.api_key.strip() if req.api_key else None,
         "group_id": req.telegram_group_id,
-        "token_address": req.token_address.strip(),
+        "token_address": token_addr,
         "token_symbol": req.token_symbol,
         "name": req.name.strip(),
         "knowledge_base": req.knowledge_base,
@@ -958,7 +970,7 @@ async def create_project(
         owner_id=owner_id,
         name=req.name.strip(),
         telegram_group_id=req.telegram_group_id,
-        token_address=req.token_address.strip(),
+        token_address=token_addr,
         custom_instructions=req.custom_instructions.strip() if req.custom_instructions else None,
         status=current_status,
         status_error=current_error,

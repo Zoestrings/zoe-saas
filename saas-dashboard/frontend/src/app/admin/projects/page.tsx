@@ -81,6 +81,7 @@ export default function AdminProjectsPage() {
   // Form fields for Deploy Bot
   const [name, setName] = useState("")
   const [botToken, setBotToken] = useState("")
+  const [apiKey, setApiKey] = useState("")
   const [tokenAddress, setTokenAddress] = useState("")
   const [groupId, setGroupId] = useState("")
   const [customInstructions, setCustomInstructions] = useState("")
@@ -141,7 +142,8 @@ export default function AdminProjectsPage() {
       await api.createProject({
         name: name.trim(),
         telegram_bot_token: botToken.trim(),
-        token_address: tokenAddress.trim(),
+        api_key: apiKey.trim() || undefined,
+        token_address: tokenAddress.trim() || undefined,
         telegram_group_id: groupId.trim() || undefined,
         custom_instructions: customInstructions.trim() || undefined,
       })
@@ -149,6 +151,7 @@ export default function AdminProjectsPage() {
       // Reset form
       setName("")
       setBotToken("")
+      setApiKey("")
       setTokenAddress("")
       setGroupId("")
       setCustomInstructions("")
@@ -525,11 +528,32 @@ export default function AdminProjectsPage() {
                     required
                     className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-[#00ff66]"
                   />
+                  <p className="text-[10px] text-[#818c99]">Obtained from @BotFather on Telegram.</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="api-key" className="text-xs font-semibold text-white">
+                      LLM / AI API Key (Optional)
+                    </Label>
+                    <span className="text-[10px] text-[#818c99]">Groq, OpenAI, or OpenRouter</span>
+                  </div>
+                  <Input
+                    id="api-key"
+                    type="password"
+                    placeholder="gsk_... or sk-..."
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-[#00ff66]"
+                  />
+                  <p className="text-[10px] text-[#818c99]">
+                    Provide a custom API key for high-speed inference, or leave blank to use platform default.
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">
                   <Label htmlFor="token-addr" className="text-xs font-semibold text-white">
-                    Token Address (Solana Mint / Contract)
+                    Token Address (Solana Mint / EVM Contract — Optional)
                   </Label>
                   <Input
                     id="token-addr"

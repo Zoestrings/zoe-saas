@@ -62,11 +62,12 @@ export interface ProjectAnalytics {
 export interface CreateProjectPayload {
   name: string
   telegram_bot_token: string
-  token_address: string
+  token_address?: string | null
   telegram_group_id?: string | null
   token_symbol?: string | null
   knowledge_base?: string | null
   custom_instructions?: string | null
+  api_key?: string | null
 }
 
 export interface InvestigationReport {

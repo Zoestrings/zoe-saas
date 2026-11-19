@@ -81,10 +81,16 @@ export default function AdminOverviewPage() {
             <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? "animate-spin text-[#00ff66]" : ""}`} />
             Refresh
           </Button>
-          <Link href="/admin/revenue">
+          <Link href="/projects">
             <Button className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-10 px-4 rounded-full shadow-lg shadow-[#00ff66]/20 cursor-pointer">
-              <DollarSign className="h-3.5 w-3.5 mr-1 stroke-[3]" />
-              View Revenue
+              <Bot className="h-3.5 w-3.5 mr-1 stroke-[2.5]" />
+              + Deploy Bot
+            </Button>
+          </Link>
+          <Link href="/admin/revenue">
+            <Button variant="outline" className="border-[#212833] bg-[#12161c] hover:bg-[#181d24] text-white font-semibold text-xs h-10 px-4 rounded-full shadow-sm cursor-pointer">
+              <DollarSign className="h-3.5 w-3.5 mr-1 text-[#00ff66]" />
+              Revenue
             </Button>
           </Link>
         </div>

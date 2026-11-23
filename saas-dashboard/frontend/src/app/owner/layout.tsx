@@ -13,10 +13,24 @@ import {
   Sparkles,
   Radar,
   MessageSquare,
-  Users
+  Users,
+  Lock,
+  Wallet,
+  TrendingUp,
+  CreditCard,
+  Crown,
+  ArrowRight
 } from "lucide-react"
-import { getToken, getUser, removeToken, User } from "@/lib/api"
+import { getToken, getUser, removeToken, User, api, EntitlementResponse } from "@/lib/api"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 
 export default function OwnerLayout({
   children,
@@ -27,6 +41,9 @@ export default function OwnerLayout({
   const pathname = usePathname()
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const [user, setUser] = useState<User | null>(null)
+  const [entitlement, setEntitlement] = useState<EntitlementResponse | null>(null)
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
+  const [lockedFeatureName, setLockedFeatureName] = useState("Premium Intelligence")
 
   useEffect(() => {
     const token = getToken()
@@ -36,6 +53,13 @@ export default function OwnerLayout({
     } else {
       setUser(currentUser)
       setIsAuthenticated(true)
+      // Fetch entitlement status
+      api.getEntitlement()
+        .then((res) => setEntitlement(res))
+        .catch((err) => {
+          console.warn("Could not load entitlement in owner layout:", err)
+          setEntitlement({ plan: "free", is_pro: false, expires_at: null, receiving_wallet: "" })
+        })
     }
   }, [router])
 
@@ -53,14 +77,27 @@ export default function OwnerLayout({
     )
   }
 
+  const isFree = !entitlement?.is_pro && (entitlement?.plan !== "pro")
+
   const navItems = [
-    { label: "My Bot", href: "/owner/dashboard", icon: Bot },
-    { label: "Community", href: "/community", icon: Users },
-    { label: "Intelligence Scanner", href: "/investigate", icon: Radar },
-    { label: "Conversation Logs", href: "/owner/logs", icon: MessageSquare },
-    { label: "Knowledge Base", href: "/owner/dashboard/knowledge", icon: BrainCircuit },
-    { label: "Instructions", href: "/owner/dashboard/instructions", icon: FileCode },
+    { label: "My Bot", href: "/owner/dashboard", icon: Bot, isPremium: false },
+    { label: "Community", href: "/community", icon: Users, isPremium: false },
+    { label: "Scanner", href: "/investigate", icon: Radar, isPremium: true },
+    { label: "Wallet Intel", href: "/community", icon: Wallet, isPremium: true },
+    { label: "Trading", href: "/trading", icon: TrendingUp, isPremium: true },
+    { label: "Knowledge Base", href: "/owner/dashboard/knowledge", icon: BrainCircuit, isPremium: false },
+    { label: "Instructions", href: "/owner/dashboard/instructions", icon: FileCode, isPremium: false },
+    { label: "Logs", href: "/owner/logs", icon: MessageSquare, isPremium: false },
+    { label: "Billing", href: "/billing", icon: CreditCard, isPremium: false },
   ]
+
+  const handleNavClick = (e: React.MouseEvent, item: typeof navItems[0]) => {
+    if (item.isPremium && isFree) {
+      e.preventDefault()
+      setLockedFeatureName(item.label)
+      setUpgradeModalOpen(true)
+    }
+  }
 
   return (
     <div className="min-h-screen w-full bg-[#0a0a0a] text-white flex flex-col font-sans">
@@ -83,22 +120,30 @@ export default function OwnerLayout({
           </Link>
 
           {/* Nav Links */}
-          <nav className="hidden md:flex items-center gap-1.5">
+          <nav className="hidden lg:flex items-center gap-1.5">
             {navItems.map((item) => {
               const Icon = item.icon
               const isActive = pathname === item.href
+              const isLocked = item.isPremium && isFree
+
               return (
                 <Link
-                  key={item.href}
+                  key={item.label}
                   href={item.href}
-                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                  onClick={(e) => handleNavClick(e, item)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
                     isActive
                       ? "bg-neutral-800 text-[#00ff66] border border-[#00ff66]/40 shadow-sm"
+                      : isLocked
+                      ? "text-neutral-400 hover:text-amber-400 hover:bg-neutral-900"
                       : "text-neutral-400 hover:text-white hover:bg-neutral-900"
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
-                  {item.label}
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{item.label}</span>
+                  {isLocked && (
+                    <Lock className="h-3 w-3 text-amber-400 ml-0.5" />
+                  )}
                 </Link>
               )
             })}
@@ -106,10 +151,22 @@ export default function OwnerLayout({
         </div>
 
         {/* User Info & Actions */}
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center gap-2.5 text-xs text-neutral-400 bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-full">
+        <div className="flex items-center gap-3">
+          {/* Plan Badge */}
+          <Link href="/billing">
+            <div className={`hidden sm:flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full border cursor-pointer transition-all ${
+              !isFree
+                ? "bg-[#00ff66]/10 border-[#00ff66]/40 text-[#00ff66] shadow-sm shadow-[#00ff66]/10"
+                : "bg-amber-500/10 border-amber-500/40 text-amber-400 hover:bg-amber-500/20"
+            }`}>
+              <Crown className="h-3 w-3" />
+              <span>{!isFree ? "PRO" : "FREE PLAN"}</span>
+            </div>
+          </Link>
+
+          <div className="hidden sm:flex items-center gap-2 text-xs text-neutral-400 bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-full">
             <UserIcon className="h-3.5 w-3.5 text-[#00ff66]" />
-            <span className="text-neutral-300 font-medium">{user?.email || "Project Owner"}</span>
+            <span className="text-neutral-300 font-medium truncate max-w-[140px]">{user?.email || "Project Owner"}</span>
           </div>
 
           <Button
@@ -128,6 +185,51 @@ export default function OwnerLayout({
       <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">
         {children}
       </main>
+
+      {/* Upgrade Required Paywall Modal */}
+      <Dialog open={upgradeModalOpen} onOpenChange={setUpgradeModalOpen}>
+        <DialogContent className="sm:max-w-md bg-[#121212] border border-neutral-800 text-white rounded-3xl p-6">
+          <DialogHeader className="space-y-3">
+            <div className="h-12 w-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto">
+              <Lock className="h-6 w-6" />
+            </div>
+            <DialogTitle className="text-xl font-black text-center text-white">
+              Upgrade Required
+            </DialogTitle>
+            <DialogDescription className="text-center text-xs text-neutral-400 leading-relaxed">
+              <span className="font-semibold text-white">{lockedFeatureName}</span> is a premium Zoe feature. Upgrade to the Pro plan for $20/month to unlock advanced on-chain tools for your bot and community.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 space-y-2 my-2 text-xs text-neutral-300">
+            <div className="font-bold text-white uppercase text-[11px] tracking-wider text-[#00ff66]">
+              Unlocked on Pro:
+            </div>
+            <ul className="space-y-1.5 text-neutral-300">
+              <li className="flex items-center gap-2">✦ Deep OSINT founder research & socials verification</li>
+              <li className="flex items-center gap-2">✦ Real-time Solana wallet PnL, net worth flex & whale radar</li>
+              <li className="flex items-center gap-2">✦ Autonomous 15-min token liquidity surveillance daemon</li>
+            </ul>
+          </div>
+
+          <DialogFooter className="flex sm:flex-row gap-2 pt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setUpgradeModalOpen(false)}
+              className="w-full sm:w-auto text-xs text-neutral-400 hover:text-white rounded-full h-10"
+            >
+              Maybe Later
+            </Button>
+            <Link href="/billing" className="w-full sm:w-auto" onClick={() => setUpgradeModalOpen(false)}>
+              <Button className="w-full h-10 px-6 rounded-full bg-[#00ff66] hover:bg-[#00e65c] text-black font-black text-xs cursor-pointer shadow-lg shadow-[#00ff66]/20 flex items-center justify-center gap-1.5">
+                <span>Upgrade to Pro ($20)</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

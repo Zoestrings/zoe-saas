@@ -16,7 +16,8 @@ import {
   Inbox,
   MessageSquare,
   Cpu,
-  DollarSign
+  DollarSign,
+  ArrowRight
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -25,6 +26,7 @@ import { api, Project, ProjectAnalytics } from "@/lib/api"
 export default function OwnerDashboardPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [analytics, setAnalytics] = useState<ProjectAnalytics | null>(null)
+  const [isPro, setIsPro] = useState(false)
   const [loading, setLoading] = useState(true)
   const [copiedCA, setCopiedCA] = useState<string | null>(null)
 
@@ -37,15 +39,26 @@ export default function OwnerDashboardPage() {
   const loadProjects = async () => {
     setLoading(true)
     try {
-      const data = await api.getProjects()
-      setProjects(data || [])
-      if (data && data.length > 0) {
-        try {
-          const stats = await api.getProjectAnalytics(data[0].id)
-          setAnalytics(stats)
-        } catch (statsErr) {
-          console.warn("Could not load project analytics:", statsErr)
+      const [data, ent] = await Promise.allSettled([
+        api.getProjects(),
+        api.getEntitlement(),
+      ])
+
+      if (data.status === "fulfilled") {
+        const projList = data.value || []
+        setProjects(projList)
+        if (projList.length > 0) {
+          try {
+            const stats = await api.getProjectAnalytics(projList[0].id)
+            setAnalytics(stats)
+          } catch (statsErr) {
+            console.warn("Could not load project analytics:", statsErr)
+          }
         }
+      }
+
+      if (ent.status === "fulfilled" && ent.value) {
+        setIsPro(Boolean(ent.value.is_pro || ent.value.plan === "pro"))
       }
     } catch (err) {
       console.warn("Notice: Backend service unavailable or not logged in yet:", err)
@@ -119,6 +132,34 @@ export default function OwnerDashboardPage() {
           Refresh Status
         </Button>
       </div>
+
+      {/* Free Plan Upgrade Banner */}
+      {!isPro && (
+        <div className="p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-neutral-900 to-amber-500/5 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+          <div className="flex items-center gap-3.5">
+            <div className="h-10 w-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-white text-sm">You are currently on the Free plan</span>
+                <span className="text-[10px] font-mono uppercase bg-amber-500/20 text-amber-400 border border-amber-500/40 px-2 py-0.5 rounded-full font-bold">
+                  Free Tier
+                </span>
+              </div>
+              <p className="text-xs text-neutral-300 mt-0.5">
+                Upgrade to unlock OSINT, Wallet Tracking, and Advanced Scans.
+              </p>
+            </div>
+          </div>
+          <Link href="/billing">
+            <Button className="h-9 px-5 rounded-full bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs cursor-pointer shadow-lg shadow-[#00ff66]/20 shrink-0 flex items-center gap-1.5">
+              <span>Upgrade to Pro ($20)</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
+        </div>
+      )}
 
       {/* Analytics Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

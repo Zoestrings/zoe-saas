@@ -770,6 +770,7 @@ def process_message(
                     "/x <username> — X/Twitter Account Scorer & Trust Meter\n"
                     "/pnl <wallet> — Realized & Unrealized Solana Wallet PnL\n"
                     "/flex <wallet> — On-Chain Whale Tier & Net Worth Sparkline\n"
+                    "/whale <wallet> — Recent buy/sell transaction radar of any wallet\n"
                     "/call <CA> [1-5] — Formal conviction call tracked for leaderboard\n"
                     "/play — Interactive Crypto Trivia & Price Showdown\n"
                     "/pm <question> — Decentralized Community Prediction Markets\n"
@@ -921,6 +922,20 @@ def process_message(
                     flex_data = get_wallet_flex_sync(target_wallet)
                     generated_text = format_flex_card(flex_data)
                 intent = "command_flex"
+
+            elif cmd in ("whale", "whalespy", "whaleactivity"):
+                from zoe.tools.wallet_intel import get_whale_activity_sync, format_whale_card
+                target_wallet = cmd_arg.strip() if cmd_arg else ""
+                if not target_wallet:
+                    generated_text = (
+                        "🐋 **Whale Activity Radar**\n\n"
+                        "Please provide a Solana wallet address:\n"
+                        "`/whale <wallet_address>`"
+                    )
+                else:
+                    whale_data = get_whale_activity_sync(target_wallet)
+                    generated_text = format_whale_card(whale_data)
+                intent = "command_whale"
 
             elif cmd == "call":
                 from zoe.tools.caller_reputation import record_token_call

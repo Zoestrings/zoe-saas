@@ -251,6 +251,24 @@ export interface AdminRevenueResponse {
   invoices: AdminRevenueInvoice[]
 }
 
+export interface ServiceHealthItem {
+  name: string
+  status: "healthy" | "degraded" | "warning" | "offline"
+  latency_ms?: number
+  model?: string
+  detail?: string
+}
+
+export interface AdminSystemHealthResponse {
+  status: "healthy" | "degraded" | "offline"
+  timestamp: string
+  services: {
+    supabase: ServiceHealthItem
+    engine: ServiceHealthItem
+    ai: ServiceHealthItem
+  }
+}
+
 export interface RecentSignup {
   id: string
   email: string
@@ -848,5 +866,11 @@ export const api = {
     return apiRequest<{
       activities: Array<{ type: string; title: string; text: string; time: string }>
     }>("/api/admin/recent-activity", { method: "GET" })
+  },
+
+  async getAdminSystemHealth(): Promise<AdminSystemHealthResponse> {
+    return apiRequest<AdminSystemHealthResponse>("/api/admin/system-health", {
+      method: "GET",
+    })
   },
 }

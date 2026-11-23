@@ -37,12 +37,14 @@ import {
   api,
   getUser,
   AdminRevenueResponse,
-  AdminRevenueInvoice
+  AdminRevenueInvoice,
+  AdminSystemHealthResponse
 } from "@/lib/api"
 
 export default function AdminRevenuePage() {
   const router = useRouter()
   const [data, setData] = useState<AdminRevenueResponse | null>(null)
+  const [health, setHealth] = useState<AdminSystemHealthResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -61,8 +63,12 @@ export default function AdminRevenuePage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await api.getAdminRevenue()
-      setData(res)
+      const [res, sysHealth] = await Promise.allSettled([
+        api.getAdminRevenue(),
+        api.getAdminSystemHealth(),
+      ])
+      if (res.status === "fulfilled") setData(res.value)
+      if (sysHealth.status === "fulfilled") setHealth(sysHealth.value)
     } catch (err: any) {
       setError(err.message || "Failed to load platform revenue analytics.")
     } finally {
@@ -145,6 +151,27 @@ export default function AdminRevenuePage() {
 
         {/* Global Action Controls */}
         <div className="flex items-center gap-3">
+          {/* System Health Badge */}
+          <div
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold border ${
+              health?.status === "healthy"
+                ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-400"
+                : health?.status === "degraded"
+                ? "bg-amber-950/40 border-amber-500/40 text-amber-400"
+                : "bg-neutral-900 border-neutral-700 text-neutral-300"
+            }`}
+            title={`Supabase: ${health?.services?.supabase?.status || "ok"} · Engine: ${health?.services?.engine?.status || "ok"} · Groq AI: ${health?.services?.ai?.status || "ok"}`}
+          >
+            <span
+              className={`h-2 w-2 rounded-full ${
+                health?.status === "healthy"
+                  ? "bg-emerald-400 animate-pulse"
+                  : "bg-amber-400"
+              }`}
+            />
+            <span>{health?.status === "healthy" ? "Engine: Operational" : "Engine: Checking..."}</span>
+          </div>
+
           <a
             href="https://solscan.io/account/4C8deD4Tm8xuM5kkpkS8wn7shGgKejAMLyi6uwFkCkFA"
             target="_blank"

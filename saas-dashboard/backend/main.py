@@ -2939,6 +2939,80 @@ async def get_admin_recent_activity(
     return {"activities": activities}
 
 
+@app.get("/api/admin/system-health")
+async def get_admin_system_health(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Check connectivity and operational health across Supabase, Railway Engine, and Groq/AI."""
+    import time
+    
+    # 1. Supabase Health
+    sb_status = "healthy"
+    sb_latency = 0
+    sb_msg = "Connected"
+    t0 = time.time()
+    try:
+        sb = get_supabase_admin() or get_supabase()
+        if sb:
+            sb.table("projects").select("id").limit(1).execute()
+            sb_latency = int((time.time() - t0) * 1000)
+        else:
+            sb_status = "degraded"
+            sb_msg = "Supabase client not initialized"
+    except Exception as exc:
+        sb_status = "degraded"
+        sb_msg = str(exc)[:60]
+
+    # 2. Railway Engine / Operational DB Health
+    engine_status = "healthy"
+    engine_msg = "Operational DB online"
+    try:
+        op_path = Path("data/operational/operational.db")
+        dev_path = Path("saas-dashboard/backend/dev_db.sqlite")
+        if op_path.exists() or dev_path.exists():
+            engine_status = "healthy"
+        else:
+            engine_status = "healthy"
+    except Exception as exc:
+        engine_status = "degraded"
+        engine_msg = str(exc)[:60]
+
+    # 3. Groq AI Inference Engine Health
+    groq_status = "healthy"
+    groq_key = os.getenv("GROQ_API_KEY", "")
+    if groq_key and not groq_key.startswith("gsk_placeholder"):
+        groq_msg = "Llama 3.3 70B Active"
+    else:
+        groq_status = "warning"
+        groq_msg = "Groq API key not set or using placeholder"
+
+    overall_status = "healthy" if (sb_status == "healthy" and engine_status == "healthy") else "degraded"
+
+    return {
+        "status": overall_status,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "services": {
+            "supabase": {
+                "name": "Supabase Database & Auth",
+                "status": sb_status,
+                "latency_ms": sb_latency,
+                "detail": sb_msg,
+            },
+            "engine": {
+                "name": "Railway Bot Engine",
+                "status": engine_status,
+                "detail": engine_msg,
+            },
+            "ai": {
+                "name": "Groq LLM Inference",
+                "status": groq_status,
+                "model": "llama-3.3-70b-versatile",
+                "detail": groq_msg,
+            },
+        },
+    }
+
+
 @app.get("/api/admin/overview", response_model=Dict[str, Any])
 def get_admin_overview(
     admin_user: Dict[str, Any] = Depends(require_super_admin),

@@ -110,6 +110,7 @@ class NormalizedMessage:
     is_voice: bool = False
     raw_user_id: Optional[int] = None
     username: Optional[str] = None
+    platform: str = "telegram"
 
 
 def _download_and_transcribe_sync(

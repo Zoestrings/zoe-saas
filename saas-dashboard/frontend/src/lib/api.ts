@@ -42,6 +42,12 @@ export interface Project {
   status?: string | null
   status_error?: string | null
   created_at?: string | null
+  platform?: string | null
+  discord_token?: string | null
+  twitter_api_key?: string | null
+  twitter_api_secret?: string | null
+  twitter_access_token?: string | null
+  twitter_access_secret?: string | null
 }
 
 export interface ConversationLogItem {
@@ -65,13 +71,20 @@ export interface ProjectAnalytics {
 
 export interface CreateProjectPayload {
   name: string
-  telegram_bot_token: string
+  telegram_bot_token?: string | null
   token_address?: string | null
   telegram_group_id?: string | null
   token_symbol?: string | null
   knowledge_base?: string | null
   custom_instructions?: string | null
   api_key?: string | null
+  owner_id?: string | null
+  platform?: string | null
+  discord_token?: string | null
+  twitter_api_key?: string | null
+  twitter_api_secret?: string | null
+  twitter_access_token?: string | null
+  twitter_access_secret?: string | null
 }
 
 export interface InvestigationReport {
@@ -273,6 +286,7 @@ export interface AdminProjectItem {
   telegram_group_id?: string | null
   token_address?: string | null
   created_at: string
+  platform?: string | null
 }
 
 export interface SystemHealthResponse {
@@ -802,5 +816,37 @@ export const api = {
     return apiRequest<any>(`/api/community/x/${encodeURIComponent(username)}`, {
       method: "GET",
     })
+  },
+
+  async getAdminMetrics(): Promise<{
+    total_projects: number
+    total_conversations: number
+    total_investigations: number
+    system_uptime: string
+    rag_chunks: number
+  }> {
+    return apiRequest<{
+      total_projects: number
+      total_conversations: number
+      total_investigations: number
+      system_uptime: string
+      rag_chunks: number
+    }>("/api/admin/metrics", { method: "GET" })
+  },
+
+  async getAdminChartData(): Promise<{
+    days: Array<{ date: string; value: number }>
+  }> {
+    return apiRequest<{
+      days: Array<{ date: string; value: number }>
+    }>("/api/admin/chart-data", { method: "GET" })
+  },
+
+  async getAdminRecentActivity(): Promise<{
+    activities: Array<{ type: string; title: string; text: string; time: string }>
+  }> {
+    return apiRequest<{
+      activities: Array<{ type: string; title: string; text: string; time: string }>
+    }>("/api/admin/recent-activity", { method: "GET" })
   },
 }

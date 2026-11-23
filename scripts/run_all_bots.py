@@ -53,26 +53,40 @@ class BotInstance:
         self.group_id = str(config.get("telegram", {}).get("group_id", ""))
         self.hmac_key = str(secrets.get("hmac_key", "default_hmac_key_32_characters_minimum"))
         self.poll_interval = float(config.get("telegram", {}).get("poll_interval_seconds", 0.1))
+        self.platform = str(config.get("platform", "telegram")).lower()
 
-        self.polling_loop = PollingLoop(
-            project_id=self.project_id,
-            adapter=self.adapter,
-            db_conn=self.db_conns["operational"],
-            configured_group_id=self.group_id,
-            hmac_key=self.hmac_key,
-            poll_timeout=2,
-            allow_gap_recovery=True,
-        )
-        self.polling_loop.init_state()
+        if self.platform == "telegram":
+            self.polling_loop = PollingLoop(
+                project_id=self.project_id,
+                adapter=self.adapter,
+                db_conn=self.db_conns["operational"],
+                configured_group_id=self.group_id,
+                hmac_key=self.hmac_key,
+                poll_timeout=2,
+                allow_gap_recovery=True,
+            )
+            self.polling_loop.init_state()
+        else:
+            self.polling_loop = None
 
     async def step(self) -> int:
         """Run one polling, processing, and delivery cycle for this bot."""
         conn_op = self.db_conns["operational"]
 
         # 1. Poll updates
-        persist_res = await self.polling_loop.step()
-        if persist_res.inserted_count > 0:
-            logger.info("Received %d new update(s) from Telegram.", persist_res.inserted_count)
+        if self.platform == "telegram" and self.polling_loop:
+            persist_res = await self.polling_loop.step()
+            if persist_res.inserted_count > 0:
+                logger.info("Received %d new update(s) from Telegram.", persist_res.inserted_count)
+        elif self.platform in ("discord", "twitter") and hasattr(self.adapter, "get_next_message"):
+            from zoe.inbox.inbox_service import persist_batch
+            while True:
+                msg = await self.adapter.get_next_message(timeout=0.01)
+                if not msg:
+                    break
+                pres = persist_batch(conn_op, self.project_id, [msg], msg.telegram_update_id)
+                if pres.inserted_count > 0:
+                    logger.info("Received %d new update(s) from %s.", pres.inserted_count, self.platform.capitalize())
 
         # 2. Process pending inbox items
         processed_count = 0
@@ -131,53 +145,61 @@ class BotInstance:
 async def run_bot_worker(bot: BotInstance, shutdown_event: asyncio.Event) -> None:
     """Supervised worker loop with fault isolation and backoff restart."""
     set_current_project(bot.project_id)
-    logger.info("Bot worker started for project '%s' (group %s).", bot.project_id, bot.group_id)
+    logger.info("Bot worker started for project '%s' (platform: %s, group %s).", bot.project_id, bot.platform, bot.group_id)
+
+    # Start Discord / Twitter adapter background listener if applicable
+    if bot.platform in ("discord", "twitter") and hasattr(bot.adapter, "start"):
+        await bot.adapter.start()
 
     # Register Telegram bot command menu on startup
-    try:
-        from zoe.conversation.prompt_builder import get_project_display_name
-        from zoe.telegram.bot import init_bot
-        bot_display = get_project_display_name(bot.project_id) or "Zoe"
-        await init_bot(bot.adapter, bot_name=bot_display)
-    except Exception as cmd_exc:
-        logger.warning("Could not register bot command menu on startup for '%s': %s", bot.project_id, cmd_exc)
+    if bot.platform == "telegram":
+        try:
+            from zoe.conversation.prompt_builder import get_project_display_name
+            from zoe.telegram.bot import init_bot
+            bot_display = get_project_display_name(bot.project_id) or "Zoe"
+            await init_bot(bot.adapter, bot_name=bot_display)
+        except Exception as cmd_exc:
+            logger.warning("Could not register bot command menu on startup for '%s': %s", bot.project_id, cmd_exc)
 
     backoff_delay = 1.0
     max_backoff = 30.0
 
-    while not shutdown_event.is_set():
-        activity = 0
-        try:
-            set_current_project(bot.project_id)
-            activity = await bot.step()
-            backoff_delay = 1.0  # Reset on successful iteration
-        except asyncio.CancelledError:
-            break
-        except Exception as exc:
-            set_current_project(bot.project_id)
-            logger.error(
-                "Unhandled error in bot '%s': %s. Retrying with backoff in %.1fs...",
-                bot.project_id,
-                str(exc),
-                backoff_delay,
-                exc_info=True,
-            )
+    try:
+        while not shutdown_event.is_set():
+            activity = 0
             try:
-                await asyncio.wait_for(shutdown_event.wait(), timeout=backoff_delay)
+                set_current_project(bot.project_id)
+                activity = await bot.step()
+                backoff_delay = 1.0  # Reset on successful iteration
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                set_current_project(bot.project_id)
+                logger.error(
+                    "Unhandled error in bot '%s': %s. Retrying with backoff in %.1fs...",
+                    bot.project_id,
+                    str(exc),
+                    backoff_delay,
+                    exc_info=True,
+                )
+                try:
+                    await asyncio.wait_for(shutdown_event.wait(), timeout=backoff_delay)
+                    break
+                except asyncio.TimeoutError:
+                    pass
+                backoff_delay = min(backoff_delay * 2.0, max_backoff)
+
+            # Responsive polling delay: if work was processed/delivered, loop immediately (0.01s)
+            next_wait = 0.01 if activity > 0 else bot.poll_interval
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=next_wait)
                 break
             except asyncio.TimeoutError:
                 pass
-            backoff_delay = min(backoff_delay * 2.0, max_backoff)
-
-        # Responsive polling delay: if work was processed/delivered, loop immediately (0.01s)
-        next_wait = 0.01 if activity > 0 else bot.poll_interval
-        try:
-            await asyncio.wait_for(shutdown_event.wait(), timeout=next_wait)
-            break
-        except asyncio.TimeoutError:
-            pass
-
-    logger.info("Bot worker stopped cleanly for project '%s'.", bot.project_id)
+    finally:
+        if bot.platform in ("discord", "twitter") and hasattr(bot.adapter, "stop"):
+            await bot.adapter.stop()
+        logger.info("Bot worker stopped cleanly for project '%s'.", bot.project_id)
 
 
 def ensure_knowledge_indexes(model: Optional[Any] = None) -> None:
@@ -457,8 +479,40 @@ async def start_orchestrator(
             }
 
             # Adapter selection
+            platform = str(cfg.get("platform", "telegram")).lower()
             if mock_adapters and p_id in mock_adapters:
                 adapter = mock_adapters[p_id]
+            elif platform == "discord":
+                discord_token = sec.get("discord_token") or sec.get("bot_token")
+                if not discord_token:
+                    logger.warning("Project '%s' missing discord_token; skipping live polling.", p_id)
+                    continue
+                from zoe.discord.adapter import DiscordAdapter
+                channel_id = cfg.get("discord", {}).get("channel_id")
+                adapter = DiscordAdapter(
+                    bot_token=discord_token,
+                    project_id=p_id,
+                    channel_id=channel_id,
+                    hmac_key=sec.get("hmac_key", "default_hmac_key_32_characters_minimum"),
+                )
+            elif platform == "twitter":
+                api_key = sec.get("twitter_api_key")
+                api_secret = sec.get("twitter_api_secret")
+                access_token = sec.get("twitter_access_token")
+                access_secret = sec.get("twitter_access_secret")
+                if not (api_key and api_secret and access_token and access_secret):
+                    logger.warning("Project '%s' missing Twitter API keys; skipping live polling.", p_id)
+                    continue
+                from zoe.twitter.adapter import TwitterAdapter
+                adapter = TwitterAdapter(
+                    project_id=p_id,
+                    api_key=api_key,
+                    api_secret=api_secret,
+                    access_token=access_token,
+                    access_secret=access_secret,
+                    poll_interval_seconds=int(cfg.get("twitter", {}).get("poll_interval_seconds", 120)),
+                    hmac_key=sec.get("hmac_key", "default_hmac_key_32_characters_minimum"),
+                )
             else:
                 token = sec.get("bot_token")
                 if not token:

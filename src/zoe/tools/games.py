@@ -336,3 +336,4 @@ def format_prediction_card(pred: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     }
 
     return "\n".join(lines), inline_keyboard
+

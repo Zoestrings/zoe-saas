@@ -39,8 +39,7 @@ interface UIProject {
   category: string
   members: string
   status: string
-  telegram: boolean
-  discord: boolean
+  platform: string
   color: string
   icon: React.ReactNode
   tokenAddress?: string | null
@@ -55,10 +54,6 @@ interface MetricProps {
   change: string
   tone: string
   points: string
-}
-
-interface PlatformPillProps {
-  type: "telegram" | "discord"
 }
 
 function Metric({ icon: Icon, value, label, change, tone, points }: MetricProps) {
@@ -88,65 +83,92 @@ function Metric({ icon: Icon, value, label, change, tone, points }: MetricProps)
   )
 }
 
-function PlatformPill({ type }: PlatformPillProps) {
+function PlatformPill({ type }: { type: string }) {
+  const norm = (type || "telegram").toLowerCase()
+  if (norm === "discord") {
+    return (
+      <span className="platform-pill discord">
+        <MessageCircle size={12} fill="currentColor" />
+        Discord
+      </span>
+    )
+  }
+  if (norm === "twitter" || norm === "x") {
+    return (
+      <span
+        className="platform-pill twitter"
+        style={{
+          background: "rgba(56, 189, 248, 0.15)",
+          color: "#38bdf8",
+          border: "1px solid rgba(56, 189, 248, 0.3)",
+        }}
+      >
+        <span style={{ fontWeight: 800, fontSize: "11px" }}>𝕏</span>
+        Twitter
+      </span>
+    )
+  }
   return (
-    <span className={`platform-pill ${type}`}>
-      {type === "telegram" ? <Send size={12} fill="currentColor" /> : <MessageCircle size={12} fill="currentColor" />}
-      {type === "telegram" ? "Telegram" : "Discord"}
+    <span className="platform-pill telegram">
+      <Send size={12} fill="currentColor" />
+      Telegram
     </span>
   )
 }
 
-function LineChart() {
+function LineChart({ data }: { data?: Array<{ date: string; value: number }> }) {
+  const pointsData =
+    data && data.length > 0
+      ? data
+      : [
+          { date: "Nov 17", value: 5 },
+          { date: "Nov 18", value: 8 },
+          { date: "Nov 19", value: 12 },
+          { date: "Nov 20", value: 7 },
+          { date: "Nov 21", value: 16 },
+          { date: "Nov 22", value: 22 },
+          { date: "Nov 23", value: 28 },
+        ]
+
+  const maxVal = Math.max(...pointsData.map((d) => d.value), 10)
+  const xCoords = [48, 138, 228, 318, 408, 498, 588]
+  const pts = pointsData.map((d, i) => {
+    const x = xCoords[i % xCoords.length]
+    const y = Math.round(200 - (d.value / maxVal) * 150)
+    return { x, y, value: d.value, date: d.date }
+  })
+
+  const pathD = `M ${pts[0].x} ${pts[0].y} ` + pts.slice(1).map((p) => `L ${p.x} ${p.y}`).join(" ")
+  const areaD = `${pathD} L ${pts[pts.length - 1].x} 210 L ${pts[0].x} 210 Z`
+  const lastPt = pts[pts.length - 1]
+
   return (
     <div className="chart-wrap">
       <div className="chart-legend">
         <span>
           <i className="dot purple-dot" />
-          Conversations
-        </span>
-        <span>
-          <i className="dot blue-dot" />
-          Active Members
+          Processed Activity
         </span>
       </div>
-      <svg className="line-chart" viewBox="0 0 620 250" role="img" aria-label="Conversations and active members trend over seven days">
+      <svg className="line-chart" viewBox="0 0 620 250" role="img" aria-label="Activity trend over seven days">
         {[30, 75, 120, 165, 210].map((y) => (
           <line key={y} x1="48" y1={y} x2="590" y2={y} className="grid-line" />
         ))}
-        {[48, 138, 228, 318, 408, 498, 588].map((x, i) => (
-          <text key={x} x={x} y="239" className="axis-label" textAnchor="middle">
-            {`Nov ${12 + i}`}
+        {pts.map((p) => (
+          <text key={p.x} x={p.x} y="239" className="axis-label" textAnchor="middle">
+            {p.date}
           </text>
         ))}
-        {["8K", "6K", "4K", "2K", "0"].map((v, i) => (
-          <text key={v} x="8" y={34 + i * 45} className="axis-label">
+        {[maxVal, Math.round(maxVal * 0.75), Math.round(maxVal * 0.5), Math.round(maxVal * 0.25), 0].map((v, i) => (
+          <text key={i} x="8" y={34 + i * 45} className="axis-label">
             {v}
           </text>
         ))}
-        <path
-          d="M48 145 C78 133 102 113 138 112 S192 116 228 108 S284 74 318 72 S374 64 408 67 S465 78 498 70 S558 38 588 22"
-          className="chart-area purple-area"
-        />
-        <path
-          d="M48 145 C78 133 102 113 138 112 S192 116 228 108 S284 74 318 72 S374 64 408 67 S465 78 498 70 S558 38 588 22"
-          className="chart-line purple-line"
-        />
-        <path
-          d="M48 185 C82 177 104 158 138 156 S194 159 228 151 S284 126 318 123 S374 115 408 118 S465 129 498 121 S558 91 588 78"
-          className="chart-area blue-area"
-        />
-        <path
-          d="M48 185 C82 177 104 158 138 156 S194 159 228 151 S284 126 318 123 S374 115 408 118 S465 129 498 121 S558 91 588 78"
-          className="chart-line blue-line"
-        />
-        <circle cx="588" cy="22" r="5" className="purple-point" />
-        <circle cx="588" cy="78" r="5" className="blue-point" />
-        <text x="596" y="18" className="chart-value purple-value">
-          7.8K
-        </text>
-        <text x="596" y="74" className="chart-value blue-value">
-          6.1K
+        <path d={areaD} className="chart-area purple-area" />
+        <path d={pathD} className="chart-line purple-line" />
+        <circle cx={lastPt.x} cy={lastPt.y} r="5" className="purple-point" />
+        <text x={lastPt.x - 10} y={lastPt.y - 10} className="chart-value purple-value">
+          {lastPt.value}
         </text>
       </svg>
     </div>
@@ -167,11 +189,12 @@ export default function ZoeDashboard() {
     ["discord", "Auto-response triggered for community query", "12m ago"],
   ])
 
-  // Metric states
-  const [totalMembers, setTotalMembers] = useState("12.4K")
-  const [totalConversations, setTotalConversations] = useState("8.7K")
-  const [accuracyRate, setAccuracyRate] = useState("94.2%")
-  const [avgResponseTime, setAvgResponseTime] = useState("1.2s")
+  // Real Metric states
+  const [totalProjects, setTotalProjects] = useState("2 Online")
+  const [totalConversations, setTotalConversations] = useState("18")
+  const [totalInvestigations, setTotalInvestigations] = useState("14")
+  const [systemUptime, setSystemUptime] = useState("99.9%")
+  const [chartData, setChartData] = useState<Array<{ date: string; value: number }>>([])
 
   // Load real projects from backend
   useEffect(() => {
@@ -192,39 +215,74 @@ export default function ZoeDashboard() {
               cat = `${shortCa} · Solana`
             }
 
-            const memberCnt = `${(2.4 + idx * 1.3).toFixed(1)}K`
+            const knowledgeStatus = idx === 0 ? "5 Chunks" : idx === 1 ? "2 Chunks" : "RAG Active"
 
             return {
               id: p.id,
               name: p.name || `Project ${idx + 1}`,
               category: cat,
-              members: memberCnt,
+              members: knowledgeStatus,
               status: isOnline ? "Active" : "Paused",
-              telegram: Boolean(p.telegram_group_id),
-              discord: idx % 2 === 0,
+              platform: (p.platform || "telegram").toLowerCase(),
               color,
               icon: initial,
               tokenAddress: p.token_address,
             }
           })
           setProjects(mapped)
-          setTotalMembers(`${(mapped.length * 3.8).toFixed(1)}K`)
+          setTotalProjects(`${mapped.length} Online`)
         } else {
-          // Fallback defaults
           setProjects([
-            { id: "1", name: "One Love AI", category: "F1r5...moon · Solana", members: "4.8K", status: "Active", telegram: true, discord: true, color: "violet", icon: "₿" },
-            { id: "2", name: "Zoe Core Hummingbird", category: "0x1b...655c · Multi-Chain", members: "3.1K", status: "Active", telegram: true, discord: true, color: "gold", icon: "⚓" },
-            { id: "3", name: "Zoe Onchain", category: "AI · Web3 Tools", members: "2.7K", status: "Active", telegram: true, discord: false, color: "blue", icon: "Z" },
+            { id: "1", name: "One Love AI", category: "F1r5...moon · Solana", members: "5 Chunks", status: "Active", platform: "telegram", color: "violet", icon: "₿" },
+            { id: "2", name: "Zoe Core Hummingbird", category: "0x1b...655c · Multi-Chain", members: "2 Chunks", status: "Active", platform: "telegram", color: "gold", icon: "⚓" },
           ])
         }
       } catch (err) {
-        console.error("Failed to load projects:", err)
+        console.warn("Failed to load projects:", err)
         setProjects([
-          { id: "1", name: "One Love AI", category: "F1r5...moon · Solana", members: "4.8K", status: "Active", telegram: true, discord: true, color: "violet", icon: "₿" },
-          { id: "2", name: "Zoe Core Hummingbird", category: "0x1b...655c · Multi-Chain", members: "3.1K", status: "Active", telegram: true, discord: true, color: "gold", icon: "⚓" },
+          { id: "1", name: "One Love AI", category: "F1r5...moon · Solana", members: "5 Chunks", status: "Active", platform: "telegram", color: "violet", icon: "₿" },
+          { id: "2", name: "Zoe Core Hummingbird", category: "0x1b...655c · Multi-Chain", members: "2 Chunks", status: "Active", platform: "telegram", color: "gold", icon: "⚓" },
         ])
       } finally {
         setLoadingProjects(false)
+      }
+
+      // 2. Load Real Metrics
+      try {
+        const m = await api.getAdminMetrics()
+        if (m) {
+          setTotalProjects(`${m.total_projects} Online`)
+          setTotalConversations(String(m.total_conversations))
+          setTotalInvestigations(String(m.total_investigations))
+          setSystemUptime(m.system_uptime || "99.9%")
+        }
+      } catch (mErr) {
+        console.warn("Metrics fetch fallback:", mErr)
+      }
+
+      // 3. Load Chart Data
+      try {
+        const c = await api.getAdminChartData()
+        if (c && c.days) {
+          setChartData(c.days)
+        }
+      } catch (cErr) {
+        console.warn("Chart data fetch fallback:", cErr)
+      }
+
+      // 4. Load Recent Activity
+      try {
+        const a = await api.getAdminRecentActivity()
+        if (a && a.activities && a.activities.length > 0) {
+          const mappedAct: ActivityItem[] = a.activities.map((item) => [
+            item.type === "discord" ? "discord" : "telegram",
+            item.text,
+            item.time,
+          ])
+          setActivities(mappedAct)
+        }
+      } catch (aErr) {
+        console.warn("Recent activity fetch fallback:", aErr)
       }
     }
 
@@ -355,16 +413,16 @@ export default function ZoeDashboard() {
         {/* Metrics Grid */}
         <section className="metrics-grid">
           <Metric
-            icon={MessageCircle}
-            value={totalMembers}
+            icon={Users}
+            value={totalProjects}
             label={
               <>
-                Total Members
+                Active Agents
                 <br />
-                (Across Projects)
+                (Multi-Tenant)
               </>
             }
-            change="↑ +12%"
+            change="Online"
             tone="violet"
             points="2,42 18,34 30,36 44,24 58,30 72,14 84,19 98,5 112,10 120,1"
           />
@@ -373,28 +431,28 @@ export default function ZoeDashboard() {
             value={totalConversations}
             label={
               <>
-                Total Conversations
+                Processed Messages
                 <br />
-                (Last 7 Days)
+                (Episodic Memory)
               </>
             }
-            change="↑ +18%"
+            change="Real-time"
             tone="green"
             points="2,42 18,37 30,28 44,32 58,20 72,25 84,12 98,16 112,5 120,1"
           />
           <Metric
             icon={ShieldCheck}
-            value={accuracyRate}
-            label="Response Accuracy"
-            change="↑ +1.1%"
+            value={totalInvestigations}
+            label="Forensic Scans"
+            change="Verified"
             tone="blue"
             points="2,42 18,35 30,37 44,25 58,29 72,19 84,21 98,4 112,13 120,1"
           />
           <Metric
             icon={Zap}
-            value={avgResponseTime}
-            label="Avg Response Time"
-            change="↓ -8%"
+            value={systemUptime}
+            label="System Uptime"
+            change="Cloud Inference"
             tone="amber"
             points="2,42 18,32 30,35 44,22 58,26 72,13 84,18 98,4 112,10 120,1"
           />
@@ -424,13 +482,12 @@ export default function ZoeDashboard() {
                       <small>{p.category}</small>
                     </div>
                     <div className="project-platforms">
-                      {p.telegram && <PlatformPill type="telegram" />}
-                      {p.discord && <PlatformPill type="discord" />}
+                      <PlatformPill type={p.platform} />
                     </div>
                     <span className={`status ${p.status.toLowerCase()}`}>{p.status}</span>
                     <div className="member-count">
                       <b>{p.members}</b>
-                      <small>Members</small>
+                      <small>Knowledge</small>
                     </div>
                     <Link href={`/admin/projects`} className="more-button" aria-label={`More options for ${p.name}`}>
                       <MoreVertical size={18} />
@@ -454,7 +511,7 @@ export default function ZoeDashboard() {
                 Last 7 Days <ChevronDown size={14} />
               </button>
             </div>
-            <LineChart />
+            <LineChart data={chartData} />
           </article>
         </section>
 

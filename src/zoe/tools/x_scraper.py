@@ -305,3 +305,4 @@ def format_x_intel_card(data: Dict[str, Any]) -> str:
     lines.append(f"🔗 [View Profile on X](https://x.com/{uname})")
 
     return "\n".join(lines)
+

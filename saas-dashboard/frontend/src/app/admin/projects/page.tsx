@@ -32,7 +32,9 @@ import {
   PlayCircle,
   PauseCircle,
   Mail,
-  Crown
+  Crown,
+  Send,
+  MessageSquare,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -79,8 +81,14 @@ export default function AdminProjectsPage() {
   const [deployError, setDeployError] = useState<string | null>(null)
 
   // Form fields for Deploy Bot
+  const [platform, setPlatform] = useState<"telegram" | "discord" | "twitter">("telegram")
   const [name, setName] = useState("")
   const [botToken, setBotToken] = useState("")
+  const [discordToken, setDiscordToken] = useState("")
+  const [twitterApiKey, setTwitterApiKey] = useState("")
+  const [twitterApiSecret, setTwitterApiSecret] = useState("")
+  const [twitterAccessToken, setTwitterAccessToken] = useState("")
+  const [twitterAccessSecret, setTwitterAccessSecret] = useState("")
   const [apiKey, setApiKey] = useState("")
   const [tokenAddress, setTokenAddress] = useState("")
   const [groupId, setGroupId] = useState("")
@@ -141,7 +149,13 @@ export default function AdminProjectsPage() {
     try {
       await api.createProject({
         name: name.trim(),
-        telegram_bot_token: botToken.trim(),
+        platform,
+        telegram_bot_token: platform === "telegram" ? botToken.trim() : undefined,
+        discord_token: platform === "discord" ? discordToken.trim() : undefined,
+        twitter_api_key: platform === "twitter" ? twitterApiKey.trim() : undefined,
+        twitter_api_secret: platform === "twitter" ? twitterApiSecret.trim() : undefined,
+        twitter_access_token: platform === "twitter" ? twitterAccessToken.trim() : undefined,
+        twitter_access_secret: platform === "twitter" ? twitterAccessSecret.trim() : undefined,
         api_key: apiKey.trim() || undefined,
         token_address: tokenAddress.trim() || undefined,
         telegram_group_id: groupId.trim() || undefined,
@@ -151,6 +165,11 @@ export default function AdminProjectsPage() {
       // Reset form
       setName("")
       setBotToken("")
+      setDiscordToken("")
+      setTwitterApiKey("")
+      setTwitterApiSecret("")
+      setTwitterAccessToken("")
+      setTwitterAccessSecret("")
       setApiKey("")
       setTokenAddress("")
       setGroupId("")
@@ -290,6 +309,35 @@ export default function AdminProjectsPage() {
               }`}>
               {isPro && <Crown className="h-3 w-3 text-[#00ff66]" />}
               {isPro ? "PRO" : "FREE"}
+            </span>
+          )
+        },
+      },
+      {
+        accessorKey: "platform",
+        header: "Platform",
+        cell: ({ row }) => {
+          const plat = (row.original.platform || "telegram").toLowerCase()
+          if (plat === "discord") {
+            return (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#5865F2]/10 text-[#5865F2] border border-[#5865F2]/30">
+                <MessageSquare className="h-3 w-3" />
+                Discord
+              </span>
+            )
+          }
+          if (plat === "twitter" || plat === "x") {
+            return (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-sky-500/10 text-sky-400 border border-sky-500/30">
+                <span className="font-bold">𝕏</span>
+                Twitter
+              </span>
+            )
+          }
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#2AABEE]/10 text-[#2AABEE] border border-[#2AABEE]/30">
+              <Send className="h-3 w-3" />
+              Telegram
             </span>
           )
         },
@@ -514,21 +562,165 @@ export default function AdminProjectsPage() {
                   />
                 </div>
 
+                {/* Platform Selector */}
                 <div className="space-y-1.5">
-                  <Label htmlFor="bot-token" className="text-xs font-semibold text-white">
-                    Telegram Bot Token <span className="text-[#00ff66]">*</span>
+                  <Label className="text-xs font-semibold text-white">
+                    Platform Gateway <span className="text-[#00ff66]">*</span>
                   </Label>
-                  <Input
-                    id="bot-token"
-                    type="password"
-                    placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
-                    value={botToken}
-                    onChange={(e) => setBotToken(e.target.value)}
-                    required
-                    className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-[#00ff66]"
-                  />
-                  <p className="text-[10px] text-[#818c99]">Obtained from @BotFather on Telegram.</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPlatform("telegram")}
+                      className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
+                        platform === "telegram"
+                          ? "border-[#2AABEE] bg-[#2AABEE]/15 text-[#2AABEE]"
+                          : "border-[#212833] bg-[#161b22] text-[#818c99] hover:text-white"
+                      }`}
+                    >
+                      <Send className="h-3.5 w-3.5" /> Telegram
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPlatform("discord")}
+                      className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
+                        platform === "discord"
+                          ? "border-[#5865F2] bg-[#5865F2]/15 text-[#5865F2]"
+                          : "border-[#212833] bg-[#161b22] text-[#818c99] hover:text-white"
+                      }`}
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" /> Discord
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPlatform("twitter")}
+                      className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
+                        platform === "twitter"
+                          ? "border-sky-400 bg-sky-500/15 text-sky-400"
+                          : "border-[#212833] bg-[#161b22] text-[#818c99] hover:text-white"
+                      }`}
+                    >
+                      <span className="font-bold text-sm">𝕏</span> Twitter
+                    </button>
+                  </div>
                 </div>
+
+                {/* Telegram Fields */}
+                {platform === "telegram" && (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="bot-token" className="text-xs font-semibold text-white">
+                        Telegram Bot Token <span className="text-[#00ff66]">*</span>
+                      </Label>
+                      <Input
+                        id="bot-token"
+                        type="password"
+                        placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+                        value={botToken}
+                        onChange={(e) => setBotToken(e.target.value)}
+                        required={platform === "telegram"}
+                        className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-[#00ff66]"
+                      />
+                      <p className="text-[10px] text-[#818c99]">Obtained from @BotFather on Telegram.</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="group-id" className="text-xs font-semibold text-white">
+                        Telegram Group ID (Optional)
+                      </Label>
+                      <Input
+                        id="group-id"
+                        placeholder="e.g. -1001234567890"
+                        value={groupId}
+                        onChange={(e) => setGroupId(e.target.value)}
+                        className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-[#00ff66]"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Discord Fields */}
+                {platform === "discord" && (
+                  <div className="space-y-1.5">
+                    <Label htmlFor="discord-token" className="text-xs font-semibold text-white">
+                      Discord Bot Token <span className="text-[#5865F2]">*</span>
+                    </Label>
+                    <Input
+                      id="discord-token"
+                      type="password"
+                      placeholder="MTAyNz...Discord Bot Token"
+                      value={discordToken}
+                      onChange={(e) => setDiscordToken(e.target.value)}
+                      required={platform === "discord"}
+                      className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-[#5865F2]"
+                    />
+                    <p className="text-[10px] text-[#818c99]">Obtained from Discord Developer Portal &gt; Applications &gt; Bot.</p>
+                  </div>
+                )}
+
+                {/* Twitter / X Fields */}
+                {platform === "twitter" && (
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="tw-api-key" className="text-xs font-semibold text-white">
+                        Twitter API Key (Consumer Key) <span className="text-sky-400">*</span>
+                      </Label>
+                      <Input
+                        id="tw-api-key"
+                        type="password"
+                        placeholder="Twitter API Key"
+                        value={twitterApiKey}
+                        onChange={(e) => setTwitterApiKey(e.target.value)}
+                        required={platform === "twitter"}
+                        className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-sky-400"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="tw-api-secret" className="text-xs font-semibold text-white">
+                        Twitter API Key Secret <span className="text-sky-400">*</span>
+                      </Label>
+                      <Input
+                        id="tw-api-secret"
+                        type="password"
+                        placeholder="Twitter API Secret"
+                        value={twitterApiSecret}
+                        onChange={(e) => setTwitterApiSecret(e.target.value)}
+                        required={platform === "twitter"}
+                        className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-sky-400"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="tw-access-token" className="text-xs font-semibold text-white">
+                          Access Token <span className="text-sky-400">*</span>
+                        </Label>
+                        <Input
+                          id="tw-access-token"
+                          type="password"
+                          placeholder="Access Token"
+                          value={twitterAccessToken}
+                          onChange={(e) => setTwitterAccessToken(e.target.value)}
+                          required={platform === "twitter"}
+                          className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-sky-400"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="tw-access-secret" className="text-xs font-semibold text-white">
+                          Access Token Secret <span className="text-sky-400">*</span>
+                        </Label>
+                        <Input
+                          id="tw-access-secret"
+                          type="password"
+                          placeholder="Access Token Secret"
+                          value={twitterAccessSecret}
+                          onChange={(e) => setTwitterAccessSecret(e.target.value)}
+                          required={platform === "twitter"}
+                          className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-sky-400"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-[#818c99]">Generated in Twitter Developer Portal (Read & Write permissions).</p>
+                  </div>
+                )}
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">

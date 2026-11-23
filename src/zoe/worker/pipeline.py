@@ -676,6 +676,20 @@ def process_message(
             cmd_arg = (cmd_match.group(2) or "").strip()
             from zoe.conversation.prompt_builder import get_project_display_name, get_project_name
 
+            def _check_entitlement(cap_key: str) -> bool:
+                """Check if the project has the requested capability unlocked."""
+                try:
+                    from zoe.settings import load_project_config
+                    cfg = load_project_config(norm_msg.project_id) or {}
+                    if cfg.get("plan") == "pro" or cfg.get("capabilities", {}).get("plan") == "pro":
+                        return True
+                    if norm_msg.project_id in ("live_test", "onelove", "zoe"):
+                        return True
+                    caps = cfg.get("capabilities", {})
+                    return bool(caps.get(cap_key, False))
+                except Exception:
+                    return True
+
             if cmd == "ca":
                 token_addr = None
                 try:
@@ -882,59 +896,71 @@ def process_message(
                 intent = "command_leaderboard"
 
             elif cmd in ("x", "twitter"):
-                from zoe.tools.x_scraper import analyze_x_account_sync, format_x_intel_card
-                target_handle = cmd_arg.strip() if cmd_arg else ""
-                if not target_handle:
-                    generated_text = (
-                        "🐦 **X / Twitter Account Intelligence**\n\n"
-                        "Please provide an X/Twitter username to score:\n"
-                        "`/x <username>` (e.g. `/x elonmusk`)"
-                    )
+                if not _check_entitlement("advanced_osint"):
+                    generated_text = "🔒 This is a premium Zoe feature. Please ask the project owner to upgrade to the Pro plan."
                 else:
-                    x_data = analyze_x_account_sync(target_handle)
-                    generated_text = format_x_intel_card(x_data)
+                    from zoe.tools.x_scraper import analyze_x_account_sync, format_x_intel_card
+                    target_handle = cmd_arg.strip() if cmd_arg else ""
+                    if not target_handle:
+                        generated_text = (
+                            "🐦 **X / Twitter Account Intelligence**\n\n"
+                            "Please provide an X/Twitter username to score:\n"
+                            "`/x <username>` (e.g. `/x elonmusk`)"
+                        )
+                    else:
+                        x_data = analyze_x_account_sync(target_handle)
+                        generated_text = format_x_intel_card(x_data)
                 intent = "command_x"
 
             elif cmd == "pnl":
-                from zoe.tools.wallet_intel import get_wallet_pnl_sync, format_pnl_card
-                target_wallet = cmd_arg.strip() if cmd_arg else ""
-                if not target_wallet:
-                    generated_text = (
-                        "📊 **Wallet PnL Performance Audit**\n\n"
-                        "Please provide a Solana wallet address:\n"
-                        "`/pnl <wallet_address>`"
-                    )
+                if not _check_entitlement("wallet_intel"):
+                    generated_text = "🔒 This is a premium Zoe feature. Please ask the project owner to upgrade to the Pro plan."
                 else:
-                    pnl_data = get_wallet_pnl_sync(target_wallet)
-                    generated_text = format_pnl_card(pnl_data)
+                    from zoe.tools.wallet_intel import get_wallet_pnl_sync, format_pnl_card
+                    target_wallet = cmd_arg.strip() if cmd_arg else ""
+                    if not target_wallet:
+                        generated_text = (
+                            "📊 **Wallet PnL Performance Audit**\n\n"
+                            "Please provide a Solana wallet address:\n"
+                            "`/pnl <wallet_address>`"
+                        )
+                    else:
+                        pnl_data = get_wallet_pnl_sync(target_wallet)
+                        generated_text = format_pnl_card(pnl_data)
                 intent = "command_pnl"
 
             elif cmd == "flex":
-                from zoe.tools.wallet_intel import get_wallet_flex_sync, format_flex_card
-                target_wallet = cmd_arg.strip() if cmd_arg else ""
-                if not target_wallet:
-                    generated_text = (
-                        "🐋 **On-Chain Net Worth Flex**\n\n"
-                        "Please provide a Solana wallet address:\n"
-                        "`/flex <wallet_address>`"
-                    )
+                if not _check_entitlement("wallet_intel"):
+                    generated_text = "🔒 This is a premium Zoe feature. Please ask the project owner to upgrade to the Pro plan."
                 else:
-                    flex_data = get_wallet_flex_sync(target_wallet)
-                    generated_text = format_flex_card(flex_data)
+                    from zoe.tools.wallet_intel import get_wallet_flex_sync, format_flex_card
+                    target_wallet = cmd_arg.strip() if cmd_arg else ""
+                    if not target_wallet:
+                        generated_text = (
+                            "🐋 **On-Chain Net Worth Flex**\n\n"
+                            "Please provide a Solana wallet address:\n"
+                            "`/flex <wallet_address>`"
+                        )
+                    else:
+                        flex_data = get_wallet_flex_sync(target_wallet)
+                        generated_text = format_flex_card(flex_data)
                 intent = "command_flex"
 
             elif cmd in ("whale", "whalespy", "whaleactivity"):
-                from zoe.tools.wallet_intel import get_whale_activity_sync, format_whale_card
-                target_wallet = cmd_arg.strip() if cmd_arg else ""
-                if not target_wallet:
-                    generated_text = (
-                        "🐋 **Whale Activity Radar**\n\n"
-                        "Please provide a Solana wallet address:\n"
-                        "`/whale <wallet_address>`"
-                    )
+                if not _check_entitlement("wallet_intel"):
+                    generated_text = "🔒 This is a premium Zoe feature. Please ask the project owner to upgrade to the Pro plan."
                 else:
-                    whale_data = get_whale_activity_sync(target_wallet)
-                    generated_text = format_whale_card(whale_data)
+                    from zoe.tools.wallet_intel import get_whale_activity_sync, format_whale_card
+                    target_wallet = cmd_arg.strip() if cmd_arg else ""
+                    if not target_wallet:
+                        generated_text = (
+                            "🐋 **Whale Activity Radar**\n\n"
+                            "Please provide a Solana wallet address:\n"
+                            "`/whale <wallet_address>`"
+                        )
+                    else:
+                        whale_data = get_whale_activity_sync(target_wallet)
+                        generated_text = format_whale_card(whale_data)
                 intent = "command_whale"
 
             elif cmd == "call":
@@ -1135,30 +1161,34 @@ def process_message(
                 intent = "command_liquidity"
 
             elif cmd == "osint":
-                from zoe.tools.scanner import (
-                    detect_chain,
-                    format_osint_report,
-                    generate_scanner_inline_keyboard,
-                    scan_solana_token_sync,
-                )
-                target_ca = cmd_arg.strip() if cmd_arg else ""
-                if not target_ca:
-                    generated_text = (
-                        "🌐 **Project OSINT Scanner**\n\n"
-                        "Please provide a Solana or EVM contract address:\n"
-                        "`/osint <Contract_Address>`"
-                    )
-                elif detect_chain(target_ca) == "unknown":
-                    generated_text = (
-                        f"❌ **Invalid Contract Address**\n\n"
-                        f"`{target_ca}` is not a valid Solana or EVM contract address."
-                    )
+                if not _check_entitlement("advanced_osint"):
+                    generated_text = "🔒 This is a premium Zoe feature. Please ask the project owner to upgrade to the Pro plan."
+                    intent = "command_osint"
                 else:
-                    logger.info("Triggered /osint for CA %s (chain: %s)", target_ca, detect_chain(target_ca))
-                    scan_res = scan_solana_token_sync(target_ca)
-                    generated_text = format_osint_report(scan_res)
-                    inline_keyboard = generate_scanner_inline_keyboard(target_ca, scan_res)
-                intent = "command_osint"
+                    from zoe.tools.scanner import (
+                        detect_chain,
+                        format_osint_report,
+                        generate_scanner_inline_keyboard,
+                        scan_solana_token_sync,
+                    )
+                    target_ca = cmd_arg.strip() if cmd_arg else ""
+                    if not target_ca:
+                        generated_text = (
+                            "🌐 **Project OSINT Scanner**\n\n"
+                            "Please provide a Solana or EVM contract address:\n"
+                            "`/osint <Contract_Address>`"
+                        )
+                    elif detect_chain(target_ca) == "unknown":
+                        generated_text = (
+                            f"❌ **Invalid Contract Address**\n\n"
+                            f"`{target_ca}` is not a valid Solana or EVM contract address."
+                        )
+                    else:
+                        logger.info("Triggered /osint for CA %s (chain: %s)", target_ca, detect_chain(target_ca))
+                        scan_res = scan_solana_token_sync(target_ca)
+                        generated_text = format_osint_report(scan_res)
+                        inline_keyboard = generate_scanner_inline_keyboard(target_ca, scan_res)
+                    intent = "command_osint"
 
             elif cmd == "setca":
                 proj_title = get_project_name(norm_msg.project_id)

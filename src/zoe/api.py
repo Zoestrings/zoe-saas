@@ -531,6 +531,75 @@ async def patch_bot_endpoint(project_id: str, req: PatchBotRequest) -> Dict[str,
     return res
 
 
+@engine_app.post("/api/bots/{project_id}/upgrade", dependencies=[Depends(verify_engine_key)])
+async def upgrade_bot_endpoint(project_id: str) -> Dict[str, Any]:
+    """Upgrade a client bot's capabilities to Pro tier and trigger hot-reload."""
+    if not PROJECT_ID_PATTERN.match(project_id):
+        raise HTTPException(status_code=400, detail="Invalid project_id pattern")
+
+    from zoe.settings import get_data_dir, load_project_config
+
+    data_dir = get_data_dir()
+    cfg_candidates = [
+        data_dir / "config" / "projects" / f"{project_id}.yaml",
+        Path(f"config/projects/{project_id}.yaml"),
+    ]
+
+    cfg_file = next((p for p in cfg_candidates if p.exists()), None)
+    if not cfg_file:
+        cfg_file = Path(f"config/projects/{project_id}.yaml")
+        cfg_file.parent.mkdir(parents=True, exist_ok=True)
+        default_cfg = {
+            "capabilities": {
+                "token_scanner": True,
+                "advanced_osint": True,
+                "wallet_intel": True,
+                "security_audit": True,
+                "plan": "pro",
+            },
+            "project": {"id": project_id, "name": project_id.title(), "plan": "pro"},
+        }
+        with open(cfg_file, "w", encoding="utf-8") as f:
+            yaml.dump(default_cfg, f)
+        cfg = default_cfg
+    else:
+        try:
+            cfg = load_project_config(project_id)
+        except Exception:
+            with open(cfg_file, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+
+    # Unlock all Pro capabilities
+    cfg.setdefault("capabilities", {})
+    cfg["capabilities"]["token_scanner"] = True
+    cfg["capabilities"]["advanced_osint"] = True
+    cfg["capabilities"]["wallet_intel"] = True
+    cfg["capabilities"]["security_audit"] = True
+    cfg["capabilities"]["plan"] = "pro"
+    cfg["plan"] = "pro"
+
+    # Persist updated YAML to persistent volume and repo config
+    for target in [data_dir / "config" / "projects" / f"{project_id}.yaml", Path(f"config/projects/{project_id}.yaml")]:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with open(target, "w", encoding="utf-8") as f:
+                yaml.dump(cfg, f, default_flow_style=False)
+        except Exception as exc:
+            logger.debug("Failed saving upgraded YAML to %s: %s", target, exc)
+
+    # Hot-reload in bot_manager in-memory state
+    bot_manager.configs[project_id] = cfg
+    logger.info("Bot '%s' successfully upgraded to Pro plan with premium capabilities active.", project_id)
+
+    return {
+        "project_id": project_id,
+        "status": "upgraded",
+        "plan": "pro",
+        "capabilities": cfg["capabilities"],
+        "message": f"Bot '{project_id}' upgraded to Pro with premium capabilities active.",
+    }
+
+
 @engine_app.delete("/api/bots/{project_id}", dependencies=[Depends(verify_engine_key)])
 async def delete_bot_endpoint(project_id: str) -> Dict[str, Any]:
     """Stop bot and remove secrets configuration."""

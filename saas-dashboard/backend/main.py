@@ -2496,6 +2496,31 @@ async def verify_billing_payment(
         except Exception as exc:
             print(f"[WARNING] Failed to update billing in dev DB: {exc}")
 
+    # Bridge to Engine: Upgrade user's bot(s) to Pro on Engine volume
+    user_projects: List[str] = []
+    if client:
+        try:
+            p_res = client.table("projects").select("id").eq("owner_id", user_id).execute()
+            if p_res.data:
+                user_projects = [str(p["id"]) for p in p_res.data]
+        except Exception as exc:
+            print(f"[WARNING] Could not fetch user projects from Supabase: {exc}")
+
+    if not user_projects:
+        try:
+            conn = get_dev_db()
+            cur = conn.execute("SELECT id FROM dev_projects WHERE owner_id = ?", (str(user_id),))
+            user_projects = [str(row[0]) for row in cur.fetchall()]
+        except Exception as exc:
+            print(f"[WARNING] Could not fetch user projects from dev DB: {exc}")
+
+    for pid in user_projects:
+        try:
+            await call_engine("POST", f"/api/bots/{pid}/upgrade", {})
+            print(f"[INFO] Upgraded bot {pid} to Pro on Engine successfully.")
+        except Exception as u_exc:
+            print(f"[WARNING] Engine bot upgrade failed for {pid}: {u_exc}")
+
     return VerifyPaymentResponse(
         success=True,
         message="Payment verified successfully! Pro Plan is now active for 30 days.",

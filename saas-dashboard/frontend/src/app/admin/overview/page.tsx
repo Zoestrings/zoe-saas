@@ -124,14 +124,14 @@ function LineChart({ data }: { data?: Array<{ date: string; value: number }> }) 
     data && data.length > 0
       ? data
       : [
-          { date: "Nov 17", value: 5 },
-          { date: "Nov 18", value: 8 },
-          { date: "Nov 19", value: 12 },
-          { date: "Nov 20", value: 7 },
-          { date: "Nov 21", value: 16 },
-          { date: "Nov 22", value: 22 },
-          { date: "Nov 23", value: 28 },
-        ]
+        { date: "Nov 17", value: 5 },
+        { date: "Nov 18", value: 8 },
+        { date: "Nov 19", value: 12 },
+        { date: "Nov 20", value: 7 },
+        { date: "Nov 21", value: 16 },
+        { date: "Nov 22", value: 22 },
+        { date: "Nov 23", value: 28 },
+      ]
 
   const maxVal = Math.max(...pointsData.map((d) => d.value), 10)
   const xCoords = [48, 138, 228, 318, 408, 498, 588]

@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
-import { 
-  Bot, 
-  BrainCircuit, 
-  FileCode, 
-  LogOut, 
-  Loader2, 
+import {
+  Bot,
+  BrainCircuit,
+  FileCode,
+  LogOut,
+  Loader2,
   User as UserIcon,
   Sparkles,
   Radar,
@@ -166,18 +166,16 @@ export default function OwnerLayout({
                   key={item.label}
                   href={item.href}
                   onClick={(e) => handleNavClick(e, item)}
-                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
-                    isActive
-                      ? "bg-[#00ff66]/15 text-[#00ff66] border border-[#00ff66]/30 shadow-sm shadow-[#00ff66]/10"
-                      : isLocked
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer ${isActive
+                    ? "bg-[#00ff66]/15 text-[#00ff66] border border-[#00ff66]/30 shadow-sm shadow-[#00ff66]/10"
+                    : isLocked
                       ? "text-neutral-400 hover:text-amber-400 hover:bg-neutral-900/60"
                       : "text-neutral-400 hover:text-white hover:bg-neutral-900/80"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Icon className={`h-4 w-4 transition-colors ${
-                      isActive ? "text-[#00ff66]" : isLocked ? "text-amber-400/80 group-hover:text-amber-400" : "text-neutral-400 group-hover:text-white"
-                    }`} />
+                    <Icon className={`h-4 w-4 transition-colors ${isActive ? "text-[#00ff66]" : isLocked ? "text-amber-400/80 group-hover:text-amber-400" : "text-neutral-400 group-hover:text-white"
+                      }`} />
                     <span>{item.label}</span>
                   </div>
 
@@ -214,9 +212,8 @@ export default function OwnerLayout({
 
         <div className="flex items-center gap-2">
           <Link href="/billing">
-            <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${
-              !isFree ? "bg-[#00ff66]/10 border-[#00ff66]/40 text-[#00ff66]" : "bg-amber-500/10 border-amber-500/40 text-amber-400"
-            }`}>
+            <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${!isFree ? "bg-[#00ff66]/10 border-[#00ff66]/40 text-[#00ff66]" : "bg-amber-500/10 border-amber-500/40 text-amber-400"
+              }`}>
               {!isFree ? "PRO" : "FREE"}
             </span>
           </Link>
@@ -233,7 +230,7 @@ export default function OwnerLayout({
       {/* Mobile Drawer Overlay */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex">
-          <div 
+          <div
             className="fixed inset-0 bg-black/80 backdrop-blur-sm"
             onClick={() => setMobileMenuOpen(false)}
           />
@@ -282,18 +279,7 @@ export default function OwnerLayout({
         {/* Brand Header */}
         <div className="pb-5 border-b border-neutral-800/80 mb-5">
           <Link href="/owner/dashboard" className="flex items-center gap-3 group">
-            <ZoeLogo size={36} glow variant="mark" />
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-extrabold text-white text-base tracking-tight leading-none">Zoe</span>
-                <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30 font-bold">
-                  Client
-                </span>
-              </div>
-              <span className="text-[10px] text-[#00ff66] font-mono uppercase tracking-widest block mt-0.5 font-bold">
-                Intelligence
-              </span>
-            </div>
+            <ZoeLogo size={36} glow variant="full" badge="CLIENT" />
           </Link>
         </div>
 
@@ -338,11 +324,10 @@ export default function OwnerLayout({
             </div>
 
             <Link href="/billing">
-              <span className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${
-                !isFree
-                  ? "bg-[#00ff66]/10 border-[#00ff66]/40 text-[#00ff66]"
-                  : "bg-amber-500/10 border-amber-500/40 text-amber-400"
-              }`}>
+              <span className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${!isFree
+                ? "bg-[#00ff66]/10 border-[#00ff66]/40 text-[#00ff66]"
+                : "bg-amber-500/10 border-amber-500/40 text-amber-400"
+                }`}>
                 {!isFree ? "PRO" : "FREE"}
               </span>
             </Link>

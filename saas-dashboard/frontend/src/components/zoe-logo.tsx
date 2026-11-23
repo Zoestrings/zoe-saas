@@ -6,6 +6,7 @@ interface ZoeLogoProps {
   variant?: "mark" | "full" | "watermark"
   withSparkle?: boolean
   glow?: boolean
+  badge?: string
 }
 
 export function ZoeLogo({
@@ -14,6 +15,7 @@ export function ZoeLogo({
   variant = "mark",
   withSparkle = true,
   glow = false,
+  badge,
 }: ZoeLogoProps) {
   const numericSize = typeof size === "number" ? size : parseInt(size as string, 10) || 40
 
@@ -110,15 +112,18 @@ export function ZoeLogo({
 
         {/* Brand Text Typography */}
         <div className="flex flex-col select-none">
-          <div className="flex items-center gap-1 leading-none">
+          <div className="flex items-center gap-2 leading-none">
             <span className="font-extrabold text-white tracking-tight" style={{ fontSize: numericSize * 0.58 }}>
               Zoe
             </span>
-            {/* Sparkle star in the wordmark */}
-            <span className="text-[#00ff66] text-xs font-black">✦</span>
+            {badge && (
+              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-md bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/40 font-bold leading-none">
+                {badge}
+              </span>
+            )}
           </div>
           <span
-            className="font-bold tracking-[0.22em] text-[#00ff66] uppercase leading-tight mt-0.5"
+            className="font-bold tracking-[0.22em] text-[#00ff66] uppercase leading-tight mt-1"
             style={{ fontSize: Math.max(9, numericSize * 0.22) }}
           >
             Intelligence

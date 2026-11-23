@@ -19,7 +19,7 @@ from zoe.conversation.prompt_builder import (
     get_project_system_prompt,
 )
 from zoe.conversation.intent import detect_contract_address
-from zoe.conversation.router import route_intent
+from zoe.conversation.router import route_intent, extract_crypto_news_target
 from zoe.conversation.sentiment import analyze_group_sentiment_sync
 from zoe.db.connections import (
     open_community_memory_db,
@@ -39,6 +39,7 @@ from zoe.participation.decision import ParticipationDecision, should_respond
 from zoe.safety.validator import SafetyResult, validate_output
 from zoe.telegram.normalizer import NormalizedMessage
 from zoe.tools.dexscreener import get_token_price_sync, search_token_price_sync
+from zoe.tools.crypto_news import fetch_crypto_news_sync
 from zoe.tools.web_search import search_web_sync
 from zoe.utils.logging import get_logger
 from zoe.utils.sanitizer import clean_unnecessary_characters
@@ -1442,6 +1443,58 @@ def process_message(
                 max_tokens=150,
                 project_id=norm_msg.project_id,
             )
+        elif intent == "crypto_news":
+            logger.info("Direct Web3 crypto news intent triggered for message %d: '%s'", inbox_id, norm_msg.text)
+            target = extract_crypto_news_target(norm_msg.text)
+            provider_error = False
+            news_items = []
+            try:
+                news_items = fetch_crypto_news_sync(target, timelimit="d", max_results=5)
+            except Exception as exc:
+                logger.warning("fetch_crypto_news_sync failed for '%s': %s", target, exc)
+                provider_error = True
+
+            if provider_error:
+                generated_text = "My live news providers are currently unavailable. Please check official sources."
+            elif not news_items:
+                generated_text = "I couldn't find any recent news for that asset."
+            else:
+                formatted_news = []
+                for item in news_items[:5]:
+                    formatted_news.append(
+                        f"- Headline: {item.get('title', '')}\n"
+                        f"  Summary: {item.get('snippet', '')}\n"
+                        f"  Source: {item.get('source', 'Web3 News')}\n"
+                        f"  Date: {item.get('date', 'Recent')}\n"
+                        f"  URL: {item.get('url', '')}"
+                    )
+                news_context = "\n\n".join(formatted_news)
+
+                news_prompt = (
+                    "You are a Web3 News Analyst. Based on the following live search results, provide a 3-bullet-point news brief. "
+                    "Separate confirmed facts from speculation. Include the source URLs and timestamps for each point.\n\n"
+                    f"[TARGET ASSET]: {target}\n"
+                    f"[LIVE SEARCH RESULTS]:\n{news_context}\n\n"
+                    "Format your response cleanly for Telegram with NO markdown bold asterisks (do not use **):\n"
+                    f"📰 {target.upper()} Intelligence Brief\n"
+                    "1. [Headline/Event Summary] (Source: [Source Name], [Date/Time])\n"
+                    "2. [Headline/Event Summary] (Source: [Source Name], [Date/Time])\n"
+                    "3. [Headline/Event Summary] (Source: [Source Name], [Date/Time])\n\n"
+                    "Sources:\n"
+                    "[List unique URLs]\n\n"
+                    "Strictly adhere to the facts from the search results. If fewer than 3 news stories exist, summarize only the available ones without hallucinating."
+                )
+
+                client = llm_client or MockLLMClient()
+                generated_text = _safe_generate(
+                    client=client,
+                    system_prompt=active_system_prompt,
+                    user_prompt=news_prompt,
+                    max_tokens=300,
+                    project_id=norm_msg.project_id,
+                )
+                if generated_text:
+                    generated_text = generated_text.replace("**", "").strip()
         elif intent == "web_search":
             logger.info("Direct web search intent triggered for message %d: '%s'", inbox_id, norm_msg.text)
             token_query = extract_token_query(norm_msg.text)

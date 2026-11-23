@@ -35,6 +35,18 @@ class MockLLMClient:
                 return "I hear the concern, but I've analyzed the official data: liquidity is $93k and locked. We're good."
             return "I am detecting some concern in the chat regarding liquidity and project stability. Based on official project records, liquidity remains healthy and all contracts are verified."
 
+        if "web3 news analyst" in lower_prompt:
+            return (
+                "📰 Intelligence Brief\n"
+                "1. SEC drops appeal against Ripple (Source: CoinDesk, Recent)\n"
+                "2. XRP Ledger upgrade goes live on mainnet (Source: U.Today, Recent)\n"
+                "3. Institutional inflows hit $15M (Source: CoinTelegraph, Recent)\n\n"
+                "Sources:\n"
+                "https://coindesk.com\n"
+                "https://u.today\n"
+                "https://cointelegraph.com"
+            )
+
         incoming_msg = (
             lower_prompt.split("[user incoming message]")[-1]
             if "[user incoming message]" in lower_prompt

@@ -13,6 +13,15 @@ EXTERNAL_ASSET_PATTERNS = [
     re.compile(r"\b(?:avalanche|avax|polkadot|dot|near|sui|aptos|ton|tron|trx|pepe|wif|bonk)\b", re.IGNORECASE),
 ]
 
+# 1.5. Live Crypto News Patterns
+CRYPTO_NEWS_PATTERNS = [
+    re.compile(r"\b(?:latest\s+news|crypto\s+news|token\s+news|market\s+news|breaking\s+news)\b", re.IGNORECASE),
+    re.compile(r"\b(?:what(?:'s|\s+is)\s+(?:the\s+)?(?:latest\s+)?news\b|any\s+(?:crypto\s+)?news\b|news\s+(?:on|about|regarding)\b)", re.IGNORECASE),
+    re.compile(r"\b(?:what(?:'s|\s+is)\s+happening\s+(?:with|to|in)\b|what\s+happened\s+(?:with|to|in)\b|what(?:'s|\s+is)\s+going\s+on\s+with\b)", re.IGNORECASE),
+    re.compile(r"\b(?:did\s+[a-zA-Z0-9$]+\s+(?:break|hit|reach|dump|pump|crash|skyrocket|announce|release|win|lose)\b)", re.IGNORECASE),
+    re.compile(r"\b(?:sec\s+(?:drops?|appeals?|lawsuit)|etf\s+approval|upgrade\s+(?:goes\s+)?live|airdrop\s+news)\b", re.IGNORECASE),
+]
+
 # 2. Project Native Token Patterns
 NATIVE_TOKEN_PATTERNS = [
     re.compile(r"\b(?:\$fly|fly\b|hummingbird|\$hb)\b", re.IGNORECASE),
@@ -78,9 +87,39 @@ def extract_detected_ca(text: str) -> Optional[str]:
     return None
 
 
+def extract_crypto_news_target(text: str) -> str:
+    """Extract the target token, asset, or topic from a crypto news query."""
+    clean = text.strip()
+    # Check for direct mentions of specific assets
+    for pattern in EXTERNAL_ASSET_PATTERNS:
+        m = pattern.search(clean)
+        if m:
+            return m.group(0).upper()
+
+    for pattern in NATIVE_TOKEN_PATTERNS:
+        m = pattern.search(clean)
+        if m:
+            return m.group(0).upper()
+
+    # Look for capitalized ticker or word after 'on', 'about', 'with', 'for'
+    topic_match = re.search(r"\b(?:on|about|with|for|regarding|is)\s+([$]?[a-zA-Z0-9]+)\b", clean, re.IGNORECASE)
+    if topic_match:
+        cand = topic_match.group(1).strip()
+        if cand.lower() not in {"the", "a", "an", "any", "this", "today", "now", "it"}:
+            return cand.upper()
+
+    # Did X break / hit
+    did_match = re.search(r"\bdid\s+([$]?[a-zA-Z0-9]+)\b", clean, re.IGNORECASE)
+    if did_match:
+        return did_match.group(1).upper()
+
+    return "crypto"
+
+
 def route_intent(message_text: str) -> str:
     """Route message intent to one of:
     - 'ca_detection': for raw contract addresses (Solana or EVM)
+    - 'crypto_news': for real-time crypto news, breaking events, and market intelligence briefs
     - 'general_knowledge': for broad coding or general crypto concepts
     - 'web_search': for price or market inquiries about specific non-native assets
     - 'api_call': for live market or on-chain data for the project's native token
@@ -96,6 +135,10 @@ def route_intent(message_text: str) -> str:
     detected_ca = extract_detected_ca(text)
     if detected_ca:
         return "ca_detection"
+
+    # 0.5. Live Web3 News Intelligence Routing
+    if any(p.search(text) for p in CRYPTO_NEWS_PATTERNS):
+        return "crypto_news"
 
     # Inquiries about unreleased, upcoming, or future tokens are knowledge queries
     if re.search(r"\b(?:unreleased|upcoming|future\s+token|new\s+token)\b", text, re.IGNORECASE):

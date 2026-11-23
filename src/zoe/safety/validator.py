@@ -49,6 +49,17 @@ DEFAULT_APPROVED_DOMAINS = {
     "ethereum.org",
     "bitcoin.org",
     "docs.hummingbird.org",
+    "coindesk.com",
+    "cointelegraph.com",
+    "decrypt.co",
+    "theblock.co",
+    "u.today",
+    "bloomberg.com",
+    "reuters.com",
+    "crypto.com",
+    "bitcoinist.com",
+    "coingape.com",
+    "jup.ag",
 }
 
 # Inbound Scam & Phishing Detection Patterns

@@ -28,7 +28,6 @@ def main():
     if not found_founder:
         print("[ERROR] 'Captain Robbie Olson' was NOT found in the top retrieved chunks!")
         sys.exit(1)
-
     print("[SUCCESS] Top retrieved chunks successfully contain 'Captain Robbie Olson'!")
     sys.exit(0)
 

@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { logout } from "@/lib/api"
+import { ZoeLogo } from "@/components/zoe-logo"
 
 const adminNav = [
   { 
@@ -76,16 +77,19 @@ export function AdminSidebar() {
     <aside className="w-64 flex-shrink-0 flex flex-col border-r border-neutral-800 bg-[#121212] text-white h-screen sticky top-0 z-40 select-none">
       {/* Brand Header */}
       <div className="h-20 flex items-center px-6 border-b border-neutral-800 gap-3">
-        <div className="h-9 w-9 rounded-xl bg-[#00ff66] text-black flex items-center justify-center font-black text-base shadow-lg shadow-[#00ff66]/20">
-          <Sparkles className="h-5 w-5 fill-black" />
-        </div>
+        <ZoeLogo size={36} glow variant="mark" />
         <div className="flex flex-col min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="font-bold text-white text-base tracking-tight">
-              Zoe Platform
+            <span className="font-extrabold text-white text-base tracking-tight leading-none">
+              Zoe
+            </span>
+            <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30 font-bold">
+              Admin
             </span>
           </div>
-          <span className="text-[11px] text-[#00ff66] font-semibold tracking-wider uppercase">Autonomous SaaS</span>
+          <span className="text-[10px] text-[#00ff66] font-bold tracking-widest uppercase mt-0.5">
+            Intelligence
+          </span>
         </div>
       </div>
 

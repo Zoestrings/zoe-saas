@@ -29,6 +29,7 @@ import {
 } from "lucide-react"
 import { getToken, getUser, removeToken, User, api, EntitlementResponse } from "@/lib/api"
 import { Button } from "@/components/ui/button"
+import { ZoeLogo } from "@/components/zoe-logo"
 import {
   Dialog,
   DialogContent,
@@ -204,12 +205,10 @@ export default function OwnerLayout({
       {/* Top Header on Mobile (< md) */}
       <header className="md:hidden sticky top-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-md px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
         <Link href="/owner/dashboard" className="flex items-center gap-2.5">
-          <div className="h-8 w-8 rounded-xl bg-[#00ff66] text-black flex items-center justify-center font-black shadow-md shadow-[#00ff66]/20">
-            <Sparkles className="h-4 w-4 fill-black text-black" />
-          </div>
+          <ZoeLogo size={32} glow variant="mark" />
           <div>
-            <span className="font-bold text-white text-sm tracking-tight block leading-tight">Zoe Platform</span>
-            <span className="text-[10px] text-neutral-400 font-mono">Project Owner</span>
+            <span className="font-bold text-white text-sm tracking-tight block leading-tight">Zoe</span>
+            <span className="text-[10px] text-[#00ff66] font-mono tracking-wider uppercase">Intelligence</span>
           </div>
         </Link>
 
@@ -240,13 +239,11 @@ export default function OwnerLayout({
           />
           <aside className="relative z-10 w-72 max-w-[85vw] h-full bg-[#0c0d14] border-r border-neutral-800 p-5 flex flex-col overflow-y-auto">
             <div className="flex items-center justify-between pb-5 border-b border-neutral-800 mb-5">
-              <Link href="/owner/dashboard" className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-xl bg-[#00ff66] text-black flex items-center justify-center font-black shadow-md">
-                  <Sparkles className="h-4 w-4 fill-black text-black" />
-                </div>
+              <Link href="/owner/dashboard" className="flex items-center gap-2.5" onClick={() => setMobileMenuOpen(false)}>
+                <ZoeLogo size={32} glow variant="mark" />
                 <div>
-                  <span className="font-bold text-white text-sm">Zoe Platform</span>
-                  <span className="text-[10px] text-[#00ff66] block font-mono">Owner Portal</span>
+                  <span className="font-bold text-white text-sm block leading-tight">Zoe</span>
+                  <span className="text-[10px] text-[#00ff66] block font-mono tracking-wider uppercase">Intelligence</span>
                 </div>
               </Link>
               <button
@@ -285,9 +282,7 @@ export default function OwnerLayout({
         {/* Brand Header */}
         <div className="pb-5 border-b border-neutral-800/80 mb-5">
           <Link href="/owner/dashboard" className="flex items-center gap-3 group">
-            <div className="h-9 w-9 rounded-2xl bg-[#00ff66] text-black flex items-center justify-center font-black shadow-lg shadow-[#00ff66]/20 group-hover:scale-105 transition-transform">
-              <Sparkles className="h-5 w-5 fill-black text-black" />
-            </div>
+            <ZoeLogo size={36} glow variant="mark" />
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-extrabold text-white text-base tracking-tight leading-none">Zoe</span>
@@ -295,7 +290,9 @@ export default function OwnerLayout({
                   Client
                 </span>
               </div>
-              <p className="text-[11px] text-neutral-400 mt-1 font-medium">Project Owner Portal</p>
+              <span className="text-[10px] text-[#00ff66] font-mono uppercase tracking-widest block mt-0.5 font-bold">
+                Intelligence
+              </span>
             </div>
           </Link>
         </div>
@@ -364,8 +361,18 @@ export default function OwnerLayout({
       </aside>
 
       {/* Main Scoped Content */}
-      <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full">
-        {children}
+      <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full relative">
+        {/* Subtle Brand Watermark in Bottom-Right Corner */}
+        <div 
+          aria-hidden="true" 
+          className="fixed bottom-[-60px] right-[-60px] pointer-events-none z-0 opacity-[0.035] select-none drop-shadow-[0_0_50px_rgba(0,255,102,0.3)]"
+        >
+          <ZoeLogo variant="watermark" size={540} />
+        </div>
+
+        <div className="relative z-10">
+          {children}
+        </div>
       </main>
 
       {/* Upgrade Required Paywall Modal */}

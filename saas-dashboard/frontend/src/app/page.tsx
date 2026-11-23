@@ -20,6 +20,7 @@ import {
   Cpu
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ZoeLogo } from "@/components/zoe-logo"
 
 export default function LandingPage() {
   return (
@@ -33,17 +34,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="h-10 w-10 rounded-2xl bg-[#00ff66] text-black flex items-center justify-center font-black shadow-lg shadow-[#00ff66]/20 group-hover:scale-105 transition-transform">
-              <Sparkles className="h-5 w-5 fill-black" />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-black text-lg tracking-tight text-white leading-none">
-                Zoe
-              </span>
-              <span className="text-[10px] text-[#00ff66] font-mono tracking-widest uppercase">
-                Intelligence
-              </span>
-            </div>
+            <ZoeLogo size={36} glow variant="full" />
           </Link>
 
           {/* Desktop Nav Links */}
@@ -85,7 +76,15 @@ export default function LandingPage() {
       </header>
 
       {/* Hero Section */}
-      <section className="relative pt-24 pb-20 px-6 max-w-7xl mx-auto text-center space-y-8 flex flex-col items-center">
+      <section className="relative pt-16 pb-20 px-6 max-w-7xl mx-auto text-center space-y-8 flex flex-col items-center">
+        {/* Glowing Brand Mark Hero Element */}
+        <div className="relative mb-2 group">
+          <div className="absolute -inset-4 bg-gradient-to-r from-[#00ff66]/30 via-[#00d2ff]/20 to-transparent rounded-full blur-2xl opacity-60 group-hover:opacity-90 transition duration-700" />
+          <div className="relative h-24 w-24 rounded-3xl bg-[#0f141a]/90 border border-[#212833] flex items-center justify-center shadow-2xl backdrop-blur-xl">
+            <ZoeLogo size={78} glow variant="mark" />
+          </div>
+        </div>
+
         {/* Pulsing Pill */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#00ff66]/10 border border-[#00ff66]/30 text-xs font-bold text-[#00ff66] shadow-sm animate-pulse">
           <Sparkles className="h-3.5 w-3.5" />

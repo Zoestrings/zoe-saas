@@ -3,11 +3,13 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Bot, Sparkles, Lock, Mail, ArrowRight, AlertCircle, Loader2 } from "lucide-react"
+import Image from "next/image"
+import { Bot, Lock, Mail, ArrowRight, AlertCircle, Loader2, Sparkles, ShieldCheck } from "lucide-react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ZoeLogo } from "@/components/zoe-logo"
 import { api } from "@/lib/api"
 
 export default function LoginPage() {
@@ -37,50 +39,66 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-[#0b0f19] relative overflow-hidden">
-      {/* Background glow accents */}
-      <div className="absolute top-1/4 -left-20 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen w-full flex items-center justify-center p-4 bg-[#0a0a0a] bg-[radial-gradient(ellipse_at_top,_#0a281a_0%,_#061610_35%,_#0a0a0a_75%)] relative overflow-hidden font-sans">
+      {/* Subtle brand glow rays in background */}
+      <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[700px] h-[450px] bg-gradient-to-b from-[#00ff66]/15 via-[#00d2ff]/10 to-transparent rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-100px] right-[-100px] w-96 h-96 bg-[#00ff66]/5 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute top-1/3 left-[-150px] w-80 h-80 bg-[#00d2ff]/5 rounded-full blur-[90px] pointer-events-none" />
+
+      {/* Atmospheric subtle brand artwork watermark in background */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-5">
+        <ZoeLogo variant="watermark" size={700} />
+      </div>
 
       <div className="w-full max-w-md relative z-10">
         {/* Brand Logo & Title */}
         <div className="flex flex-col items-center mb-8 text-center">
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/25 mb-4">
-            <Sparkles className="h-6 w-6 text-white" />
+          <div className="relative mb-3 group">
+            <div className="absolute -inset-2 bg-gradient-to-r from-[#00ff66] to-[#00d2ff] rounded-3xl blur-xl opacity-40 group-hover:opacity-70 transition duration-500" />
+            <div className="relative h-20 w-20 rounded-2xl bg-[#0f141a] border border-[#212833] flex items-center justify-center shadow-2xl">
+              <ZoeLogo size={62} glow variant="mark" />
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-            Zoe SaaS Platform
-            <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-              v1.0
+
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-3xl font-black text-white tracking-tight leading-none">
+              Zoe
             </span>
-          </h1>
-          <p className="text-sm text-slate-400 mt-1">Autonomous Web3 Community Intelligence</p>
+            <span className="text-xs font-mono uppercase px-2.5 py-0.5 rounded-full bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30 font-bold">
+              Intelligence
+            </span>
+          </div>
+          <p className="text-xs text-[#818c99] mt-1.5 font-medium tracking-wide">
+            Smarter Communities. Stronger Web3.
+          </p>
         </div>
 
-        {/* Login Card */}
-        <Card className="border-slate-800 bg-slate-900/80 backdrop-blur-xl shadow-2xl shadow-black/50">
-          <CardHeader className="space-y-1 pb-4">
-            <CardTitle className="text-xl font-semibold text-white">Sign in to your account</CardTitle>
-            <CardDescription className="text-slate-400 text-xs">
-              Enter your email and password to access your community bots
+        {/* Glassmorphic Login Card */}
+        <Card className="border border-white/10 bg-[#12161c]/85 backdrop-blur-2xl shadow-2xl shadow-black/80 rounded-3xl overflow-hidden">
+          <CardHeader className="space-y-1 pb-4 pt-6 px-6 sm:px-8 border-b border-[#212833]/60">
+            <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
+              <span>Sign in to your account</span>
+            </CardTitle>
+            <CardDescription className="text-[#818c99] text-xs">
+              Access your autonomous bots, surveillance monitors, and scanner
             </CardDescription>
           </CardHeader>
 
           <form onSubmit={handleSubmit}>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 pt-6 px-6 sm:px-8">
               {error && (
-                <div className="flex items-start gap-2.5 p-3 rounded-lg bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs animate-in fade-in">
+                <div className="flex items-start gap-2.5 p-3 rounded-2xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs animate-in fade-in">
                   <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-rose-400" />
                   <span>{error}</span>
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-xs font-medium text-slate-200">
+              <div className="space-y-1.5">
+                <Label htmlFor="email" className="text-xs font-semibold text-white">
                   Email Address
                 </Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                  <Mail className="absolute left-3.5 top-3 h-4 w-4 text-[#818c99]" />
                   <Input
                     id="email"
                     type="email"
@@ -88,19 +106,19 @@ export default function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="pl-9 bg-slate-950/60 border-slate-800 text-slate-100 placeholder:text-slate-600 focus-visible:ring-cyan-500"
+                    className="pl-10 bg-[#161b22] border-[#212833] text-white placeholder:text-[#555f6d] h-10 rounded-xl focus-visible:ring-1 focus-visible:ring-[#00ff66] focus:border-[#00ff66] text-xs transition-colors"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="password" className="text-xs font-medium text-slate-200">
+                  <Label htmlFor="password" className="text-xs font-semibold text-white">
                     Password
                   </Label>
                 </div>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                  <Lock className="absolute left-3.5 top-3 h-4 w-4 text-[#818c99]" />
                   <Input
                     id="password"
                     type="password"
@@ -108,36 +126,36 @@ export default function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="pl-9 bg-slate-950/60 border-slate-800 text-slate-100 placeholder:text-slate-600 focus-visible:ring-cyan-500"
+                    className="pl-10 bg-[#161b22] border-[#212833] text-white placeholder:text-[#555f6d] h-10 rounded-xl focus-visible:ring-1 focus-visible:ring-[#00ff66] focus:border-[#00ff66] text-xs transition-colors"
                   />
                 </div>
               </div>
             </CardContent>
 
-            <CardFooter className="flex flex-col space-y-4 pt-2">
+            <CardFooter className="flex flex-col space-y-4 pt-4 pb-6 px-6 sm:px-8">
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-medium shadow-md shadow-cyan-500/20 transition-all cursor-pointer"
+                className="w-full bg-[#00ff66] hover:bg-[#00e65c] text-black font-extrabold h-11 text-xs rounded-xl shadow-lg shadow-[#00ff66]/20 transition-all cursor-pointer hover:scale-[1.01]"
               >
                 {loading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin text-black" />
                     Signing in...
                   </>
                 ) : (
                   <>
-                    Sign In
-                    <ArrowRight className="ml-2 h-4 w-4" />
+                    Sign In to Portal
+                    <ArrowRight className="ml-2 h-4 w-4 stroke-[3]" />
                   </>
                 )}
               </Button>
 
-              <div className="text-center text-xs text-slate-400">
+              <div className="text-center text-xs text-[#818c99]">
                 Don&apos;t have an account yet?{" "}
                 <Link
                   href="/register"
-                  className="font-medium text-cyan-400 hover:text-cyan-300 underline underline-offset-4"
+                  className="font-bold text-[#00ff66] hover:text-[#00ff66]/80 underline underline-offset-4"
                 >
                   Create an account
                 </Link>
@@ -147,9 +165,9 @@ export default function LoginPage() {
         </Card>
 
         {/* Security Footer Notice */}
-        <div className="text-center text-[11px] text-slate-500 mt-6 flex items-center justify-center gap-1.5">
-          <Bot className="h-3.5 w-3.5 text-cyan-500" />
-          End-to-End Fernet 256-bit Credential Encryption
+        <div className="text-center text-[11px] text-[#818c99] mt-6 flex items-center justify-center gap-1.5">
+          <ShieldCheck className="h-3.5 w-3.5 text-[#00ff66]" />
+          <span>Enterprise Fernet AES-256 Bot Token Encryption</span>
         </div>
       </div>
     </div>

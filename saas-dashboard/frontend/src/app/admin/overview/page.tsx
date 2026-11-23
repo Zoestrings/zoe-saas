@@ -28,7 +28,8 @@ import {
   Users,
   Radar,
   TrendingUp,
-  Loader2
+  Loader2,
+  DollarSign
 } from "lucide-react"
 import "./overview.css"
 import { api, logout, Project } from "@/lib/api"
@@ -330,9 +331,9 @@ export default function ZoeDashboard() {
             <TrendingUp />
             Trading
           </Link>
-          <Link href="/admin/projects">
-            <ChartNoAxesColumn />
-            Analytics
+          <Link href="/admin/revenue" className={pathname === "/admin/revenue" ? "selected" : ""}>
+            <DollarSign />
+            Revenue
           </Link>
           <Link href="/owner/dashboard/knowledge">
             <BookOpen />

@@ -540,6 +540,10 @@ class WatchlistCreateRequest(BaseModel):
     token_name: Optional[str] = None
 
 
+class AssignOwnerRequest(BaseModel):
+    email: str
+
+
 class VerifyPaymentRequest(BaseModel):
     invoice_id: str
     tx_hash: str
@@ -1244,6 +1248,102 @@ async def delete_project(
             pass
 
     return {"project_id": project_id, "status": "stopped", "message": "Bot decommissioned successfully"}
+
+
+@app.post("/api/admin/projects/{project_id}/assign-owner")
+async def assign_project_owner(
+    project_id: str,
+    req: AssignOwnerRequest,
+    current_user: Dict[str, Any] = Depends(require_super_admin),
+):
+    """Assign or reassign a bot project to a specific user by email (Super Admin only)."""
+    email_clean = req.email.strip().lower()
+    if not email_clean:
+        raise HTTPException(status_code=400, detail="Owner email cannot be empty")
+
+    client = get_supabase()
+    target_user_id = None
+
+    if client is None:
+        conn = get_dev_db()
+        user_row = conn.execute(
+            "SELECT id, email FROM dev_users WHERE LOWER(email) = ?", (email_clean,)
+        ).fetchone()
+        if not user_row:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User with email '{req.email}' not found. Ensure they have registered first.",
+            )
+        target_user_id = str(user_row[0])
+
+        proj_row = conn.execute(
+            "SELECT id FROM dev_projects WHERE id = ?", (project_id,)
+        ).fetchone()
+        if not proj_row:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        conn.execute(
+            "UPDATE dev_projects SET owner_id = ? WHERE id = ?",
+            (target_user_id, project_id),
+        )
+        conn.commit()
+    else:
+        # 1. Look up user by email in profiles
+        try:
+            prof_res = client.table("profiles").select("id, email").ilike("email", email_clean).execute()
+            if prof_res.data:
+                target_user_id = str(prof_res.data[0]["id"])
+        except Exception as e:
+            logger.warning("Error querying profiles table: %s", e)
+
+        # Fallback to Supabase Auth Admin if available
+        if not target_user_id:
+            admin_client = get_supabase_admin()
+            if admin_client:
+                try:
+                    users_res = admin_client.auth.admin.list_users()
+                    for u in getattr(users_res, "users", []):
+                        if getattr(u, "email", "").lower() == email_clean:
+                            target_user_id = str(u.id)
+                            break
+                except Exception as e:
+                    logger.warning("Error querying auth.admin.list_users: %s", e)
+
+        # Fallback to dev_users sqlite
+        if not target_user_id:
+            try:
+                conn = get_dev_db()
+                user_row = conn.execute(
+                    "SELECT id, email FROM dev_users WHERE LOWER(email) = ?", (email_clean,)
+                ).fetchone()
+                if user_row:
+                    target_user_id = str(user_row[0])
+            except Exception:
+                pass
+
+        if not target_user_id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User with email '{req.email}' not found. Ensure they have registered first.",
+            )
+
+        update_res = client.table("projects").update({"owner_id": target_user_id}).eq("id", project_id).execute()
+        if not update_res.data:
+            # Check dev_projects sqlite fallback
+            try:
+                conn = get_dev_db()
+                conn.execute("UPDATE dev_projects SET owner_id = ? WHERE id = ?", (target_user_id, project_id))
+                conn.commit()
+            except Exception:
+                raise HTTPException(status_code=404, detail="Project not found")
+
+    return {
+        "status": "success",
+        "message": f"Project '{project_id}' successfully assigned to {req.email}",
+        "project_id": project_id,
+        "owner_id": target_user_id,
+        "owner_email": req.email,
+    }
 
 
 @app.get("/api/projects/{project_id}/status")
@@ -2288,41 +2388,9 @@ def get_user_alerts(
                 for r in rows
             ]
 
-        # Seed initial surveillance alert if user has no alerts yet
-        now_iso = datetime.now(timezone.utc).isoformat()
-        initial_alert = {
-            "id": f"alert-{uuid.uuid4().hex[:8]}",
-            "user_id": str(user_id),
-            "contract_address": "F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon",
-            "token_name": "ONELOVE",
-            "alert_type": "liquidity_drop",
-            "message": "Continuous surveillance active. Monitoring liquidity pool thresholds on $ONELOVE.",
-            "old_value": 35000.0,
-            "new_value": 28000.0,
-            "created_at": now_iso,
-            "is_read": 0,
-        }
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO dev_alerts (id, user_id, contract_address, token_name, alert_type, message, old_value, new_value, created_at, is_read)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                initial_alert["id"],
-                initial_alert["user_id"],
-                initial_alert["contract_address"],
-                initial_alert["token_name"],
-                initial_alert["alert_type"],
-                initial_alert["message"],
-                initial_alert["old_value"],
-                initial_alert["new_value"],
-                initial_alert["created_at"],
-                initial_alert["is_read"],
-            ),
-        )
-        conn.commit()
-        return [{**initial_alert, "is_read": False}]
+        return []
     except Exception:
+        return []
         return []
 
 

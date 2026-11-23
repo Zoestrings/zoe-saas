@@ -308,17 +308,6 @@ def get_community_leaderboard_data(project_id: str, timeframe: str = "7d") -> Li
     except Exception as exc:
         logger.debug("Leaderboard query failed: %s", exc)
 
-    if not results:
-        # Seed realistic community callers so the leaderboard UI is populated immediately
-        seed_callers = [
-            {"username": "@SolanaWhale99", "best_multiplier": 14.8, "avg_conviction": 4.8, "conviction_score": 142.5, "total_calls": 24, "successful_calls": 19, "win_rate": 79.2, "badge": "👑 Alpha King"},
-            {"username": "@AlphaSeeker_Sol", "best_multiplier": 8.4, "avg_conviction": 4.2, "conviction_score": 88.0, "total_calls": 18, "successful_calls": 13, "win_rate": 72.2, "badge": "🔥 Top Gun"},
-            {"username": "@MoonShotSniper", "best_multiplier": 5.2, "avg_conviction": 3.9, "conviction_score": 54.2, "total_calls": 15, "successful_calls": 10, "win_rate": 66.7, "badge": "🔥 Top Gun"},
-            {"username": "@DegenCalls_HQ", "best_multiplier": 3.9, "avg_conviction": 3.5, "conviction_score": 38.6, "total_calls": 12, "successful_calls": 7, "win_rate": 58.3, "badge": "🎯 Sharp Caller"},
-            {"username": "@DiamondHands_0x", "best_multiplier": 2.6, "avg_conviction": 3.0, "conviction_score": 24.1, "total_calls": 9, "successful_calls": 5, "win_rate": 55.6, "badge": "🎯 Sharp Caller"},
-        ]
-        return seed_callers
-
     return results
 
 

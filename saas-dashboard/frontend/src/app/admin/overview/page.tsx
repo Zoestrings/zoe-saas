@@ -233,17 +233,12 @@ export default function ZoeDashboard() {
           setProjects(mapped)
           setTotalProjects(`${mapped.length} Online`)
         } else {
-          setProjects([
-            { id: "1", name: "One Love AI", category: "F1r5...moon · Solana", members: "5 Chunks", status: "Active", platform: "telegram", color: "violet", icon: "₿" },
-            { id: "2", name: "Zoe Core Hummingbird", category: "0x1b...655c · Multi-Chain", members: "2 Chunks", status: "Active", platform: "telegram", color: "gold", icon: "⚓" },
-          ])
+          setProjects([])
+          setTotalProjects("0 Online")
         }
       } catch (err) {
         console.warn("Failed to load projects:", err)
-        setProjects([
-          { id: "1", name: "One Love AI", category: "F1r5...moon · Solana", members: "5 Chunks", status: "Active", platform: "telegram", color: "violet", icon: "₿" },
-          { id: "2", name: "Zoe Core Hummingbird", category: "0x1b...655c · Multi-Chain", members: "2 Chunks", status: "Active", platform: "telegram", color: "gold", icon: "⚓" },
-        ])
+        setProjects([])
       } finally {
         setLoadingProjects(false)
       }
@@ -473,6 +468,10 @@ export default function ZoeDashboard() {
               {loadingProjects ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-[#a56cff]" />
+                </div>
+              ) : projects.length === 0 ? (
+                <div className="text-center py-8 text-neutral-500 text-xs">
+                  <p>No projects configured yet.</p>
                 </div>
               ) : (
                 projects.map((p) => (

@@ -509,7 +509,7 @@ export default function WatchlistPage() {
                 })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-neutral-500 text-xs">
+                  <TableCell colSpan={7} className="h-32 text-center text-neutral-500 text-xs">
                     <div className="space-y-2">
                       <Bookmark className="h-6 w-6 text-neutral-600 mx-auto" />
                       <p className="font-semibold text-neutral-400">No tokens in your surveillance watchlist</p>

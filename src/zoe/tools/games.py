@@ -254,43 +254,6 @@ def get_active_predictions(project_id: str, limit: int = 10) -> List[Dict[str, A
             "created_at": r[11],
         })
 
-    if not predictions:
-        # Seed default realistic predictions for initial launch
-        predictions = [
-            {
-                "id": "pred-seed-1",
-                "project_id": project_id,
-                "question": "Will $ONELOVE surpass $1.5M Market Cap by Friday?",
-                "target_token": "F1r5AqRj8bJyzM4nU2pV8H1JQT8ToR4rvjj2YwxHmoon",
-                "target_metric": "market_cap",
-                "target_value": 1500000.0,
-                "deadline": (datetime.now(timezone.utc) + timedelta(days=2)).isoformat(),
-                "status": "active",
-                "yes_votes": 42,
-                "no_votes": 11,
-                "total_votes": 53,
-                "yes_pct": 79.2,
-                "no_pct": 20.8,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            },
-            {
-                "id": "pred-seed-2",
-                "project_id": project_id,
-                "question": "Will Solana ($SOL) break above $210 this weekend?",
-                "target_token": "So11111111111111111111111111111111111111112",
-                "target_metric": "price",
-                "target_value": 210.0,
-                "deadline": (datetime.now(timezone.utc) + timedelta(days=3)).isoformat(),
-                "status": "active",
-                "yes_votes": 68,
-                "no_votes": 19,
-                "total_votes": 87,
-                "yes_pct": 78.2,
-                "no_pct": 21.8,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            },
-        ]
-
     return predictions
 
 

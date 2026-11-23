@@ -754,6 +754,13 @@ export const api = {
     })
   },
 
+  async assignProjectOwner(projectId: string, email: string): Promise<{ status: string; message: string; project_id: string; owner_id: string; owner_email: string }> {
+    return apiRequest<{ status: string; message: string; project_id: string; owner_id: string; owner_email: string }>(`/api/admin/projects/${projectId}/assign-owner`, {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    })
+  },
+
   async getSystemHealth(): Promise<SystemHealthResponse> {
     return apiRequest<SystemHealthResponse>("/api/admin/health", {
       method: "GET",

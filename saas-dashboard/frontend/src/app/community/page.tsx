@@ -248,10 +248,10 @@ export default function CommunityPage() {
             <div>
               <p className="text-xs font-medium text-neutral-400">Top Caller ATH</p>
               <h3 className="text-2xl font-bold text-[#00ff66] mt-1">
-                {leaderboard.length > 0 ? `${leaderboard[0].best_multiplier}x` : "14.8x"}
+                {leaderboard.length > 0 ? `${leaderboard[0].best_multiplier}x` : "—"}
               </h3>
               <p className="text-[11px] text-neutral-400 mt-0.5">
-                {leaderboard.length > 0 ? leaderboard[0].username : "@SolanaWhale99"}
+                {leaderboard.length > 0 ? leaderboard[0].username : "No calls recorded yet"}
               </p>
             </div>
             <div className="h-10 w-10 rounded-xl bg-[#00ff66]/10 border border-[#00ff66]/20 flex items-center justify-center text-[#00ff66]">
@@ -265,10 +265,15 @@ export default function CommunityPage() {
             <div>
               <p className="text-xs font-medium text-neutral-400">Community Win Rate</p>
               <h3 className="text-2xl font-bold text-white mt-1">
-                74.2%
+                {leaderboard.length > 0
+                  ? `${(
+                      leaderboard.reduce((acc, c) => acc + (c.win_rate || 0), 0) /
+                      leaderboard.length
+                    ).toFixed(1)}%`
+                  : "—"}
               </h3>
-              <p className="text-[11px] text-[#00ff66] mt-0.5">
-                +8.5% this week
+              <p className="text-[11px] text-neutral-400 mt-0.5">
+                {leaderboard.length > 0 ? "Tracked callers average" : "No calls recorded yet"}
               </p>
             </div>
             <div className="h-10 w-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
@@ -365,6 +370,12 @@ export default function CommunityPage() {
             <div className="flex justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-[#00ff66]" />
             </div>
+          ) : predictions.length === 0 ? (
+            <Card className="bg-[#121212] border-neutral-800 p-8 text-center">
+              <Vote className="h-8 w-8 text-neutral-600 mx-auto mb-3" />
+              <h3 className="text-sm font-bold text-neutral-300">No active predictions</h3>
+              <p className="text-xs text-neutral-500 mt-1">Click &ldquo;Create Prediction&rdquo; above to launch a new community prediction market.</p>
+            </Card>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {predictions.map((p) => {
@@ -482,7 +493,20 @@ export default function CommunityPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {leaderboard.map((caller, idx) => {
+                  {leaderboard.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-32 text-center text-neutral-500 text-xs">
+                        <div className="space-y-1 py-4">
+                          <Trophy className="h-6 w-6 text-neutral-600 mx-auto" />
+                          <p className="font-semibold text-neutral-400">No community calls recorded yet</p>
+                          <p className="text-[11px] text-neutral-600">
+                            Members can share token calls in community channels with conviction ratings to rank on the leaderboard.
+                          </p>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    leaderboard.map((caller, idx) => {
                     const medals = ["🥇", "🥈", "🥉"]
                     return (
                       <TableRow key={caller.username + idx} className="border-neutral-800 hover:bg-neutral-900/50">
@@ -524,7 +548,7 @@ export default function CommunityPage() {
                         </TableCell>
                       </TableRow>
                     )
-                  })}
+                  }))}
                 </TableBody>
               </Table>
             </CardContent>

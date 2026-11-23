@@ -99,8 +99,33 @@ export default function AdminProjectsPage() {
   const [suspendLoading, setSuspendLoading] = useState(false)
   const [suspendError, setSuspendError] = useState<string | null>(null)
 
+  // Assign Owner Modal state
+  const [assignProjectTarget, setAssignProjectTarget] = useState<AdminProjectItem | null>(null)
+  const [assignEmail, setAssignEmail] = useState("")
+  const [assignLoading, setAssignLoading] = useState(false)
+  const [assignError, setAssignError] = useState<string | null>(null)
+
   // Action status message
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null)
+
+  const handleAssignOwner = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!assignProjectTarget || !assignEmail.trim()) return
+    setAssignLoading(true)
+    setAssignError(null)
+    try {
+      const res = await api.assignProjectOwner(assignProjectTarget.id, assignEmail.trim())
+      setActionSuccessMessage(res.message || `Project successfully assigned to ${assignEmail.trim()}`)
+      setAssignProjectTarget(null)
+      setAssignEmail("")
+      await fetchProjects()
+      setTimeout(() => setActionSuccessMessage(null), 5000)
+    } catch (err: any) {
+      setAssignError(err.message || "Failed to assign project owner")
+    } finally {
+      setAssignLoading(false)
+    }
+  }
 
   // Copied token state
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -442,6 +467,20 @@ export default function AdminProjectsPage() {
                 </Button>
               )}
 
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setAssignProjectTarget(proj)
+                  setAssignEmail(proj.owner_email && proj.owner_email !== "Unknown" && proj.owner_email !== "current_user" ? proj.owner_email : "")
+                  setAssignError(null)
+                }}
+                className="h-8 px-2.5 rounded-xl border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-bold cursor-pointer"
+              >
+                <Crown className="h-3.5 w-3.5 mr-1" />
+                Assign
+              </Button>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -456,6 +495,17 @@ export default function AdminProjectsPage() {
                   <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-wider text-[#818c99] px-2.5 py-1.5">
                     Tenant Control
                   </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setAssignProjectTarget(proj)
+                      setAssignEmail(proj.owner_email && proj.owner_email !== "Unknown" && proj.owner_email !== "current_user" ? proj.owner_email : "")
+                      setAssignError(null)
+                    }}
+                    className="cursor-pointer gap-2 text-cyan-400 hover:bg-cyan-950/30 hover:text-cyan-300 text-xs py-2 rounded-xl font-semibold"
+                  >
+                    <Crown className="h-3.5 w-3.5" />
+                    <span>Assign Owner</span>
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => handleDelete(proj.id)}
                     className="cursor-pointer gap-2 text-rose-400 hover:bg-rose-950/30 hover:text-rose-300 text-xs py-2 rounded-xl font-semibold"
@@ -977,6 +1027,70 @@ export default function AdminProjectsPage() {
               )}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Owner Dialog */}
+      <Dialog open={!!assignProjectTarget} onOpenChange={(open) => !open && setAssignProjectTarget(null)}>
+        <DialogContent className="sm:max-w-[450px] bg-[#12161c] border border-cyan-900/60 text-white shadow-2xl rounded-3xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
+              <Crown className="h-5 w-5 text-cyan-400" />
+              Assign Project Owner
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#818c99] pt-2">
+              Assign <strong className="text-white">{assignProjectTarget?.name}</strong> to a client or founder account. Once assigned, this bot will appear exclusively on their Project Owner Dashboard.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAssignOwner} className="space-y-4 mt-2">
+            <div>
+              <Label className="text-xs text-[#818c99]">Owner Email Address</Label>
+              <Input
+                type="email"
+                required
+                placeholder="e.g. founder@zoe.test or client@company.com"
+                value={assignEmail}
+                onChange={(e) => setAssignEmail(e.target.value)}
+                className="mt-1.5 bg-[#161b22] border-[#212833] focus:border-cyan-400 text-white text-xs h-10 rounded-xl"
+              />
+              <p className="text-[11px] text-[#818c99] mt-1">
+                The user must have registered an account with this email address.
+              </p>
+            </div>
+
+            {assignError && (
+              <div className="p-3 rounded-2xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                <span>{assignError}</span>
+              </div>
+            )}
+
+            <DialogFooter className="pt-4 border-t border-[#212833]">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setAssignProjectTarget(null)}
+                className="text-xs text-[#818c99] hover:text-white hover:bg-[#181d24] rounded-xl h-10"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={assignLoading || !assignEmail.trim()}
+                className="bg-cyan-500 hover:bg-cyan-600 text-black font-bold text-xs h-10 px-5 rounded-xl shadow-lg shadow-cyan-500/20 cursor-pointer"
+              >
+                {assignLoading ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                    Assigning...
+                  </>
+                ) : (
+                  "Confirm Assignment"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

@@ -564,9 +564,9 @@ export default function AdminProjectsPage() {
 
                 {/* Platform Selector */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-white">
+                  <label className="text-xs font-semibold text-white block">
                     Platform Gateway <span className="text-[#00ff66]">*</span>
-                  </Label>
+                  </label>
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
@@ -751,19 +751,6 @@ export default function AdminProjectsPage() {
                     placeholder="e.g. 7vfCXTUXx5WJV5JADk17DUJ4ksau7utNKj4b963voxs4"
                     value={tokenAddress}
                     onChange={(e) => setTokenAddress(e.target.value)}
-                    className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-[#00ff66]"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="group-id" className="text-xs font-semibold text-white">
-                    Telegram Group ID (Optional)
-                  </Label>
-                  <Input
-                    id="group-id"
-                    placeholder="e.g. -1001234567890"
-                    value={groupId}
-                    onChange={(e) => setGroupId(e.target.value)}
                     className="bg-[#161b22] border-[#212833] text-white font-mono text-xs h-10 rounded-xl focus:border-[#00ff66]"
                   />
                 </div>

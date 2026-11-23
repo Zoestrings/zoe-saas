@@ -579,7 +579,7 @@ export default function AdminProjectsPage() {
                 Add Project
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px] bg-[#12161c] border border-[#212833] text-white shadow-2xl rounded-3xl p-6">
+            <DialogContent className="w-[92vw] sm:max-w-[500px] max-h-[85vh] overflow-y-auto bg-[#12161c] border border-[#212833] text-white shadow-2xl rounded-3xl p-5 sm:p-6">
               <DialogHeader>
                 <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
                   <Bot className="h-5 w-5 text-[#00ff66]" />
@@ -983,7 +983,7 @@ export default function AdminProjectsPage() {
 
       {/* Suspend Confirmation Dialog */}
       <Dialog open={!!suspendProjectTarget} onOpenChange={(open) => !open && setSuspendProjectTarget(null)}>
-        <DialogContent className="sm:max-w-[450px] bg-[#12161c] border border-rose-900/60 text-white shadow-2xl rounded-3xl p-6">
+        <DialogContent className="w-[92vw] sm:max-w-[450px] max-h-[85vh] overflow-y-auto bg-[#12161c] border border-rose-900/60 text-white shadow-2xl rounded-3xl p-5 sm:p-6">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
               <ShieldAlert className="h-5 w-5 text-rose-500" />
@@ -1032,7 +1032,7 @@ export default function AdminProjectsPage() {
 
       {/* Assign Owner Dialog */}
       <Dialog open={!!assignProjectTarget} onOpenChange={(open) => !open && setAssignProjectTarget(null)}>
-        <DialogContent className="sm:max-w-[450px] bg-[#12161c] border border-cyan-900/60 text-white shadow-2xl rounded-3xl p-6">
+        <DialogContent className="w-[92vw] sm:max-w-[450px] max-h-[85vh] overflow-y-auto bg-[#12161c] border border-cyan-900/60 text-white shadow-2xl rounded-3xl p-5 sm:p-6">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
               <Crown className="h-5 w-5 text-cyan-400" />

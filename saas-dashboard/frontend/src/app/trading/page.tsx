@@ -809,7 +809,7 @@ function TradingTerminalContent() {
 
       {/* Reset Confirmation Dialog */}
       <Dialog open={isResetOpen} onOpenChange={setIsResetOpen}>
-        <DialogContent className="sm:max-w-[420px] bg-[#12161c] border border-neutral-800 text-white rounded-3xl p-6 shadow-2xl">
+        <DialogContent className="w-[92vw] sm:max-w-[420px] max-h-[85vh] overflow-y-auto bg-[#12161c] border border-neutral-800 text-white rounded-3xl p-5 sm:p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
               <RotateCcw className="h-5 w-5 text-rose-400" />

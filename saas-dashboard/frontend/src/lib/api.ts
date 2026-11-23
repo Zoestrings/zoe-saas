@@ -621,6 +621,18 @@ export const api = {
     })
   },
 
+  async getProjectDocuments(projectId: string): Promise<any[]> {
+    return apiRequest<any[]>(`/api/projects/${projectId}/documents`, {
+      method: "GET",
+    })
+  },
+
+  async getProjectSettings(projectId: string): Promise<{ custom_instructions?: string; model?: string }> {
+    return apiRequest<{ custom_instructions?: string; model?: string }>(`/api/projects/${projectId}/settings`, {
+      method: "GET",
+    })
+  },
+
   async investigate(contractAddress: string): Promise<InvestigationReport> {
     return apiRequest<InvestigationReport>("/api/investigate", {
       method: "POST",

@@ -29,7 +29,9 @@ import {
   Radar,
   TrendingUp,
   Loader2,
-  DollarSign
+  DollarSign,
+  Menu,
+  X
 } from "lucide-react"
 import "./overview.css"
 import { api, logout, Project } from "@/lib/api"
@@ -196,6 +198,7 @@ export default function ZoeDashboard() {
   const [totalInvestigations, setTotalInvestigations] = useState("14")
   const [systemUptime, setSystemUptime] = useState("99.9%")
   const [chartData, setChartData] = useState<Array<{ date: string; value: number }>>([])
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Load real projects from backend
   useEffect(() => {
@@ -293,7 +296,10 @@ export default function ZoeDashboard() {
   return (
     <div className="zoe-app">
       {/* Sidebar Navigation */}
-      <aside className="sidebar">
+      {mobileMenuOpen && (
+        <div className="sidebar-overlay" onClick={() => setMobileMenuOpen(false)} />
+      )}
+      <aside className={`sidebar ${mobileMenuOpen ? "open" : ""}`}>
         <div className="brand">
           <div className="brand-mark">✦</div>
           <div>
@@ -378,11 +384,21 @@ export default function ZoeDashboard() {
       {/* Main Content Area */}
       <main className="main-content">
         <header className="topbar">
-          <div className="welcome">
-            <div className="wave">👋</div>
-            <div>
-              <h1>Good morning!</h1>
-              <p>Here&apos;s what&apos;s happening across your projects today.</p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              className="md:hidden icon-button cursor-pointer"
+              aria-label="Toggle navigation"
+            >
+              {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
+            <div className="welcome">
+              <div className="wave">👋</div>
+              <div>
+                <h1>Good morning!</h1>
+                <p>Here&apos;s what&apos;s happening across your projects today.</p>
+              </div>
             </div>
           </div>
           <div className="top-actions">

@@ -479,8 +479,8 @@ export default function CommunityPage() {
           </div>
 
           <Card className="bg-[#121212] border-neutral-800">
-            <CardContent className="p-0">
-              <Table>
+            <CardContent className="p-0 overflow-x-auto w-full">
+              <Table className="min-w-[650px] sm:min-w-full">
                 <TableHeader>
                   <TableRow className="border-neutral-800 hover:bg-transparent">
                     <TableHead className="w-16 text-neutral-400">Rank</TableHead>

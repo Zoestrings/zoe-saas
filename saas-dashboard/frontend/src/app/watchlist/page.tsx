@@ -354,8 +354,8 @@ export default function WatchlistPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border border-neutral-800 bg-[#121212] overflow-hidden shadow-2xl">
-          <Table>
+        <div className="rounded-3xl border border-neutral-800 bg-[#121212] overflow-x-auto w-full shadow-2xl">
+          <Table className="min-w-[700px] sm:min-w-full">
             <TableHeader>
               <TableRow className="border-b border-neutral-800 hover:bg-transparent">
                 <TableHead className="text-neutral-400 text-xs py-3.5 px-5 font-bold uppercase tracking-wider">

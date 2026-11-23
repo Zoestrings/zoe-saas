@@ -12,14 +12,20 @@ import {
   User as UserIcon,
   Sparkles,
   Radar,
+  Bookmark,
   MessageSquare,
   Users,
   Lock,
-  Wallet,
-  TrendingUp,
+  Flame,
   CreditCard,
   Crown,
-  ArrowRight
+  ArrowRight,
+  LayoutDashboard,
+  Settings,
+  Menu,
+  X,
+  ShieldCheck,
+  ChevronRight
 } from "lucide-react"
 import { getToken, getUser, removeToken, User, api, EntitlementResponse } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -31,6 +37,17 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+
+interface NavSection {
+  title: string
+  items: {
+    label: string
+    href: string
+    icon: React.ComponentType<{ className?: string }>
+    isPremium?: boolean
+    badge?: string
+  }[]
+}
 
 export default function OwnerLayout({
   children,
@@ -44,6 +61,7 @@ export default function OwnerLayout({
   const [entitlement, setEntitlement] = useState<EntitlementResponse | null>(null)
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false)
   const [lockedFeatureName, setLockedFeatureName] = useState("Premium Intelligence")
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     const token = getToken()
@@ -53,7 +71,6 @@ export default function OwnerLayout({
     } else {
       setUser(currentUser)
       setIsAuthenticated(true)
-      // Fetch entitlement status
       api.getEntitlement()
         .then((res) => setEntitlement(res))
         .catch((err) => {
@@ -62,6 +79,11 @@ export default function OwnerLayout({
         })
     }
   }, [router])
+
+  // Close mobile drawer on route change
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [pathname])
 
   const handleLogout = () => {
     removeToken()
@@ -79,19 +101,45 @@ export default function OwnerLayout({
 
   const isFree = !entitlement?.is_pro && (entitlement?.plan !== "pro")
 
-  const navItems = [
-    { label: "My Bot", href: "/owner/dashboard", icon: Bot, isPremium: false },
-    { label: "Community", href: "/community", icon: Users, isPremium: false },
-    { label: "Scanner", href: "/investigate", icon: Radar, isPremium: true },
-    { label: "Wallet Intel", href: "/community", icon: Wallet, isPremium: true },
-    { label: "Trading", href: "/trading", icon: TrendingUp, isPremium: true },
-    { label: "Knowledge Base", href: "/owner/dashboard/knowledge", icon: BrainCircuit, isPremium: false },
-    { label: "Instructions", href: "/owner/dashboard/instructions", icon: FileCode, isPremium: false },
-    { label: "Logs", href: "/owner/logs", icon: MessageSquare, isPremium: false },
-    { label: "Billing", href: "/billing", icon: CreditCard, isPremium: false },
+  const navSections: NavSection[] = [
+    {
+      title: "Overview",
+      items: [
+        { label: "Home", href: "/owner/dashboard", icon: LayoutDashboard },
+        { label: "My Project", href: "/owner/project", icon: Bot },
+      ],
+    },
+    {
+      title: "Intelligence",
+      items: [
+        { label: "Scanner", href: "/investigate", icon: Radar, isPremium: true, badge: "PRO" },
+        { label: "Watchlist", href: "/watchlist", icon: Bookmark },
+      ],
+    },
+    {
+      title: "Community",
+      items: [
+        { label: "Logs", href: "/owner/logs", icon: MessageSquare },
+        { label: "Games & Calls", href: "/community", icon: Flame },
+      ],
+    },
+    {
+      title: "Configuration",
+      items: [
+        { label: "Knowledge Base", href: "/owner/dashboard/knowledge", icon: BrainCircuit },
+        { label: "Instructions", href: "/owner/dashboard/instructions", icon: FileCode },
+      ],
+    },
+    {
+      title: "Settings",
+      items: [
+        { label: "Billing & Invoices", href: "/billing", icon: CreditCard },
+        { label: "Account Settings", href: "/settings", icon: Settings },
+      ],
+    },
   ]
 
-  const handleNavClick = (e: React.MouseEvent, item: typeof navItems[0]) => {
+  const handleNavClick = (e: React.MouseEvent, item: { label: string; isPremium?: boolean }) => {
     if (item.isPremium && isFree) {
       e.preventDefault()
       setLockedFeatureName(item.label)
@@ -99,29 +147,15 @@ export default function OwnerLayout({
     }
   }
 
-  return (
-    <div className="min-h-screen w-full bg-[#0a0a0a] text-white flex flex-col font-sans">
-      {/* Top Glassmorphic Navigation Header */}
-      <header className="sticky top-0 z-40 border-b border-neutral-800 bg-[#0a0a0a]/90 backdrop-blur-md px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center gap-8">
-          <Link href="/owner/dashboard" className="flex items-center gap-2.5 group">
-            <div className="h-9 w-9 rounded-xl bg-[#00ff66] text-black flex items-center justify-center shadow-lg shadow-[#00ff66]/20 font-bold">
-              <Sparkles className="h-5 w-5 fill-black text-black" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold tracking-tight text-white text-base">Zoe Platform</span>
-                <span className="text-[10px] font-bold uppercase tracking-wider bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30 px-2 py-0.5 rounded-full">
-                  Client Portal
-                </span>
-              </div>
-              <p className="text-[11px] text-neutral-400">Autonomous Agent Management</p>
-            </div>
-          </Link>
-
-          {/* Nav Links */}
-          <nav className="hidden lg:flex items-center gap-1.5">
-            {navItems.map((item) => {
+  const renderNavLinks = () => (
+    <div className="space-y-6">
+      {navSections.map((sec) => (
+        <div key={sec.title} className="space-y-1.5">
+          <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-neutral-500 font-mono">
+            {sec.title}
+          </div>
+          <div className="space-y-1">
+            {sec.items.map((item) => {
               const Icon = item.icon
               const isActive = pathname === item.href
               const isLocked = item.isPremium && isFree
@@ -131,64 +165,212 @@ export default function OwnerLayout({
                   key={item.label}
                   href={item.href}
                   onClick={(e) => handleNavClick(e, item)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer ${
                     isActive
-                      ? "bg-neutral-800 text-[#00ff66] border border-[#00ff66]/40 shadow-sm"
+                      ? "bg-[#00ff66]/15 text-[#00ff66] border border-[#00ff66]/30 shadow-sm shadow-[#00ff66]/10"
                       : isLocked
-                      ? "text-neutral-400 hover:text-amber-400 hover:bg-neutral-900"
-                      : "text-neutral-400 hover:text-white hover:bg-neutral-900"
+                      ? "text-neutral-400 hover:text-amber-400 hover:bg-neutral-900/60"
+                      : "text-neutral-400 hover:text-white hover:bg-neutral-900/80"
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5" />
-                  <span>{item.label}</span>
-                  {isLocked && (
-                    <Lock className="h-3 w-3 text-amber-400 ml-0.5" />
-                  )}
+                  <div className="flex items-center gap-2.5">
+                    <Icon className={`h-4 w-4 transition-colors ${
+                      isActive ? "text-[#00ff66]" : isLocked ? "text-amber-400/80 group-hover:text-amber-400" : "text-neutral-400 group-hover:text-white"
+                    }`} />
+                    <span>{item.label}</span>
+                  </div>
+
+                  {isLocked ? (
+                    <span className="flex items-center gap-1 text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                      <Lock className="h-2.5 w-2.5" />
+                      <span>PRO</span>
+                    </span>
+                  ) : item.badge ? (
+                    <span className="text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
+                      {item.badge}
+                    </span>
+                  ) : null}
                 </Link>
               )
             })}
-          </nav>
+          </div>
         </div>
+      ))}
+    </div>
+  )
 
-        {/* User Info & Actions */}
-        <div className="flex items-center gap-3">
-          {/* Plan Badge */}
+  return (
+    <div className="min-h-screen w-full bg-[#0a0a0a] text-white flex flex-col md:flex-row font-sans selection:bg-[#00ff66] selection:text-black">
+      {/* Top Header on Mobile (< md) */}
+      <header className="md:hidden sticky top-0 z-40 bg-[#0a0a0a]/95 backdrop-blur-md px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
+        <Link href="/owner/dashboard" className="flex items-center gap-2.5">
+          <div className="h-8 w-8 rounded-xl bg-[#00ff66] text-black flex items-center justify-center font-black shadow-md shadow-[#00ff66]/20">
+            <Sparkles className="h-4 w-4 fill-black text-black" />
+          </div>
+          <div>
+            <span className="font-bold text-white text-sm tracking-tight block leading-tight">Zoe Platform</span>
+            <span className="text-[10px] text-neutral-400 font-mono">Project Owner</span>
+          </div>
+        </Link>
+
+        <div className="flex items-center gap-2">
           <Link href="/billing">
-            <div className={`hidden sm:flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full border cursor-pointer transition-all ${
-              !isFree
-                ? "bg-[#00ff66]/10 border-[#00ff66]/40 text-[#00ff66] shadow-sm shadow-[#00ff66]/10"
-                : "bg-amber-500/10 border-amber-500/40 text-amber-400 hover:bg-amber-500/20"
+            <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${
+              !isFree ? "bg-[#00ff66]/10 border-[#00ff66]/40 text-[#00ff66]" : "bg-amber-500/10 border-amber-500/40 text-amber-400"
             }`}>
-              <Crown className="h-3 w-3" />
-              <span>{!isFree ? "PRO" : "FREE PLAN"}</span>
+              {!isFree ? "PRO" : "FREE"}
+            </span>
+          </Link>
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="p-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white cursor-pointer"
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
+      </header>
+
+      {/* Mobile Drawer Overlay */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex">
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+          <aside className="relative z-10 w-72 max-w-[85vw] h-full bg-[#0c0d14] border-r border-neutral-800 p-5 flex flex-col overflow-y-auto">
+            <div className="flex items-center justify-between pb-5 border-b border-neutral-800 mb-5">
+              <Link href="/owner/dashboard" className="flex items-center gap-2.5">
+                <div className="h-8 w-8 rounded-xl bg-[#00ff66] text-black flex items-center justify-center font-black shadow-md">
+                  <Sparkles className="h-4 w-4 fill-black text-black" />
+                </div>
+                <div>
+                  <span className="font-bold text-white text-sm">Zoe Platform</span>
+                  <span className="text-[10px] text-[#00ff66] block font-mono">Owner Portal</span>
+                </div>
+              </Link>
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="p-1.5 rounded-lg bg-neutral-900 text-neutral-400 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1">
+              {renderNavLinks()}
+            </div>
+
+            <div className="pt-5 border-t border-neutral-800 mt-6 space-y-3">
+              <div className="flex items-center gap-2 text-xs text-neutral-300">
+                <UserIcon className="h-4 w-4 text-[#00ff66]" />
+                <span className="truncate">{user?.email || "Owner"}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="w-full justify-start text-xs text-neutral-400 hover:text-rose-400 hover:bg-rose-950/20 rounded-xl"
+              >
+                <LogOut className="h-3.5 w-3.5 mr-2" />
+                Sign Out
+              </Button>
+            </div>
+          </aside>
+        </div>
+      )}
+
+      {/* Desktop Permanent Left Sidebar (md:flex) */}
+      <aside className="hidden md:flex flex-col w-60 lg:w-64 min-h-screen bg-[#0c0d14] border-r border-[#1b1f2e] p-5 shrink-0 sticky top-0 h-screen overflow-y-auto">
+        {/* Brand Header */}
+        <div className="pb-5 border-b border-neutral-800/80 mb-5">
+          <Link href="/owner/dashboard" className="flex items-center gap-3 group">
+            <div className="h-9 w-9 rounded-2xl bg-[#00ff66] text-black flex items-center justify-center font-black shadow-lg shadow-[#00ff66]/20 group-hover:scale-105 transition-transform">
+              <Sparkles className="h-5 w-5 fill-black text-black" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-extrabold text-white text-base tracking-tight leading-none">Zoe</span>
+                <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30 font-bold">
+                  Client
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-400 mt-1 font-medium">Project Owner Portal</p>
             </div>
           </Link>
+        </div>
 
-          <div className="hidden sm:flex items-center gap-2 text-xs text-neutral-400 bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-full">
-            <UserIcon className="h-3.5 w-3.5 text-[#00ff66]" />
-            <span className="text-neutral-300 font-medium truncate max-w-[140px]">{user?.email || "Project Owner"}</span>
+        {/* Grouped Nav Items */}
+        <div className="flex-1 space-y-6">
+          {renderNavLinks()}
+        </div>
+
+        {/* Pro Promo Banner if Free */}
+        {isFree && (
+          <div className="my-4 p-3.5 rounded-2xl bg-gradient-to-br from-amber-500/10 via-neutral-900/60 to-transparent border border-amber-500/30 text-center space-y-2">
+            <div className="text-[11px] font-bold text-white flex items-center justify-center gap-1.5 text-amber-400">
+              <Crown className="h-3.5 w-3.5" />
+              <span>Unlock Pro Intel</span>
+            </div>
+            <p className="text-[10px] text-neutral-400 leading-tight">
+              Get 24/7 wallet surveillance, honeypot scanner, and OSINT founder lookups.
+            </p>
+            <Link href="/billing">
+              <Button size="sm" className="w-full h-7 text-[10px] font-bold bg-[#00ff66] hover:bg-[#00e65c] text-black rounded-lg cursor-pointer">
+                Upgrade ($20/mo)
+              </Button>
+            </Link>
+          </div>
+        )}
+
+        {/* Bottom User Profile & Sign Out */}
+        <div className="pt-4 border-t border-neutral-800/80 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="h-7 w-7 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[#00ff66] shrink-0 font-bold text-xs">
+                {user?.email ? user.email[0].toUpperCase() : "O"}
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-white truncate max-w-[120px]">
+                  {user?.email || "Project Owner"}
+                </div>
+                <div className="text-[10px] text-neutral-400 font-mono">
+                  {!isFree ? "Pro Plan" : "Free Tier"}
+                </div>
+              </div>
+            </div>
+
+            <Link href="/billing">
+              <span className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${
+                !isFree
+                  ? "bg-[#00ff66]/10 border-[#00ff66]/40 text-[#00ff66]"
+                  : "bg-amber-500/10 border-amber-500/40 text-amber-400"
+              }`}>
+                {!isFree ? "PRO" : "FREE"}
+              </span>
+            </Link>
           </div>
 
           <Button
             variant="ghost"
             size="sm"
             onClick={handleLogout}
-            className="text-neutral-400 hover:text-rose-400 hover:bg-rose-950/20 text-xs h-8 px-3 rounded-full cursor-pointer"
+            className="w-full justify-start text-xs text-neutral-400 hover:text-rose-400 hover:bg-rose-950/20 rounded-xl h-8 px-2 cursor-pointer transition-colors"
           >
-            <LogOut className="h-3.5 w-3.5 mr-1.5" />
+            <LogOut className="h-3.5 w-3.5 mr-2" />
             Sign Out
           </Button>
         </div>
-      </header>
+      </aside>
 
       {/* Main Scoped Content */}
-      <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full">
         {children}
       </main>
 
       {/* Upgrade Required Paywall Modal */}
       <Dialog open={upgradeModalOpen} onOpenChange={setUpgradeModalOpen}>
-        <DialogContent className="sm:max-w-md bg-[#121212] border border-neutral-800 text-white rounded-3xl p-6">
+        <DialogContent className="w-[92vw] sm:max-w-md max-h-[85vh] overflow-y-auto bg-[#121212] border border-neutral-800 text-white rounded-3xl p-6">
           <DialogHeader className="space-y-3">
             <div className="h-12 w-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto">
               <Lock className="h-6 w-6" />
@@ -212,7 +394,7 @@ export default function OwnerLayout({
             </ul>
           </div>
 
-          <DialogFooter className="flex sm:flex-row gap-2 pt-2">
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2">
             <Button
               type="button"
               variant="ghost"
@@ -233,4 +415,3 @@ export default function OwnerLayout({
     </div>
   )
 }
-

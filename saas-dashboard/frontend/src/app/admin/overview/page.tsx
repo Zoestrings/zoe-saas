@@ -35,6 +35,7 @@ import {
 } from "lucide-react"
 import "./overview.css"
 import { api, logout, Project } from "@/lib/api"
+import { ZoeLogo } from "@/components/zoe-logo"
 
 interface UIProject {
   id: string
@@ -301,11 +302,7 @@ export default function ZoeDashboard() {
       )}
       <aside className={`sidebar ${mobileMenuOpen ? "open" : ""}`}>
         <div className="brand">
-          <div className="brand-mark">✦</div>
-          <div>
-            <b>Zoe</b>
-            <small>Intelligence Engine</small>
-          </div>
+          <ZoeLogo size={36} glow variant="full" badge="ADMIN" />
         </div>
 
         <nav className="nav-links">

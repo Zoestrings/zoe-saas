@@ -4,7 +4,7 @@ import Image from "next/image"
 interface ZoeLogoProps {
   className?: string
   size?: number | string
-  variant?: "mark" | "full" | "app-icon" | "watermark" | "horizontal"
+  variant?: "mark" | "full" | "app-icon" | "watermark" | "horizontal" | "monochrome"
   withSparkle?: boolean
   glow?: boolean
   badge?: string
@@ -47,7 +47,25 @@ export function ZoeLogo({
           alt="Zoe App Icon"
           width={numericSize}
           height={numericSize}
-          className="w-full h-full object-contain rounded-2xl shadow-lg shadow-[#00e599]/10"
+          className="w-full h-full object-contain rounded-2xl shadow-lg shadow-[#00e599]/15"
+        />
+      </div>
+    )
+  }
+
+  if (variant === "monochrome") {
+    return (
+      <div
+        className={`relative inline-flex items-center justify-center shrink-0 ${className}`}
+        style={{ width: numericSize, height: numericSize }}
+      >
+        <Image
+          src="/zoe-monochrome.png"
+          alt="Zoe Monochrome"
+          width={numericSize}
+          height={numericSize}
+          className="w-full h-full object-contain"
+          priority
         />
       </div>
     )
@@ -71,7 +89,7 @@ export function ZoeLogo({
   if (variant === "full") {
     return (
       <div className={`flex items-center gap-3 ${className}`}>
-        {/* 3D Ribbon 'Z' Brand Mark */}
+        {/* 3D Ribbon 'Z' Brand Mark with Green-Cyan Gradient and Mint Sparkle */}
         <div
           className={`relative flex items-center justify-center shrink-0 ${
             glow ? "drop-shadow-[0_0_12px_rgba(0,229,153,0.35)]" : ""
@@ -80,7 +98,7 @@ export function ZoeLogo({
         >
           <Image
             src="/zoe-mark.png"
-            alt="Zoe"
+            alt="Zoe Mark"
             width={numericSize}
             height={numericSize}
             className="w-full h-full object-contain"
@@ -88,7 +106,7 @@ export function ZoeLogo({
           />
         </div>
 
-        {/* Brand Text Typography Matching Brand Sheet */}
+        {/* Brand Text Typography Matching Official Brand Kit */}
         <div className="flex flex-col select-none leading-none">
           <div className="flex items-center gap-2">
             <span
@@ -98,13 +116,13 @@ export function ZoeLogo({
               Zoe
             </span>
             {badge && (
-              <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-[#00e599]/10 text-[#00e599] border border-[#00e599]/30 font-bold tracking-wider leading-none">
+              <span className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-[#00e599] border border-emerald-500/30 font-bold tracking-wider leading-none shadow-sm shadow-[#00e599]/10">
                 {badge}
               </span>
             )}
           </div>
           <span
-            className="font-bold tracking-[0.22em] text-[#00e599] uppercase mt-1 leading-none font-sans"
+            className="font-bold tracking-[0.24em] text-[#00f0ff] uppercase mt-1 leading-none font-sans"
             style={{ fontSize: Math.max(9, numericSize * 0.22) }}
           >
             Intelligence

@@ -1515,6 +1515,7 @@ def process_message(
                 and "No active trading pairs" not in live_market_data
             )
 
+            web_results = []
             if not has_valid_price or web_search_fn is not None:
                 searcher = web_search_fn or search_web_sync
                 try:
@@ -1523,23 +1524,65 @@ def process_message(
                     logger.warning("Web search failed for query '%s': %s", norm_msg.text, exc)
                     web_results = []
 
-            prompt = build_prompt(
-                message=norm_msg,
-                community_context=community_context,
-                official_chunks=[],
-                live_market_data=live_market_data,
-                web_results=web_results,
-                conversation_history=conversation_history,
-                system_prompt=active_system_prompt,
-            )
-            client = llm_client or MockLLMClient()
-            generated_text = _safe_generate(
-                client=client,
-                system_prompt=active_system_prompt,
-                user_prompt=prompt,
-                max_tokens=200,
-                project_id=norm_msg.project_id,
-            )
+            # If user asked for web search or news and both providers failed with no results:
+            if not web_results and not live_market_data:
+                generated_text = "I cannot access live news right now. Please check official sources."
+            else:
+                # If explicit search request or news inquiry without pricing, format as structured analyst brief
+                is_explicit_news_or_search = any(
+                    k in norm_msg.text.lower()
+                    for k in ("search", "news", "upgrade", "happening", "defi", "sec", "etf", "break")
+                )
+                if is_explicit_news_or_search and web_results and not live_market_data:
+                    formatted_snippets = []
+                    for r in web_results[:5]:
+                        formatted_snippets.append(
+                            f"- Title: {r.get('title', '')}\n"
+                            f"  Summary: {r.get('snippet', '') or r.get('body', '')}\n"
+                            f"  Source URL: {r.get('url', '') or r.get('href', '')}\n"
+                            f"  Timestamp: {r.get('date', 'Recent')}"
+                        )
+                    search_context = "\n\n".join(formatted_snippets)
+                    web_analyst_prompt = (
+                        "You are a Web3 News Analyst. Based on the following live search results, summarize the query in 3 clear bullet points. "
+                        "Include the source URL and timestamp for each point. Separate facts from speculation.\n\n"
+                        f"[QUERY]: {norm_msg.text}\n"
+                        f"[LIVE WEB SEARCH RESULTS]:\n{search_context}\n\n"
+                        "Format strictly for Telegram with clean plain text (NO markdown asterisks **):\n"
+                        "📰 Web3 Intelligence Brief\n"
+                        "1. [Headline/Key Fact] (Source: [Source URL], [Timestamp])\n"
+                        "2. [Headline/Key Fact] (Source: [Source URL], [Timestamp])\n"
+                        "3. [Headline/Key Fact] (Source: [Source URL], [Timestamp])\n\n"
+                        "Sources:\n[List unique URLs]"
+                    )
+                    client = llm_client or MockLLMClient()
+                    generated_text = _safe_generate(
+                        client=client,
+                        system_prompt=active_system_prompt,
+                        user_prompt=web_analyst_prompt,
+                        max_tokens=300,
+                        project_id=norm_msg.project_id,
+                    )
+                    if generated_text:
+                        generated_text = generated_text.replace("**", "").strip()
+                else:
+                    prompt = build_prompt(
+                        message=norm_msg,
+                        community_context=community_context,
+                        official_chunks=[],
+                        live_market_data=live_market_data,
+                        web_results=web_results,
+                        conversation_history=conversation_history,
+                        system_prompt=active_system_prompt,
+                    )
+                    client = llm_client or MockLLMClient()
+                    generated_text = _safe_generate(
+                        client=client,
+                        system_prompt=active_system_prompt,
+                        user_prompt=prompt,
+                        max_tokens=200,
+                        project_id=norm_msg.project_id,
+                    )
         elif intent == "api_call":
             token_addr = None
             try:

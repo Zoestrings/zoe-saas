@@ -136,7 +136,10 @@ def route_intent(message_text: str) -> str:
     if detected_ca:
         return "ca_detection"
 
-    # 0.5. Live Web3 News Intelligence Routing
+    # 0.5. Live Web3 News & Web Search Intelligence Routing
+    if re.search(r"\b(?:search\s+(?:the\s+)?web|look\s+up\s+online|google\s+this|browse\s+the\s+web)\b", text, re.IGNORECASE):
+        return "web_search"
+
     if any(p.search(text) for p in CRYPTO_NEWS_PATTERNS):
         return "crypto_news"
 

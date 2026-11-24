@@ -54,7 +54,14 @@ def _ddg_html_fallback(query: str, max_results: int = 3) -> List[Dict[str, str]]
             elif raw_url.startswith("//"):
                 actual_url = f"https:{raw_url}"
 
-            results.append({"title": t, "body": s, "href": actual_url})
+            results.append({
+                "title": t,
+                "snippet": s,
+                "body": s,
+                "url": actual_url,
+                "href": actual_url,
+                "date": "Recent",
+            })
         return results
     except Exception as exc:
         logger.debug("DuckDuckGo HTML fallback failed: %s", exc)
@@ -62,7 +69,7 @@ def _ddg_html_fallback(query: str, max_results: int = 3) -> List[Dict[str, str]]
 
 
 def search_web_sync(query: str, max_results: int = 3) -> List[Dict[str, str]]:
-    """Search DuckDuckGo synchronously and return title, body, and href for top results."""
+    """Search DuckDuckGo synchronously and return title, snippet, url, and date for top results."""
     try:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -71,11 +78,16 @@ def search_web_sync(query: str, max_results: int = 3) -> List[Dict[str, str]]:
             if raw_results:
                 results: List[Dict[str, str]] = []
                 for r in raw_results:
+                    snip = r.get("body", "") or r.get("snippet", "")
+                    url = r.get("href", "") or r.get("link", "")
                     results.append(
                         {
                             "title": r.get("title", ""),
-                            "body": r.get("body", "") or r.get("snippet", ""),
-                            "href": r.get("href", "") or r.get("link", ""),
+                            "snippet": snip,
+                            "body": snip,
+                            "url": url,
+                            "href": url,
+                            "date": r.get("date", "Recent"),
                         }
                     )
                 return results

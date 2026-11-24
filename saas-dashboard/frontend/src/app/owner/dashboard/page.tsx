@@ -132,7 +132,7 @@ export default function OwnerDashboardPage() {
             <RefreshCw className="h-3.5 w-3.5 mr-2" />
             Check Again
           </Button>
-          <Link href="/billing" className="w-full sm:w-auto">
+          <Link href="/owner/billing" className="w-full sm:w-auto">
             <Button
               className="w-full sm:w-auto bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-10 px-6 rounded-full cursor-pointer shadow-lg shadow-[#00ff66]/20"
             >
@@ -208,7 +208,7 @@ export default function OwnerDashboardPage() {
               </p>
             </div>
           </div>
-          <Link href="/billing">
+          <Link href="/owner/billing">
             <Button className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-extrabold text-xs h-9 px-5 rounded-full shadow-lg shadow-[#00ff66]/20 cursor-pointer shrink-0">
               Upgrade to Pro ($20)
             </Button>

@@ -2,8 +2,13 @@ import type { Metadata } from "next"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Zoe | Autonomous Community Intelligence Engine",
+  title: "Zoe Intelligence | Autonomous Web3 Community Engine",
   description: "Enterprise SaaS dashboard for managing autonomous Web3 community agents and live Telegram bots.",
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/zoe-app-icon.png",
+  },
 }
 
 export default function RootLayout({

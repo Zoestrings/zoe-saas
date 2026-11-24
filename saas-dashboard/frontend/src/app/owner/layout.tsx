@@ -134,7 +134,7 @@ export default function OwnerLayout({
     {
       title: "Settings",
       items: [
-        { label: "Billing & Invoices", href: "/billing", icon: CreditCard },
+        { label: "Billing & Invoices", href: "/owner/billing", icon: CreditCard },
         { label: "Account Settings", href: "/settings", icon: Settings },
       ],
     },
@@ -211,7 +211,7 @@ export default function OwnerLayout({
         </Link>
 
         <div className="flex items-center gap-2">
-          <Link href="/billing">
+          <Link href="/owner/billing">
             <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${!isFree ? "bg-[#00ff66]/10 border-[#00ff66]/40 text-[#00ff66]" : "bg-amber-500/10 border-amber-500/40 text-amber-400"
               }`}>
               {!isFree ? "PRO" : "FREE"}
@@ -298,7 +298,7 @@ export default function OwnerLayout({
             <p className="text-[10px] text-neutral-400 leading-tight">
               Get 24/7 wallet surveillance, honeypot scanner, and OSINT founder lookups.
             </p>
-            <Link href="/billing">
+            <Link href="/owner/billing">
               <Button size="sm" className="w-full h-7 text-[10px] font-bold bg-[#00ff66] hover:bg-[#00e65c] text-black rounded-lg cursor-pointer">
                 Upgrade ($20/mo)
               </Button>
@@ -323,7 +323,7 @@ export default function OwnerLayout({
               </div>
             </div>
 
-            <Link href="/billing">
+            <Link href="/owner/billing">
               <span className={`text-[9px] font-mono uppercase px-2 py-0.5 rounded-full border font-bold ${!isFree
                 ? "bg-[#00ff66]/10 border-[#00ff66]/40 text-[#00ff66]"
                 : "bg-amber-500/10 border-amber-500/40 text-amber-400"
@@ -348,8 +348,8 @@ export default function OwnerLayout({
       {/* Main Scoped Content */}
       <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 max-w-7xl mx-auto w-full relative">
         {/* Subtle Brand Watermark in Bottom-Right Corner */}
-        <div 
-          aria-hidden="true" 
+        <div
+          aria-hidden="true"
           className="fixed bottom-[-60px] right-[-60px] pointer-events-none z-0 opacity-[0.035] select-none drop-shadow-[0_0_50px_rgba(0,255,102,0.3)]"
         >
           <ZoeLogo variant="watermark" size={540} />
@@ -395,7 +395,7 @@ export default function OwnerLayout({
             >
               Maybe Later
             </Button>
-            <Link href="/billing" className="w-full sm:w-auto" onClick={() => setUpgradeModalOpen(false)}>
+            <Link href="/owner/billing" className="w-full sm:w-auto" onClick={() => setUpgradeModalOpen(false)}>
               <Button className="w-full h-10 px-6 rounded-full bg-[#00ff66] hover:bg-[#00e65c] text-black font-black text-xs cursor-pointer shadow-lg shadow-[#00ff66]/20 flex items-center justify-center gap-1.5">
                 <span>Upgrade to Pro ($20)</span>
                 <ArrowRight className="h-3.5 w-3.5" />

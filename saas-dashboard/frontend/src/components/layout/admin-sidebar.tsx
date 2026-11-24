@@ -60,7 +60,7 @@ const adminNav = [
   },
   { 
     name: "Upgrade Plan", 
-    href: "/billing", 
+    href: "/admin/billing", 
     icon: Crown,
   },
   { 

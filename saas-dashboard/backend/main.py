@@ -2048,6 +2048,22 @@ async def verify_solana_usdt_payment(
         return False, f"Verification failed due to network/RPC error: {str(exc)}"
 
 
+@app.get("/api/intel/x-sentiment", response_model=Dict[str, Any])
+async def get_x_sentiment_endpoint(
+    query: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Analyze X / Twitter sentiment and narrative trends for a crypto asset or query."""
+    clean_q = query.strip()
+    if not clean_q:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Query string cannot be empty.",
+        )
+    from zoe.tools.x_intel import analyze_x_sentiment
+    return await analyze_x_sentiment(clean_q)
+
+
 @app.post("/api/investigate", response_model=Dict[str, Any])
 async def investigate_token(
     payload: InvestigateRequest,
@@ -2078,6 +2094,22 @@ async def investigate_token(
     # Attach Pro status and paywall locks
     report["is_pro"] = is_pro
     report["pro_locked"] = not is_pro
+
+    # Attach X (Twitter) Sentiment & Narrative Tracking
+    try:
+        from zoe.tools.x_intel import analyze_x_sentiment
+        target_name = f"${report.get('symbol')}" if report.get("symbol") else (report.get("name") or ca)
+        report["x_sentiment"] = await analyze_x_sentiment(target_name)
+    except Exception as exc:
+        print(f"[WARNING] Failed to fetch x_sentiment for investigation: {exc}")
+        report["x_sentiment"] = {
+            "sentiment": "Unknown",
+            "summary": "Not enough recent public data to determine sentiment for this token.",
+            "top_narratives": [],
+            "bullish_factors": [],
+            "bearish_factors": [],
+            "disclaimer": "Social sentiment is speculative and does not constitute financial advice. Always DYOR.",
+        }
 
     # If valid scan, persist to investigations table for history
     if report.get("valid"):

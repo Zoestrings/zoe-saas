@@ -177,6 +177,15 @@ export interface InvestigationReport {
   is_pro?: boolean
   pro_locked?: boolean
   wallet_trace?: WalletTrace
+  x_sentiment?: {
+    sentiment: "Bullish" | "Bearish" | "Neutral" | "Mixed" | "Unknown" | string
+    summary: string
+    top_narratives: string[]
+    bullish_factors?: string[]
+    bearish_factors?: string[]
+    tweet_count?: number
+    disclaimer?: string
+  }
   timestamp_utc?: string
 }
 

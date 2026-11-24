@@ -13,13 +13,21 @@ EXTERNAL_ASSET_PATTERNS = [
     re.compile(r"\b(?:avalanche|avax|polkadot|dot|near|sui|aptos|ton|tron|trx|pepe|wif|bonk)\b", re.IGNORECASE),
 ]
 
-# 1.5. Live Crypto News Patterns
+# 1.5. Live Crypto News & X Intelligence Patterns
 CRYPTO_NEWS_PATTERNS = [
     re.compile(r"\b(?:latest\s+news|crypto\s+news|token\s+news|market\s+news|breaking\s+news)\b", re.IGNORECASE),
     re.compile(r"\b(?:what(?:'s|\s+is)\s+(?:the\s+)?(?:latest\s+)?news\b|any\s+(?:crypto\s+)?news\b|news\s+(?:on|about|regarding)\b)", re.IGNORECASE),
     re.compile(r"\b(?:what(?:'s|\s+is)\s+happening\s+(?:with|to|in)\b|what\s+happened\s+(?:with|to|in)\b|what(?:'s|\s+is)\s+going\s+on\s+with\b)", re.IGNORECASE),
     re.compile(r"\b(?:did\s+[a-zA-Z0-9$]+\s+(?:break|hit|reach|dump|pump|crash|skyrocket|announce|release|win|lose)\b)", re.IGNORECASE),
     re.compile(r"\b(?:sec\s+(?:drops?|appeals?|lawsuit)|etf\s+approval|upgrade\s+(?:goes\s+)?live|airdrop\s+news)\b", re.IGNORECASE),
+]
+
+X_INTELLIGENCE_PATTERNS = [
+    re.compile(r"\b(?:what\s+(?:is|are)\s+(?:ct|crypto\s+twitter|people\s+on\s+x|people\s+on\s+twitter)\s+saying)\b", re.IGNORECASE),
+    re.compile(r"\b(?:sentiment\s+(?:on|in|for)\s+(?:x|twitter|ct)|x\s+sentiment|twitter\s+sentiment|ct\s+sentiment)\b", re.IGNORECASE),
+    re.compile(r"\b(?:trending\s+on\s+(?:crypto\s+twitter|twitter|x)|what\s+is\s+trending\s+on\s+(?:x|twitter|ct))\b", re.IGNORECASE),
+    re.compile(r"\b(?:what(?:'s|\s+is)\s+ct\s+saying\b|what\s+is\s+twitter\s+saying\b|what\s+is\s+x\s+saying\b)", re.IGNORECASE),
+    re.compile(r"\b(?:narrative\s+on\s+(?:x|twitter)|ct\s+narratives?)\b", re.IGNORECASE),
 ]
 
 # 2. Project Native Token Patterns
@@ -116,6 +124,30 @@ def extract_crypto_news_target(text: str) -> str:
     return "crypto"
 
 
+def extract_x_intel_target(text: str) -> str:
+    """Extract the target token, ticker, or topic from an X intelligence query."""
+    clean = text.strip()
+    # 1. Direct $TICKER (e.g. $BTC, $SOL, $ONELOVE)
+    ticker_match = re.search(r"(\$[a-zA-Z0-9]+)\b", clean)
+    if ticker_match:
+        return ticker_match.group(1).upper()
+
+    # 2. Known external assets and native tokens
+    for pattern in EXTERNAL_ASSET_PATTERNS + NATIVE_TOKEN_PATTERNS:
+        m = pattern.search(clean)
+        if m:
+            return m.group(0).upper()
+
+    # 3. Topic after 'about', 'on', 'for'
+    topic_match = re.search(r"\b(?:about|on|for|regarding|saying\s+about)\s+([$]?[a-zA-Z0-9]+)\b", clean, re.IGNORECASE)
+    if topic_match:
+        cand = topic_match.group(1).strip()
+        if cand.lower() not in {"x", "twitter", "ct", "crypto", "the", "a", "an", "this", "today", "now", "it"}:
+            return cand.upper()
+
+    return "Crypto"
+
+
 def route_intent(message_text: str) -> str:
     """Route message intent to one of:
     - 'ca_detection': for raw contract addresses (Solana or EVM)
@@ -136,7 +168,10 @@ def route_intent(message_text: str) -> str:
     if detected_ca:
         return "ca_detection"
 
-    # 0.5. Live Web3 News & Web Search Intelligence Routing
+    # 0.5. Live Web3 News, X Intelligence & Web Search Routing
+    if any(p.search(text) for p in X_INTELLIGENCE_PATTERNS):
+        return "x_intelligence"
+
     if re.search(r"\b(?:search\s+(?:the\s+)?web|look\s+up\s+online|google\s+this|browse\s+the\s+web)\b", text, re.IGNORECASE):
         return "web_search"
 

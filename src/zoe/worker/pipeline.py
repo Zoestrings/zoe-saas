@@ -19,7 +19,7 @@ from zoe.conversation.prompt_builder import (
     get_project_system_prompt,
 )
 from zoe.conversation.intent import detect_contract_address
-from zoe.conversation.router import route_intent, extract_crypto_news_target
+from zoe.conversation.router import route_intent, extract_crypto_news_target, extract_x_intel_target
 from zoe.conversation.sentiment import analyze_group_sentiment_sync
 from zoe.db.connections import (
     open_community_memory_db,
@@ -40,6 +40,7 @@ from zoe.safety.validator import SafetyResult, validate_output
 from zoe.telegram.normalizer import NormalizedMessage
 from zoe.tools.dexscreener import get_token_price_sync, search_token_price_sync
 from zoe.tools.crypto_news import fetch_crypto_news_sync
+from zoe.tools.x_intel import analyze_x_sentiment_sync
 from zoe.tools.web_search import search_web_sync
 from zoe.utils.logging import get_logger
 from zoe.utils.sanitizer import clean_unnecessary_characters
@@ -1495,6 +1496,31 @@ def process_message(
                 )
                 if generated_text:
                     generated_text = generated_text.replace("**", "").strip()
+        elif intent == "x_intelligence":
+            logger.info("Direct X (Twitter) intelligence intent triggered for message %d: '%s'", inbox_id, norm_msg.text)
+            target = extract_x_intel_target(norm_msg.text)
+            intel = {}
+            try:
+                intel = analyze_x_sentiment_sync(target)
+            except Exception as exc:
+                logger.warning("analyze_x_sentiment_sync failed for '%s': %s", target, exc)
+
+            sentiment = intel.get("sentiment", "Unknown")
+            summary = intel.get("summary", "Not enough recent public data to determine sentiment for this token.")
+            narratives = intel.get("top_narratives", [])
+            disclaimer = intel.get("disclaimer", "Social sentiment is speculative and does not constitute financial advice. Always DYOR.")
+
+            lines = [
+                f"🐦 X Sentiment: {sentiment}",
+                f"Target: {target}",
+                f"Summary: {summary}",
+            ]
+            if narratives:
+                lines.append("Top Narratives:")
+                for n in narratives[:3]:
+                    lines.append(f"• {n}")
+            lines.append(f"({disclaimer})")
+            generated_text = "\n".join(lines).replace("**", "").strip()
         elif intent == "web_search":
             logger.info("Direct web search intent triggered for message %d: '%s'", inbox_id, norm_msg.text)
             token_query = extract_token_query(norm_msg.text)

@@ -1540,6 +1540,121 @@ export default function InvestigatePage() {
             )
           })()}
 
+          {/* Pillar 1: X (Twitter) Sentiment & Narrative Tracking Card */}
+          {(() => {
+            const xIntel = report.x_sentiment
+            const sentiment = xIntel?.sentiment || "Unknown"
+            const summary = xIntel?.summary || "Analyzing recent Crypto Twitter discussion patterns and token mentions..."
+            const narratives = xIntel?.top_narratives || []
+            const bullishFactors = xIntel?.bullish_factors || []
+            const bearishFactors = xIntel?.bearish_factors || []
+            const tweetCount = xIntel?.tweet_count || 0
+
+            return (
+              <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden">
+                <CardHeader className="p-6 border-b border-neutral-800 flex flex-row items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+                      <Share2 className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+                        <span>X (Twitter) Sentiment</span>
+                        <span className="text-[10px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full border border-sky-500/30 font-mono">
+                          Crypto Twitter Live
+                        </span>
+                      </CardTitle>
+                    </div>
+                  </div>
+
+                  <span
+                    className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${
+                      sentiment.toLowerCase() === "bullish"
+                        ? "bg-[#00ff66]/10 text-[#00ff66] border-[#00ff66]/30 shadow-sm shadow-[#00ff66]/10"
+                        : sentiment.toLowerCase() === "bearish"
+                        ? "bg-rose-500/10 text-rose-400 border-rose-500/30 shadow-sm shadow-rose-500/10"
+                        : sentiment.toLowerCase() === "mixed"
+                        ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                        : "bg-neutral-800 text-neutral-400 border-neutral-700"
+                    }`}
+                  >
+                    {sentiment} Sentiment
+                  </span>
+                </CardHeader>
+
+                <CardContent className="p-6 space-y-6">
+                  {/* Summary Block */}
+                  <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-1.5">
+                    <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                      Crypto Twitter Pulse &amp; Market Summary
+                    </span>
+                    <p className="text-sm text-neutral-200 leading-relaxed font-sans">
+                      {summary}
+                    </p>
+                  </div>
+
+                  {/* Top Narratives & Factors Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Top Narratives */}
+                    <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-2">
+                      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                        Trending CT Narratives
+                      </span>
+                      {narratives.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {narratives.map((narrative, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2.5 py-1 rounded-lg bg-neutral-800 text-neutral-300 border border-neutral-700 text-xs font-medium"
+                            >
+                              🔥 {narrative}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-neutral-500 italic">
+                          No distinct breakout narrative detected in recent posts.
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Drivers / Sentiment Drivers */}
+                    <div className="p-4 rounded-2xl bg-neutral-900/60 border border-neutral-800 space-y-2">
+                      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wider block">
+                        Catalysts &amp; Market Psychology
+                      </span>
+                      <div className="space-y-1.5 text-xs">
+                        {bullishFactors.length > 0 && (
+                          <div className="flex items-center gap-2 text-emerald-400">
+                            <span className="font-bold">Bullish:</span>
+                            <span className="text-neutral-300">{bullishFactors.join(", ")}</span>
+                          </div>
+                        )}
+                        {bearishFactors.length > 0 && (
+                          <div className="flex items-center gap-2 text-rose-400">
+                            <span className="font-bold">Bearish:</span>
+                            <span className="text-neutral-300">{bearishFactors.join(", ")}</span>
+                          </div>
+                        )}
+                        {bullishFactors.length === 0 && bearishFactors.length === 0 && (
+                          <span className="text-xs text-neutral-500 italic">
+                            Balanced social volume with minimal polarization.
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Disclaimer Footer */}
+                  <div className="pt-2 flex items-center justify-between text-[11px] text-neutral-500 border-t border-neutral-800/60">
+                    <span>⚡ Sampled {tweetCount > 0 ? `${tweetCount} recent public posts` : "real-time X mentions"}</span>
+                    <span>Disclaimer: Social sentiment is speculative and not financial advice.</span>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
+
           {/* Evidence Footer */}
           <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-neutral-400">
             <div className="flex items-center gap-2">

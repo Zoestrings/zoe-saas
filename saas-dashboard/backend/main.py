@@ -2064,6 +2064,22 @@ async def get_x_sentiment_endpoint(
     return await analyze_x_sentiment(clean_q)
 
 
+@app.get("/api/intel/catalysts", response_model=List[Dict[str, Any]])
+async def get_catalysts_endpoint(
+    query: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """Retrieve upcoming events, token unlocks, and catalysts for an asset."""
+    clean_q = query.strip()
+    if not clean_q:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Query string cannot be empty.",
+        )
+    from zoe.tools.catalyst import get_upcoming_events
+    return await get_upcoming_events(clean_q)
+
+
 @app.post("/api/investigate", response_model=Dict[str, Any])
 async def investigate_token(
     payload: InvestigateRequest,
@@ -2110,6 +2126,15 @@ async def investigate_token(
             "bearish_factors": [],
             "disclaimer": "Social sentiment is speculative and does not constitute financial advice. Always DYOR.",
         }
+
+    # Attach Upcoming Catalysts & Event Calendar
+    try:
+        from zoe.tools.catalyst import get_upcoming_events
+        cal_target = f"${report.get('symbol')}" if report.get("symbol") else (report.get("name") or ca)
+        report["upcoming_catalysts"] = await get_upcoming_events(cal_target)
+    except Exception as exc:
+        print(f"[WARNING] Failed to fetch upcoming_catalysts for investigation: {exc}")
+        report["upcoming_catalysts"] = []
 
     # If valid scan, persist to investigations table for history
     if report.get("valid"):

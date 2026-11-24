@@ -19,7 +19,12 @@ from zoe.conversation.prompt_builder import (
     get_project_system_prompt,
 )
 from zoe.conversation.intent import detect_contract_address
-from zoe.conversation.router import route_intent, extract_crypto_news_target, extract_x_intel_target
+from zoe.conversation.router import (
+    route_intent,
+    extract_crypto_news_target,
+    extract_x_intel_target,
+    extract_catalyst_target,
+)
 from zoe.conversation.sentiment import analyze_group_sentiment_sync
 from zoe.db.connections import (
     open_community_memory_db,
@@ -41,6 +46,7 @@ from zoe.telegram.normalizer import NormalizedMessage
 from zoe.tools.dexscreener import get_token_price_sync, search_token_price_sync
 from zoe.tools.crypto_news import fetch_crypto_news_sync
 from zoe.tools.x_intel import analyze_x_sentiment_sync
+from zoe.tools.catalyst import get_upcoming_events_sync
 from zoe.tools.web_search import search_web_sync
 from zoe.utils.logging import get_logger
 from zoe.utils.sanitizer import clean_unnecessary_characters
@@ -1521,6 +1527,28 @@ def process_message(
                     lines.append(f"• {n}")
             lines.append(f"({disclaimer})")
             generated_text = "\n".join(lines).replace("**", "").strip()
+        elif intent == "catalyst_calendar":
+            logger.info("Direct Catalyst & Event Calendar intent triggered for message %d: '%s'", inbox_id, norm_msg.text)
+            target = extract_catalyst_target(norm_msg.text)
+            events = []
+            try:
+                events = get_upcoming_events_sync(target)
+            except Exception as exc:
+                logger.warning("get_upcoming_events_sync failed for '%s': %s", target, exc)
+
+            if events:
+                lines = [f"📅 Upcoming Catalysts for {target}"]
+                for ev in events[:3]:
+                    d_str = ev.get("date", "Upcoming")
+                    e_desc = ev.get("event", "Milestone event")
+                    s_url = ev.get("source", "")
+                    lines.append(f"• {d_str} - {e_desc} (Source: {s_url})")
+                generated_text = "\n".join(lines).replace("**", "").strip()
+            else:
+                generated_text = (
+                    f"I couldn't find any confirmed upcoming events for {target}. "
+                    "Always check official project channels for the latest roadmap updates."
+                )
         elif intent == "web_search":
             logger.info("Direct web search intent triggered for message %d: '%s'", inbox_id, norm_msg.text)
             token_query = extract_token_query(norm_msg.text)

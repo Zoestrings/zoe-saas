@@ -30,7 +30,8 @@ import {
   Bot,
   Bookmark,
   BookmarkCheck,
-  Crown
+  Crown,
+  Calendar
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -1650,6 +1651,77 @@ export default function InvestigatePage() {
                     <span>⚡ Sampled {tweetCount > 0 ? `${tweetCount} recent public posts` : "real-time X mentions"}</span>
                     <span>Disclaimer: Social sentiment is speculative and not financial advice.</span>
                   </div>
+                </CardContent>
+              </Card>
+            )
+          })()}
+
+          {/* Pillar 1: Upcoming Catalysts & Event Calendar */}
+          {(() => {
+            const catalysts = report.upcoming_catalysts || []
+
+            return (
+              <Card className="bg-[#121212] border border-neutral-800 rounded-3xl shadow-xl overflow-hidden">
+                <CardHeader className="p-6 border-b border-neutral-800 flex flex-row items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-xl bg-[#00ff66]/10 border border-[#00ff66]/20 flex items-center justify-center text-[#00ff66]">
+                      <Calendar className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+                        <span>Upcoming Catalysts</span>
+                        <span className="text-[10px] bg-[#00ff66]/10 text-[#00ff66] px-2 py-0.5 rounded-full border border-[#00ff66]/30 font-mono">
+                          Event Calendar
+                        </span>
+                      </CardTitle>
+                    </div>
+                  </div>
+
+                  <span className="text-xs text-neutral-400 font-medium">
+                    {catalysts.length > 0 ? `${catalysts.length} Verified Events` : "Zero Impending Unlocks"}
+                  </span>
+                </CardHeader>
+
+                <CardContent className="p-6">
+                  {catalysts.length > 0 ? (
+                    <div className="space-y-3">
+                      {catalysts.map((ev, idx) => (
+                        <div
+                          key={idx}
+                          className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-neutral-700 transition-colors"
+                        >
+                          <div className="flex items-start gap-3">
+                            <span className="px-2.5 py-1 rounded-lg bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30 font-mono text-xs font-bold whitespace-nowrap">
+                              📅 {ev.date}
+                            </span>
+                            <div>
+                              <p className="text-sm font-semibold text-white leading-snug">{ev.event}</p>
+                              {ev.source && (
+                                <a
+                                  href={ev.source}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[11px] text-neutral-500 hover:text-neutral-300 inline-flex items-center gap-1 mt-1 font-mono"
+                                >
+                                  <span>Source Link</span>
+                                  <ExternalLink className="h-2.5 w-2.5" />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-5 rounded-2xl bg-neutral-900/60 border border-neutral-800/80 text-center space-y-1">
+                      <p className="text-xs font-semibold text-neutral-300">
+                        No impending token unlocks, hard forks, or major conferences detected in the next 30 days.
+                      </p>
+                      <p className="text-[11px] text-neutral-500">
+                        Check official project roadmap channels and governance proposals for sudden milestone announcements.
+                      </p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )

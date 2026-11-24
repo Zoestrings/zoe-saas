@@ -30,6 +30,14 @@ X_INTELLIGENCE_PATTERNS = [
     re.compile(r"\b(?:narrative\s+on\s+(?:x|twitter)|ct\s+narratives?)\b", re.IGNORECASE),
 ]
 
+CATALYST_PATTERNS = [
+    re.compile(r"\b(?:upcoming\s+(?:events?|catalysts?|conferences?|unlocks?))\b", re.IGNORECASE),
+    re.compile(r"\b(?:next\s+(?:[a-zA-Z0-9$]+\s+)?(?:upgrade|hard\s*fork|mainnet(?:\s+launch)?|halving|unlock|token\s+unlock))\b", re.IGNORECASE),
+    re.compile(r"\b(?:when\s+is\s+(?:the\s+)?(?:next\s+)?(?:token\s+unlock|unlock|upgrade|mainnet|conference|event)\b)", re.IGNORECASE),
+    re.compile(r"\b(?:token\s+unlock\s+date|event\s+calendar|crypto\s+calendar|unlock\s+schedule)\b", re.IGNORECASE),
+    re.compile(r"\b(?:any\s+upcoming\s+events\b|catalysts?\s+for\b)", re.IGNORECASE),
+]
+
 # 2. Project Native Token Patterns
 NATIVE_TOKEN_PATTERNS = [
     re.compile(r"\b(?:\$fly|fly\b|hummingbird|\$hb)\b", re.IGNORECASE),
@@ -148,6 +156,35 @@ def extract_x_intel_target(text: str) -> str:
     return "Crypto"
 
 
+def extract_catalyst_target(text: str) -> str:
+    """Extract token ticker ($TICKER) or project name for catalyst/event calendar query."""
+    clean = text.strip()
+    ticker_match = re.search(r"(\$[a-zA-Z0-9]+)\b", clean)
+    if ticker_match:
+        return ticker_match.group(1).upper()
+
+    for pattern in EXTERNAL_ASSET_PATTERNS + NATIVE_TOKEN_PATTERNS:
+        m = pattern.search(clean)
+        if m:
+            return m.group(0).upper()
+
+    # Look for word after 'for', 'about', 'regarding', 'on'
+    target_match = re.search(r"\b(?:for|about|regarding|on)\s+([$]?[a-zA-Z0-9]+)\b", clean, re.IGNORECASE)
+    if target_match:
+        cand = target_match.group(1).strip()
+        if cand.lower() not in {"the", "a", "an", "any", "this", "it", "next", "upcoming"}:
+            return cand.upper()
+
+    # Look for word before or after 'upgrade', 'unlock', 'hard fork', 'mainnet'
+    event_target_match = re.search(r"\b([$]?[a-zA-Z0-9]+)\s+(?:upgrade|hard\s*fork|mainnet|unlock)\b", clean, re.IGNORECASE)
+    if event_target_match:
+        cand = event_target_match.group(1).strip()
+        if cand.lower() not in {"the", "a", "an", "next", "upcoming", "any", "token"}:
+            return cand.upper()
+
+    return "Crypto"
+
+
 def route_intent(message_text: str) -> str:
     """Route message intent to one of:
     - 'ca_detection': for raw contract addresses (Solana or EVM)
@@ -168,7 +205,10 @@ def route_intent(message_text: str) -> str:
     if detected_ca:
         return "ca_detection"
 
-    # 0.5. Live Web3 News, X Intelligence & Web Search Routing
+    # 0.5. Live Web3 News, X Intelligence, Catalyst Calendar & Web Search Routing
+    if any(p.search(text) for p in CATALYST_PATTERNS):
+        return "catalyst_calendar"
+
     if any(p.search(text) for p in X_INTELLIGENCE_PATTERNS):
         return "x_intelligence"
 

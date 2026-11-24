@@ -186,6 +186,11 @@ export interface InvestigationReport {
     tweet_count?: number
     disclaimer?: string
   }
+  upcoming_catalysts?: Array<{
+    date: string
+    event: string
+    source?: string
+  }>
   timestamp_utc?: string
 }
 

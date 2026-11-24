@@ -53,6 +53,113 @@ from zoe.utils.sanitizer import clean_unnecessary_characters
 
 logger = get_logger("zoe.worker.pipeline")
 
+# =========================================================================
+# Premium Credit Sinks & Unit Pricing (1 Credit = $0.01 USDT)
+# =========================================================================
+CREDIT_COSTS: Dict[str, int] = {
+    "basic_chat": 1,
+    "web_search": 5,
+    "x_sentiment": 10,
+    "token_scan": 15,
+    "contract_audit": 50,
+    "contract_generate": 30,
+}
+
+_pipeline_supabase_client = None
+
+
+def get_pipeline_supabase_client():
+    """Lazily load and cache Supabase client for credit checks and deductions."""
+    global _pipeline_supabase_client
+    if _pipeline_supabase_client is not None:
+        return _pipeline_supabase_client
+    import os
+    url = os.getenv("SUPABASE_URL", "").strip()
+    key = os.getenv("SUPABASE_KEY", "").strip()
+    if not url or not key:
+        return None
+    try:
+        from supabase import create_client
+        _pipeline_supabase_client = create_client(url, key)
+        return _pipeline_supabase_client
+    except Exception as exc:
+        logger.warning(f"Failed to initialize Supabase client for credits: {exc}")
+        return None
+
+
+def check_and_deduct_credit(user_id: Optional[str], action_type: str = "basic_chat") -> tuple[bool, str, int]:
+    """
+    Checks if a user has sufficient credits or active Pro entitlement for the requested action.
+    Returns: (allowed: bool, message: str, balance: int)
+
+    Rules:
+    - If user is on 'pro' plan, they bypass deductions for basic actions ('basic_chat', 'web_search', 'token_scan'),
+      but still must pay credits for heavy features like 'contract_audit' and 'contract_generate'.
+    - If user has sufficient credits, deducts the amount from entitlements.credits.
+    - If insufficient credits, blocks the action and informs the user.
+    """
+    cost = CREDIT_COSTS.get(action_type, 1)
+    if not user_id:
+        return True, "Allowed", 999999
+
+    client = get_pipeline_supabase_client()
+    if not client:
+        return True, "Offline allow", 999999
+
+    try:
+        res = client.table("entitlements").select("plan, credits, expires_at").eq("user_id", str(user_id)).execute()
+        if not res.data:
+            # Grant default 10 complimentary starter credits if user not found
+            default_credits = 10
+            client.table("entitlements").insert({
+                "user_id": str(user_id),
+                "plan": "free",
+                "credits": default_credits,
+            }).execute()
+            user_plan = "free"
+            current_credits = default_credits
+            expires_at = None
+        else:
+            row = res.data[0]
+            user_plan = row.get("plan", "free")
+            current_credits = int(row.get("credits") or 0)
+            expires_at = row.get("expires_at")
+
+        is_pro = False
+        if user_plan == "pro":
+            if not expires_at:
+                is_pro = True
+            else:
+                from datetime import datetime, timezone
+                try:
+                    exp_dt = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+                    if exp_dt > datetime.now(timezone.utc):
+                        is_pro = True
+                except Exception:
+                    is_pro = True
+
+        # Pro users bypass deduction for basic operations
+        if is_pro and action_type in ("basic_chat", "web_search", "token_scan"):
+            return True, f"Pro subscription active: {action_type} included unlimited.", current_credits
+
+        # Balance check
+        if current_credits < cost:
+            msg = (
+                f"⚠️ Insufficient Credits: {action_type.replace('_', ' ').title()} requires {cost} credits (${cost * 0.01:.2f} USDT), "
+                f"but your current balance is {current_credits} credits.\n\n"
+                f"💳 Top up your credits on your Zoe Dashboard (/billing) or upgrade to Pro for unlimited basic intelligence."
+            )
+            return False, msg, current_credits
+
+        # Deduct credits
+        new_balance = current_credits - cost
+        client.table("entitlements").update({"credits": new_balance}).eq("user_id", str(user_id)).execute()
+        return True, f"Deducted {cost} credits. Remaining balance: {new_balance}.", new_balance
+
+    except Exception as exc:
+        logger.warning(f"Error checking/deducting credits for user {user_id}: {exc}")
+        return True, "Graceful fallback on database error", 999999
+
 
 @dataclass
 class PipelineResult:
@@ -736,14 +843,114 @@ def process_message(
                 intent = "command_price"
 
             elif cmd in ("credits", "balance"):
-                bot_display_name = get_project_display_name(norm_msg.project_id)
-                generated_text = f"Your {bot_display_name} balance is unlimited and fully active for this community. No top-up needed!"
+                client = get_pipeline_supabase_client()
+                user_credits = 0
+                user_plan = "free"
+                user_id_lookup = norm_msg.sender_id or norm_msg.pseudonymous_user_id
+                if client and user_id_lookup:
+                    try:
+                        res = client.table("entitlements").select("plan, credits").eq("user_id", str(user_id_lookup)).execute()
+                        if res.data:
+                            user_credits = int(res.data[0].get("credits") or 0)
+                            user_plan = res.data[0].get("plan", "free")
+                    except Exception:
+                        pass
+                generated_text = (
+                    f"💳 Zoe Account Balance:\n"
+                    f"Plan: {user_plan.upper()}\n"
+                    f"Credits: {user_credits:,} Credits (${user_credits * 0.01:.2f} USDT)\n\n"
+                    f"Action Sinks (1 Credit = $0.01):\n"
+                    f"• Smart Contract Audit: 50 Credits ($0.50)\n"
+                    f"• Smart Contract Generation: 30 Credits ($0.30)\n"
+                    f"• Deep Token Security Scan: 15 Credits ($0.15)\n"
+                    f"• X / Twitter Sentiment: 10 Credits ($0.10)\n"
+                    f"• Live Web Search: 5 Credits ($0.05)\n"
+                    f"• Basic Chat / General Q: 1 Credit ($0.01)\n\n"
+                    f"Top up credits anytime on your dashboard at /billing (Starter $5, Pro $15, Whale $40)."
+                )
                 intent = "command_credits"
 
             elif cmd in ("add_credits", "topup"):
-                bot_display_name = get_project_display_name(norm_msg.project_id)
-                generated_text = f"Your community membership includes full access to {bot_display_name}. Top-ups are not required at this time."
+                generated_text = (
+                    "💳 Top Up Zoe Credits:\n\n"
+                    "Select a package on your dashboard at /billing:\n"
+                    "• Starter Pack: $5 USDT = 500 Credits (10 Contract Audits)\n"
+                    "• Pro Pack: $15 USDT = 1,600 Credits (Best Value, ~100 Bonus Credits)\n"
+                    "• Whale Pack: $40 USDT = 4,500 Credits (~500 Bonus Credits)\n\n"
+                    "Payment via Solana USDT. Credits are instantly credited on on-chain verification."
+                )
                 intent = "command_add_credits"
+
+            elif cmd in ("audit", "contract_audit"):
+                user_id_lookup = norm_msg.sender_id or norm_msg.pseudonymous_user_id
+                allowed, reason, balance = check_and_deduct_credit(user_id_lookup, "contract_audit")
+                if not allowed:
+                    generated_text = reason
+                else:
+                    if not cmd_arg:
+                        generated_text = (
+                            "To perform a Smart Contract Security Audit, provide the contract address or code snippet:\n"
+                            "`/audit <contract_address_or_code>`\n\n"
+                            "Cost: 50 Credits ($0.50 USDT).\n"
+                            "Features: Vulnerability check, rug/mint risk rating, reentrancy analysis, remediation steps."
+                        )
+                    else:
+                        from zoe.llm.mock import MockLLMClient
+                        client = llm_client or MockLLMClient()
+                        audit_prompt = (
+                            f"You are a Senior Smart Contract Security Auditor. Conduct a thorough vulnerability audit on this contract:\n\n"
+                            f"{cmd_arg}\n\n"
+                            f"Provide:\n"
+                            f"1. Executive Summary & Security Score (0-100)\n"
+                            f"2. Risk Rating: CRITICAL / HIGH / MEDIUM / LOW / SECURE\n"
+                            f"3. Vulnerabilities & Rug Pull Vectors (Mint functions, Blacklist hooks, Hidden transfer fees, Reentrancy)\n"
+                            f"4. Actionable Remediation Guidance\n\n"
+                            f"Format cleanly for Telegram with NO markdown bold asterisks (do not use **)."
+                        )
+                        generated_text = _safe_generate(
+                            client=client,
+                            system_prompt="You are Zoe Security Intelligence, an elite smart contract auditor.",
+                            user_prompt=audit_prompt,
+                            max_tokens=650,
+                            project_id=norm_msg.project_id,
+                        )
+                        if generated_text:
+                            generated_text = generated_text.replace("**", "").strip()
+                        generated_text += f"\n\nAudit complete. Remaining balance: {balance} credits."
+                intent = "command_audit"
+
+            elif cmd in ("generate", "contract_generate"):
+                user_id_lookup = norm_msg.sender_id or norm_msg.pseudonymous_user_id
+                allowed, reason, balance = check_and_deduct_credit(user_id_lookup, "contract_generate")
+                if not allowed:
+                    generated_text = reason
+                else:
+                    if not cmd_arg:
+                        generated_text = (
+                            "To generate a custom Web3 smart contract, specify your token or protocol requirements:\n"
+                            "`/generate <specification>`\n\n"
+                            "Cost: 30 Credits ($0.30 USDT).\n"
+                            "Examples: /generate standard SPL token with 1B supply, or /generate staking contract with 10% APR"
+                        )
+                    else:
+                        from zoe.llm.mock import MockLLMClient
+                        client = llm_client or MockLLMClient()
+                        gen_prompt = (
+                            f"You are a Senior Smart Contract Architect. Generate clean, secure, production-ready code based on:\n\n"
+                            f"{cmd_arg}\n\n"
+                            f"Include standard safety practices, events, and clear comments. Format with NO markdown bold asterisks."
+                        )
+                        generated_text = _safe_generate(
+                            client=client,
+                            system_prompt="You are Zoe Intelligence, an elite smart contract developer.",
+                            user_prompt=gen_prompt,
+                            max_tokens=750,
+                            project_id=norm_msg.project_id,
+                        )
+                        if generated_text:
+                            generated_text = generated_text.replace("**", "").strip()
+                        generated_text += f"\n\nContract generation complete. Remaining balance: {balance} credits."
+                intent = "command_generate"
 
             elif cmd in ("links", "socials", "social"):
                 proj_title = get_project_name(norm_msg.project_id)
@@ -1340,7 +1547,13 @@ def process_message(
                 logger.info("External token scanning disabled (token_scanner=false) for project %s", norm_msg.project_id)
                 generated_text = "I only manage data for this community. I don't scan external tokens."
             else:
-                logger.info("Executing on-demand Crypto Intelligence CA analysis for: %s", ca)
+                user_id_lookup = norm_msg.sender_id or norm_msg.pseudonymous_user_id
+                if not is_own_token:
+                    allowed, reason, balance = check_and_deduct_credit(user_id_lookup, "token_scan")
+                    if not allowed:
+                        generated_text = reason
+                if generated_text is None:
+                    logger.info("Executing on-demand Crypto Intelligence CA analysis for: %s", ca)
                 if analyze_contract_address_sync is not _DEFAULT_ANALYZE_SYNC:
                     generated_text = analyze_contract_address_sync(ca)
                     inline_keyboard = generate_ca_inline_keyboard(ca)
@@ -1452,103 +1665,118 @@ def process_message(
             )
         elif intent == "crypto_news":
             logger.info("Direct Web3 crypto news intent triggered for message %d: '%s'", inbox_id, norm_msg.text)
-            target = extract_crypto_news_target(norm_msg.text)
-            provider_error = False
-            news_items = []
-            try:
-                news_items = fetch_crypto_news_sync(target, timelimit="d", max_results=5)
-            except Exception as exc:
-                logger.warning("fetch_crypto_news_sync failed for '%s': %s", target, exc)
-                provider_error = True
-
-            if provider_error:
-                generated_text = "My live news providers are currently unavailable. Please check official sources."
-            elif not news_items:
-                generated_text = "I couldn't find any recent news for that asset."
+            user_id_lookup = norm_msg.sender_id or norm_msg.pseudonymous_user_id
+            allowed, reason, balance = check_and_deduct_credit(user_id_lookup, "web_search")
+            if not allowed:
+                generated_text = reason
             else:
-                formatted_news = []
-                for item in news_items[:5]:
-                    formatted_news.append(
-                        f"- Headline: {item.get('title', '')}\n"
-                        f"  Summary: {item.get('snippet', '')}\n"
-                        f"  Source: {item.get('source', 'Web3 News')}\n"
-                        f"  Date: {item.get('date', 'Recent')}\n"
-                        f"  URL: {item.get('url', '')}"
+                target = extract_crypto_news_target(norm_msg.text)
+                provider_error = False
+                news_items = []
+                try:
+                    news_items = fetch_crypto_news_sync(target, timelimit="d", max_results=5)
+                except Exception as exc:
+                    logger.warning("fetch_crypto_news_sync failed for '%s': %s", target, exc)
+                    provider_error = True
+
+                if provider_error:
+                    generated_text = "My live news providers are currently unavailable. Please check official sources."
+                elif not news_items:
+                    generated_text = "I couldn't find any recent news for that asset."
+                else:
+                    formatted_news = []
+                    for item in news_items[:5]:
+                        formatted_news.append(
+                            f"- Headline: {item.get('title', '')}\n"
+                            f"  Summary: {item.get('snippet', '')}\n"
+                            f"  Source: {item.get('source', 'Web3 News')}\n"
+                            f"  Date: {item.get('date', 'Recent')}\n"
+                            f"  URL: {item.get('url', '')}"
+                        )
+                    news_context = "\n\n".join(formatted_news)
+
+                    news_prompt = (
+                        "You are a Web3 News Analyst. Based on the following live search results, provide a 3-bullet-point news brief. "
+                        "Separate confirmed facts from speculation. Include the source URLs and timestamps for each point.\n\n"
+                        f"[TARGET ASSET]: {target}\n"
+                        f"[LIVE SEARCH RESULTS]:\n{news_context}\n\n"
+                        "Format your response cleanly for Telegram with NO markdown bold asterisks (do not use **):\n"
+                        f"📰 {target.upper()} Intelligence Brief\n"
+                        "1. [Headline/Event Summary] (Source: [Source Name], [Date/Time])\n"
+                        "2. [Headline/Event Summary] (Source: [Source Name], [Date/Time])\n"
+                        "3. [Headline/Event Summary] (Source: [Source Name], [Date/Time])\n\n"
+                        "Sources:\n"
+                        "[List unique URLs]\n\n"
+                        "Strictly adhere to the facts from the search results. If fewer than 3 news stories exist, summarize only the available ones without hallucinating."
                     )
-                news_context = "\n\n".join(formatted_news)
 
-                news_prompt = (
-                    "You are a Web3 News Analyst. Based on the following live search results, provide a 3-bullet-point news brief. "
-                    "Separate confirmed facts from speculation. Include the source URLs and timestamps for each point.\n\n"
-                    f"[TARGET ASSET]: {target}\n"
-                    f"[LIVE SEARCH RESULTS]:\n{news_context}\n\n"
-                    "Format your response cleanly for Telegram with NO markdown bold asterisks (do not use **):\n"
-                    f"📰 {target.upper()} Intelligence Brief\n"
-                    "1. [Headline/Event Summary] (Source: [Source Name], [Date/Time])\n"
-                    "2. [Headline/Event Summary] (Source: [Source Name], [Date/Time])\n"
-                    "3. [Headline/Event Summary] (Source: [Source Name], [Date/Time])\n\n"
-                    "Sources:\n"
-                    "[List unique URLs]\n\n"
-                    "Strictly adhere to the facts from the search results. If fewer than 3 news stories exist, summarize only the available ones without hallucinating."
-                )
-
-                client = llm_client or MockLLMClient()
-                generated_text = _safe_generate(
-                    client=client,
-                    system_prompt=active_system_prompt,
-                    user_prompt=news_prompt,
-                    max_tokens=300,
-                    project_id=norm_msg.project_id,
-                )
-                if generated_text:
-                    generated_text = generated_text.replace("**", "").strip()
+                    client = llm_client or MockLLMClient()
+                    generated_text = _safe_generate(
+                        client=client,
+                        system_prompt=active_system_prompt,
+                        user_prompt=news_prompt,
+                        max_tokens=300,
+                        project_id=norm_msg.project_id,
+                    )
+                    if generated_text:
+                        generated_text = generated_text.replace("**", "").strip()
         elif intent == "x_intelligence":
             logger.info("Direct X (Twitter) intelligence intent triggered for message %d: '%s'", inbox_id, norm_msg.text)
-            target = extract_x_intel_target(norm_msg.text)
-            intel = {}
-            try:
-                intel = analyze_x_sentiment_sync(target)
-            except Exception as exc:
-                logger.warning("analyze_x_sentiment_sync failed for '%s': %s", target, exc)
+            user_id_lookup = norm_msg.sender_id or norm_msg.pseudonymous_user_id
+            allowed, reason, balance = check_and_deduct_credit(user_id_lookup, "x_sentiment")
+            if not allowed:
+                generated_text = reason
+            else:
+                target = extract_x_intel_target(norm_msg.text)
+                intel = {}
+                try:
+                    intel = analyze_x_sentiment_sync(target)
+                except Exception as exc:
+                    logger.warning("analyze_x_sentiment_sync failed for '%s': %s", target, exc)
 
-            sentiment = intel.get("sentiment", "Unknown")
-            summary = intel.get("summary", "Not enough recent public data to determine sentiment for this token.")
-            narratives = intel.get("top_narratives", [])
-            disclaimer = intel.get("disclaimer", "Social sentiment is speculative and does not constitute financial advice. Always DYOR.")
+                sentiment = intel.get("sentiment", "Unknown")
+                summary = intel.get("summary", "Not enough recent public data to determine sentiment for this token.")
+                narratives = intel.get("top_narratives", [])
+                disclaimer = intel.get("disclaimer", "Social sentiment is speculative and does not constitute financial advice. Always DYOR.")
 
-            lines = [
-                f"🐦 X Sentiment: {sentiment}",
-                f"Target: {target}",
-                f"Summary: {summary}",
-            ]
-            if narratives:
-                lines.append("Top Narratives:")
-                for n in narratives[:3]:
-                    lines.append(f"• {n}")
-            lines.append(f"({disclaimer})")
-            generated_text = "\n".join(lines).replace("**", "").strip()
+                lines = [
+                    f"🐦 X Sentiment: {sentiment}",
+                    f"Target: {target}",
+                    f"Summary: {summary}",
+                ]
+                if narratives:
+                    lines.append("Top Narratives:")
+                    for n in narratives[:3]:
+                        lines.append(f"• {n}")
+                lines.append(f"({disclaimer})")
+                generated_text = "\n".join(lines).replace("**", "").strip()
         elif intent == "catalyst_calendar":
             logger.info("Direct Catalyst & Event Calendar intent triggered for message %d: '%s'", inbox_id, norm_msg.text)
-            target = extract_catalyst_target(norm_msg.text)
-            events = []
-            try:
-                events = get_upcoming_events_sync(target)
-            except Exception as exc:
-                logger.warning("get_upcoming_events_sync failed for '%s': %s", target, exc)
-
-            if events:
-                lines = [f"📅 Upcoming Catalysts for {target}"]
-                for ev in events[:3]:
-                    d_str = ev.get("date", "Upcoming")
-                    e_desc = ev.get("event", "Milestone event")
-                    s_url = ev.get("source", "")
-                    lines.append(f"• {d_str} - {e_desc} (Source: {s_url})")
-                generated_text = "\n".join(lines).replace("**", "").strip()
+            user_id_lookup = norm_msg.sender_id or norm_msg.pseudonymous_user_id
+            allowed, reason, balance = check_and_deduct_credit(user_id_lookup, "web_search")
+            if not allowed:
+                generated_text = reason
             else:
-                generated_text = (
-                    f"I couldn't find any confirmed upcoming events for {target}. "
-                    "Always check official project channels for the latest roadmap updates."
-                )
+                target = extract_catalyst_target(norm_msg.text)
+                events = []
+                try:
+                    events = get_upcoming_events_sync(target)
+                except Exception as exc:
+                    logger.warning("get_upcoming_events_sync failed for '%s': %s", target, exc)
+
+                if events:
+                    lines = [f"📅 Upcoming Catalysts for {target}"]
+                    for ev in events[:3]:
+                        d_str = ev.get("date", "Upcoming")
+                        e_desc = ev.get("event", "Milestone event")
+                        s_url = ev.get("source", "")
+                        lines.append(f"• {d_str} - {e_desc} (Source: {s_url})")
+                    generated_text = "\n".join(lines).replace("**", "").strip()
+                else:
+                    generated_text = (
+                        f"I couldn't find any confirmed upcoming events for {target}. "
+                        "Always check official project channels for the latest roadmap updates."
+                    )
         elif intent == "web_search":
             logger.info("Direct web search intent triggered for message %d: '%s'", inbox_id, norm_msg.text)
             token_query = extract_token_query(norm_msg.text)

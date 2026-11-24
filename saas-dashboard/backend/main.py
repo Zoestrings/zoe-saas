@@ -544,6 +544,12 @@ class AssignOwnerRequest(BaseModel):
     email: str
 
 
+class CreateInvoiceRequest(BaseModel):
+    plan: Optional[str] = "pro"
+    credit_amount: Optional[int] = 0
+    price_usdt: Optional[float] = None
+
+
 class VerifyPaymentRequest(BaseModel):
     invoice_id: str
     tx_hash: str
@@ -552,6 +558,7 @@ class VerifyPaymentRequest(BaseModel):
 class CreateInvoiceResponse(BaseModel):
     invoice_id: str
     amount_usdt: float
+    credit_amount: int = 0
     receiving_wallet: str
     status: str
     created_at: str
@@ -561,12 +568,14 @@ class VerifyPaymentResponse(BaseModel):
     success: bool
     message: str
     plan: str
+    credits: Optional[int] = 0
     expires_at: Optional[str] = None
 
 
 class EntitlementResponse(BaseModel):
     plan: str
     is_pro: bool
+    credits: int = 0
     expires_at: Optional[str] = None
     receiving_wallet: str
 
@@ -1877,10 +1886,11 @@ def get_project_analytics(
 
 
 def get_user_entitlement(user_id: Optional[str]) -> Dict[str, Any]:
-    """Retrieve user entitlement status, checking if Pro plan is active and not expired."""
+    """Retrieve user entitlement status, checking if Pro plan is active and not expired, with credit balance."""
     default_entitlement = {
         "plan": "free",
         "is_pro": False,
+        "credits": 0,
         "expires_at": None,
         "receiving_wallet": ZOE_SOLANA_WALLET,
     }
@@ -1906,7 +1916,7 @@ def get_user_entitlement(user_id: Optional[str]) -> Dict[str, Any]:
             )
             row = cur.fetchone()
             if row:
-                record = {"plan": row[0], "expires_at": row[1]}
+                record = {"plan": row[0], "expires_at": row[1], "credits": 0}
         except Exception as exc:
             print(f"[WARNING] Failed to fetch entitlement from dev DB: {exc}")
 
@@ -1915,6 +1925,7 @@ def get_user_entitlement(user_id: Optional[str]) -> Dict[str, Any]:
 
     plan = record.get("plan", "free")
     expires_at = record.get("expires_at")
+    credits = int(record.get("credits") or 0)
     is_pro = False
 
     if plan == "pro":
@@ -1934,6 +1945,7 @@ def get_user_entitlement(user_id: Optional[str]) -> Dict[str, Any]:
     return {
         "plan": plan,
         "is_pro": is_pro,
+        "credits": credits,
         "expires_at": expires_at,
         "receiving_wallet": ZOE_SOLANA_WALLET,
     }
@@ -2504,15 +2516,33 @@ async def trigger_watchlist_check_now(
 
 @app.post("/api/billing/create-invoice", response_model=CreateInvoiceResponse)
 def create_billing_invoice(
+    payload: Optional[CreateInvoiceRequest] = None,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Generate an invoice for $20 USDT monthly subscription on Solana."""
+    """Generate an invoice for subscription or credit bundle on Solana."""
     user_id = current_user.get("id")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session token.")
 
     inv_id = str(uuid.uuid4())
-    amount = 20.0
+    credit_amount = payload.credit_amount if payload and payload.credit_amount else 0
+
+    if credit_amount > 0:
+        if payload and payload.price_usdt:
+            amount = float(payload.price_usdt)
+        elif credit_amount >= 4500:
+            amount = 40.0
+        elif credit_amount >= 1600:
+            amount = 15.0
+        elif credit_amount >= 500:
+            amount = 5.0
+        else:
+            amount = round(credit_amount * 0.01, 2)
+        tier_name = f"credits_{credit_amount}"
+    else:
+        amount = 20.0
+        tier_name = "pro"
+
     now_iso = datetime.now(timezone.utc).isoformat()
 
     client = get_supabase()
@@ -2524,11 +2554,22 @@ def create_billing_invoice(
                 "user_id": user_id,
                 "amount_usdt": amount,
                 "status": "pending",
+                "tier": tier_name,
                 "created_at": now_iso,
             }).execute()
             saved = True
-        except Exception as exc:
-            print(f"[WARNING] Failed to insert invoice in Supabase: {exc}")
+        except Exception:
+            try:
+                client.table("invoices").insert({
+                    "id": inv_id,
+                    "user_id": user_id,
+                    "amount_usdt": amount,
+                    "status": "pending",
+                    "created_at": now_iso,
+                }).execute()
+                saved = True
+            except Exception as exc:
+                print(f"[WARNING] Failed to insert invoice in Supabase: {exc}")
 
     if not saved:
         try:
@@ -2544,6 +2585,7 @@ def create_billing_invoice(
     return CreateInvoiceResponse(
         invoice_id=inv_id,
         amount_usdt=amount,
+        credit_amount=credit_amount,
         receiving_wallet=ZOE_SOLANA_WALLET,
         status="pending",
         created_at=now_iso,
@@ -2555,7 +2597,7 @@ async def verify_billing_payment(
     payload: VerifyPaymentRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Verify on-chain Solana USDT payment and activate Pro entitlement for 30 days."""
+    """Verify on-chain Solana USDT payment and activate Pro entitlement or credit balance."""
     user_id = current_user.get("id")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session token.")
@@ -2566,8 +2608,33 @@ async def verify_billing_payment(
     if not inv_id or not tx_hash:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invoice ID and TxID are required.")
 
-    # On-chain Solana verification
-    verified, reason = await verify_solana_usdt_payment(tx_hash, required_amount_usdt=20.0)
+    inv_amount_usdt = 20.0
+    inv_credit_amount = 0
+    client = get_supabase()
+    if client:
+        try:
+            inv_res = client.table("invoices").select("*").eq("id", inv_id).execute()
+            if inv_res.data:
+                inv_row = inv_res.data[0]
+                inv_amount_usdt = float(inv_row.get("amount_usdt") or 20.0)
+                tier_val = str(inv_row.get("tier") or "")
+                if tier_val.startswith("credits_"):
+                    try:
+                        inv_credit_amount = int(tier_val.split("_")[1])
+                    except Exception:
+                        pass
+                if inv_credit_amount == 0:
+                    if abs(inv_amount_usdt - 5.0) < 0.01:
+                        inv_credit_amount = 500
+                    elif abs(inv_amount_usdt - 15.0) < 0.01:
+                        inv_credit_amount = 1600
+                    elif abs(inv_amount_usdt - 40.0) < 0.01:
+                        inv_credit_amount = 4500
+        except Exception as exc:
+            print(f"[WARNING] Could not fetch invoice details: {exc}")
+
+    # On-chain Solana verification with invoice's required amount
+    verified, reason = await verify_solana_usdt_payment(tx_hash, required_amount_usdt=inv_amount_usdt)
     if not verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -2576,11 +2643,51 @@ async def verify_billing_payment(
 
     now_dt = datetime.now(timezone.utc)
     now_iso = now_dt.isoformat()
+
+    # Case A: Credit Bundle Top-Up
+    if inv_credit_amount > 0:
+        current_credits = 0
+        current_plan = "free"
+        current_expires = None
+        if client:
+            try:
+                ent_res = client.table("entitlements").select("credits, plan, expires_at").eq("user_id", str(user_id)).execute()
+                if ent_res.data:
+                    current_credits = int(ent_res.data[0].get("credits") or 0)
+                    current_plan = ent_res.data[0].get("plan", "free")
+                    current_expires = ent_res.data[0].get("expires_at")
+            except Exception:
+                pass
+
+        new_credits = current_credits + inv_credit_amount
+
+        if client:
+            try:
+                client.table("invoices").update({
+                    "status": "paid",
+                    "tx_hash": tx_hash,
+                }).eq("id", inv_id).execute()
+
+                client.table("entitlements").upsert({
+                    "user_id": user_id,
+                    "credits": new_credits,
+                    "updated_at": now_iso,
+                }).execute()
+            except Exception as exc:
+                print(f"[WARNING] Failed to update credits in Supabase: {exc}")
+
+        return VerifyPaymentResponse(
+            success=True,
+            message=f"Payment verified! Added {inv_credit_amount:,} Credits to your balance. Total credits: {new_credits:,}.",
+            plan=current_plan,
+            credits=new_credits,
+            expires_at=current_expires,
+        )
+
+    # Case B: Pro Plan Subscription (30 Days)
     expires_dt = now_dt + timedelta(days=30)
     expires_iso = expires_dt.isoformat()
 
-    # Update invoice status & upsert pro entitlement
-    client = get_supabase()
     updated = False
     if client:
         try:
@@ -2664,6 +2771,7 @@ def get_user_billing_entitlement(
     return EntitlementResponse(
         plan=entitlement["plan"],
         is_pro=entitlement["is_pro"],
+        credits=entitlement.get("credits", 0),
         expires_at=entitlement.get("expires_at"),
         receiving_wallet=ZOE_SOLANA_WALLET,
     )

@@ -223,6 +223,7 @@ export interface Invoice {
 export interface CreateInvoiceResponse {
   invoice_id: string
   amount_usdt: number
+  credit_amount?: number
   receiving_wallet: string
   status: string
   created_at: string
@@ -232,12 +233,14 @@ export interface VerifyPaymentResponse {
   success: boolean
   message: string
   plan: string
+  credits?: number
   expires_at?: string | null
 }
 
 export interface EntitlementResponse {
   plan: "free" | "pro"
   is_pro: boolean
+  credits?: number
   expires_at?: string | null
   receiving_wallet: string
 }
@@ -730,9 +733,10 @@ export const api = {
     })
   },
 
-  async createInvoice(): Promise<CreateInvoiceResponse> {
+  async createInvoice(params?: { credit_amount?: number; price_usdt?: number }): Promise<CreateInvoiceResponse> {
     return apiRequest<CreateInvoiceResponse>("/api/billing/create-invoice", {
       method: "POST",
+      body: JSON.stringify(params || {}),
     })
   },
 

@@ -15,7 +15,7 @@ import {
   TrendingUp,
   X,
 } from "lucide-react"
-import { api } from "@/lib/api"
+import { api, isSuperAdmin } from "@/lib/api"
 
 interface PerformanceAlertsPanelProps {
   refreshTrigger?: number
@@ -247,7 +247,7 @@ export function PerformanceAlertsPanel({ refreshTrigger = 0 }: PerformanceAlerts
         ) : monitoredTokens.length === 0 ? (
           <p className="text-sm text-slate-400">
             No tokens are currently monitored. Scan a token in{" "}
-            <Link href="/investigate" className="text-cyan-400 underline">
+            <Link href={isSuperAdmin() ? "/admin/investigate" : "/owner/investigate"} className="text-cyan-400 underline">
               Token Investigator
             </Link>{" "}
             and click <strong>Monitor Token</strong> to track 2x, 4x, 5x, 10x milestones and downside alerts.

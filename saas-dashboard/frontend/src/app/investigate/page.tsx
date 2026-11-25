@@ -50,7 +50,7 @@ import {
   TableHeader,
   TableRow
 } from "@/components/ui/table"
-import { api, InvestigationReport, SavedInvestigation } from "@/lib/api"
+import { api, isSuperAdmin, InvestigationReport, SavedInvestigation } from "@/lib/api"
 import { NarrativeRadar } from "@/components/scanner/narrative-radar"
 import { TrendingDiscovery } from "@/components/scanner/trending-discovery"
 import { MindshareTable } from "@/components/scanner/mindshare-table"
@@ -88,7 +88,7 @@ export default function InvestigatePage() {
   const loadHistory = async () => {
     setHistoryLoading(true)
     try {
-      const data = await api.getInvestigations()
+      const data = await api.getInvestigations(isSuperAdmin())
       setHistory(data || [])
     } catch (err) {
       console.warn("Notice: Failed to load investigation history:", err)

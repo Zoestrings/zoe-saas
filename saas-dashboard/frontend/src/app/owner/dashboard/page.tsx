@@ -519,7 +519,7 @@ export default function OwnerDashboardPage() {
           </Link>
 
           {/* Action 2: Token Scanner */}
-          <Link href="/investigate" className="block group">
+          <Link href="/owner/investigate" className="block group">
             <Card className="bg-[#121212] border-neutral-800 hover:border-[#00ff66]/50 hover:bg-neutral-900/60 transition-all duration-300 h-full cursor-pointer">
               <CardContent className="p-6 space-y-3">
                 <div className="h-12 w-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">

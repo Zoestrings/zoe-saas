@@ -3448,9 +3448,10 @@ async def investigate_token(
 
 @app.get("/api/investigations", response_model=List[Dict[str, Any]])
 def get_investigations(
+    all_tenants: bool = False,
     current_user: Dict[str, Any] = Depends(get_current_user),
 ):
-    """Retrieve the 10 most recent investigations for the authenticated user."""
+    """Retrieve recent investigations for the authenticated user (or all tenants for Super Admin)."""
     user_id = current_user.get("id")
     if not user_id:
         raise HTTPException(
@@ -3458,17 +3459,26 @@ def get_investigations(
             detail="User ID not found in session token.",
         )
 
+    is_super_admin_user = current_user.get("role") == "super_admin"
+    if all_tenants and not is_super_admin_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only Super Admins can view cross-tenant investigation history.",
+        )
+
+    fetch_global = all_tenants and is_super_admin_user
+    limit_count = 50 if fetch_global else 10
+
     client = get_supabase()
     if client:
         try:
-            res = (
+            query = (
                 client.table("investigations")
                 .select("id, user_id, contract_address, token_name, risk_level, report_json, created_at")
-                .eq("user_id", user_id)
-                .order("created_at", desc=True)
-                .limit(10)
-                .execute()
             )
+            if not fetch_global:
+                query = query.eq("user_id", user_id)
+            res = query.order("created_at", desc=True).limit(limit_count).execute()
             if res.data is not None and len(res.data) > 0:
                 return res.data
         except Exception as exc:
@@ -3477,16 +3487,27 @@ def get_investigations(
     # Local SQLite Fallback
     try:
         conn = get_dev_db()
-        cursor = conn.execute(
-            """
-            SELECT id, user_id, contract_address, token_name, risk_level, report_json, created_at
-            FROM dev_investigations
-            WHERE user_id = ?
-            ORDER BY created_at DESC
-            LIMIT 10
-            """,
-            (str(user_id),),
-        )
+        if fetch_global:
+            cursor = conn.execute(
+                """
+                SELECT id, user_id, contract_address, token_name, risk_level, report_json, created_at
+                FROM dev_investigations
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (limit_count,),
+            )
+        else:
+            cursor = conn.execute(
+                """
+                SELECT id, user_id, contract_address, token_name, risk_level, report_json, created_at
+                FROM dev_investigations
+                WHERE user_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (str(user_id), limit_count),
+            )
         rows = cursor.fetchall()
         investigations = []
         for r in rows:

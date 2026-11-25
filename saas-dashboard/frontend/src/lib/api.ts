@@ -839,8 +839,9 @@ export const api = {
     })
   },
 
-  async getInvestigations(): Promise<SavedInvestigation[]> {
-    return apiRequest<SavedInvestigation[]>("/api/investigations", {
+  async getInvestigations(allTenants = false): Promise<SavedInvestigation[]> {
+    const query = allTenants ? "?all_tenants=true" : ""
+    return apiRequest<SavedInvestigation[]>(`/api/investigations${query}`, {
       method: "GET",
     })
   },

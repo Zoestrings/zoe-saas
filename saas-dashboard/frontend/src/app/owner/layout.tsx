@@ -128,7 +128,7 @@ export default function OwnerLayout({
     {
       title: "Web3 Intelligence",
       items: [
-        { label: "Web3 Scanner", href: "/investigate", icon: Radar },
+        { label: "Web3 Scanner", href: "/owner/investigate", icon: Radar },
         { label: "Token & Market Intel", href: "/trading", icon: Sparkles },
         { label: "Research & Social", href: "/owner/social", icon: BrainCircuit },
         { label: "Watchlists & Alerts", href: "/watchlist", icon: Bookmark },

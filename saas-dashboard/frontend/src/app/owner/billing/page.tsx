@@ -223,7 +223,7 @@ export default function BillingPage() {
             </div>
           </div>
 
-          <Link href="/investigate">
+          <Link href="/owner/investigate">
             <Button className="h-10 px-5 rounded-full bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs cursor-pointer shadow-lg shadow-[#00ff66]/20 flex items-center gap-1.5">
               <span>Open Scanner</span>
               <ArrowRight className="h-3.5 w-3.5" />

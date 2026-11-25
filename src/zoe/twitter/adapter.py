@@ -184,7 +184,9 @@ class TwitterAdapter:
         return new_messages
 
     async def start(self) -> None:
-        """Start mention poller in background."""
+        """Start mention poller in background (disabled by default per X compliance)."""
+        from zoe.social.compliance import assert_x_feature_enabled
+        assert_x_feature_enabled("x_api")
         if self._is_running:
             return
         self._is_running = True
@@ -217,7 +219,9 @@ class TwitterAdapter:
         reply_to_message_id: Optional[Union[str, int]] = None,
         inline_keyboard: Optional[Any] = None,
     ) -> TwitterSentMessage:
-        """Publish a tweet reply (up to 280 characters)."""
+        """Publish a tweet reply (up to 280 characters). Disabled by default per X compliance."""
+        from zoe.social.compliance import assert_x_feature_enabled
+        assert_x_feature_enabled("x_auto_reply")
         target_id = int(reply_to_message_id or chat_id)
         # Ensure tweet text fits within 280 character limit
         tweet_text = text.strip()

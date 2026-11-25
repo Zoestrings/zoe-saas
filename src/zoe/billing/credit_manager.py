@@ -37,6 +37,9 @@ DEFAULT_ACTION_COSTS: Dict[str, int] = {
     "workflow_execution": 35,
     "nft_generate": 20,
     "trading_research": 10,
+    "social_draft": 2,
+    "web3_research": 10,
+    "growth_report": 10,
 }
 
 

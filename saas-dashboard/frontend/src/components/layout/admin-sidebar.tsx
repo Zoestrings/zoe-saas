@@ -64,6 +64,16 @@ const adminNav = [
     icon: TrendingUp,
   },
   {
+    name: "Growth & Acquisition",
+    href: "/admin/growth",
+    icon: TrendingUp,
+  },
+  {
+    name: "Platform Control",
+    href: "/admin/platform",
+    icon: ShieldCheck,
+  },
+  {
     name: "NFT Studio",
     href: "/nft-studio",
     icon: ImageIcon,

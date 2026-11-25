@@ -1494,4 +1494,138 @@ export const api = {
       body: JSON.stringify(payload),
     })
   },
+
+  // Social Intelligence, Publishing, Web3 Research & Growth Engine
+  async getSocialComplianceStatus(): Promise<any> {
+    return apiRequest("/api/social/compliance-status", { method: "GET" })
+  },
+  async listSocialCampaigns(): Promise<{ campaigns: any[] }> {
+    return apiRequest("/api/social/campaigns", { method: "GET" })
+  },
+  async createSocialCampaign(payload: { name: string; objective?: string; target_audience?: string }): Promise<any> {
+    return apiRequest("/api/social/campaigns", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async listSocialPosts(statusFilter?: string): Promise<{ posts: any[] }> {
+    const qs = statusFilter ? `?status_filter=${encodeURIComponent(statusFilter)}` : ""
+    return apiRequest(`/api/social/posts${qs}`, { method: "GET" })
+  },
+  async createSocialPost(payload: { campaign_id?: string; platform: string; title?: string; content: string }): Promise<any> {
+    return apiRequest("/api/social/posts", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async generateSocialPostDraft(payload: { topic: string; platform: string; tone?: string; campaign_id?: string }): Promise<any> {
+    return apiRequest("/api/social/posts/generate", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async submitSocialPost(postId: string): Promise<any> {
+    return apiRequest(`/api/social/posts/${postId}/submit`, { method: "POST" })
+  },
+  async approveSocialPost(postId: string): Promise<any> {
+    return apiRequest(`/api/social/posts/${postId}/approve`, { method: "POST" })
+  },
+  async rejectSocialPost(postId: string, reason: string): Promise<any> {
+    return apiRequest(`/api/social/posts/${postId}/reject`, { method: "POST", body: JSON.stringify({ reason }) })
+  },
+  async scheduleSocialPost(postId: string, scheduledFor: string): Promise<any> {
+    return apiRequest(`/api/social/posts/${postId}/schedule`, { method: "POST", body: JSON.stringify({ scheduled_for: scheduledFor }) })
+  },
+  async publishSocialPostNow(postId: string): Promise<any> {
+    return apiRequest(`/api/social/posts/${postId}/publish-now`, { method: "POST" })
+  },
+  async deleteSocialPost(postId: string): Promise<any> {
+    return apiRequest(`/api/social/posts/${postId}`, { method: "DELETE" })
+  },
+  async runWeb3Research(payload: { query: string; category: string }): Promise<any> {
+    return apiRequest("/api/research/web3", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async listWeb3Research(): Promise<{ reports: any[] }> {
+    return apiRequest("/api/research/web3", { method: "GET" })
+  },
+  async listResearchWatchlists(): Promise<{ watchlists: any[] }> {
+    return apiRequest("/api/research/watchlists", { method: "GET" })
+  },
+  async addResearchWatchlist(payload: { topic_or_project: string; category: string }): Promise<any> {
+    return apiRequest("/api/research/watchlists", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async deleteResearchWatchlist(id: string): Promise<any> {
+    return apiRequest(`/api/research/watchlists/${id}`, { method: "DELETE" })
+  },
+  async getSocialTrends(): Promise<any> {
+    return apiRequest("/api/social/intelligence/trends", { method: "GET" })
+  },
+  async listGrowthOpportunities(): Promise<{ opportunities: any[] }> {
+    return apiRequest("/api/growth/opportunities", { method: "GET" })
+  },
+  async createGrowthOpportunity(payload: { title: string; category: string; priority: string; notes?: string; source_attribution?: string }): Promise<any> {
+    return apiRequest("/api/growth/opportunities", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async updateGrowthOpportunity(id: string, payload: { status?: string; priority?: string; notes?: string }): Promise<any> {
+    return apiRequest(`/api/growth/opportunities/${id}`, { method: "PATCH", body: JSON.stringify(payload) })
+  },
+  async getGrowthAnalytics(): Promise<any> {
+    return apiRequest("/api/growth/analytics", { method: "GET" })
+  },
+  async listAdminMarketAcquisition(): Promise<{ leads: any[]; compliance: any }> {
+    return apiRequest("/api/admin/market-acquisition", { method: "GET" })
+  },
+  async createAdminMarketAcquisitionLead(payload: { project_name: string; ecosystem: string; contact_channel?: string; stage?: string; notes?: string }): Promise<any> {
+    return apiRequest("/api/admin/market-acquisition", { method: "POST", body: JSON.stringify(payload) })
+  },
+
+  // Platform Core: Super Admin Controls, Team RBAC, Invoices, NFT Growth & Investor Intelligence
+  async getAdminAuditLogs(limit: number = 100): Promise<{ logs: any[] }> {
+    return apiRequest(`/api/admin/audit-logs?limit=${limit}`, { method: "GET" })
+  },
+  async getAdminIntegrationsOverview(): Promise<{ summary: any; integrations: any[] }> {
+    return apiRequest("/api/admin/integrations/overview", { method: "GET" })
+  },
+  async getAdminUsers(): Promise<{ users: any[] }> {
+    return apiRequest("/api/admin/users", { method: "GET" })
+  },
+  async updateAdminUserRole(userId: string, role: "project_owner" | "super_admin" | "suspended"): Promise<any> {
+    return apiRequest(`/api/admin/users/${userId}/role`, { method: "POST", body: JSON.stringify({ role }) })
+  },
+  async getAdminAIConfig(): Promise<any> {
+    return apiRequest("/api/admin/ai-config", { method: "GET" })
+  },
+  async updateAdminAIConfig(payload: { primary_provider: string; fallback_provider: string; default_model: string; max_tokens: number }): Promise<any> {
+    return apiRequest("/api/admin/ai-config", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async listOwnerTeam(): Promise<{ members: any[] }> {
+    return apiRequest("/api/owner/team", { method: "GET" })
+  },
+  async inviteOwnerTeamMember(payload: { member_email: string; role: "admin" | "editor" | "viewer" }): Promise<any> {
+    return apiRequest("/api/owner/team/invite", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async removeOwnerTeamMember(memberId: string): Promise<any> {
+    return apiRequest(`/api/owner/team/${memberId}`, { method: "DELETE" })
+  },
+  async listBillingInvoices(): Promise<{ invoices: any[] }> {
+    return apiRequest("/api/billing/invoices", { method: "GET" })
+  },
+  async generateBillingInvoice(payload: { amount_usdt: number; plan: string; reference_tx?: string }): Promise<any> {
+    return apiRequest("/api/billing/invoices/generate", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async listNFTCollections(): Promise<{ collections: any[] }> {
+    return apiRequest("/api/nft-growth/collections", { method: "GET" })
+  },
+  async createNFTCollection(payload: { name: string; symbol?: string; chain?: string; contract_address?: string; mint_campaign_name?: string }): Promise<any> {
+    return apiRequest("/api/nft-growth/collections", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async listNFTLeads(): Promise<{ leads: any[] }> {
+    return apiRequest("/api/nft-growth/leads", { method: "GET" })
+  },
+  async createNFTLead(payload: { collection_id?: string; handle_or_wallet: string; source?: string; notes?: string }): Promise<any> {
+    return apiRequest("/api/nft-growth/leads", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async listInvestorPipeline(): Promise<{ pipeline: any[] }> {
+    return apiRequest("/api/investor-intelligence/pipeline", { method: "GET" })
+  },
+  async createInvestorPipelineEntry(payload: { investor_name: string; firm_type?: string; stage?: string; focus_sectors?: string; notes?: string }): Promise<any> {
+    return apiRequest("/api/investor-intelligence/pipeline", { method: "POST", body: JSON.stringify(payload) })
+  },
+  async updateInvestorPipelineEntry(id: string, payload: { stage?: string; notes?: string }): Promise<any> {
+    return apiRequest(`/api/investor-intelligence/pipeline/${id}`, { method: "PATCH", body: JSON.stringify(payload) })
+  },
+  async deleteInvestorPipelineEntry(id: string): Promise<any> {
+    return apiRequest(`/api/investor-intelligence/pipeline/${id}`, { method: "DELETE" })
+  },
 }

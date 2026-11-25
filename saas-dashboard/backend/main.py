@@ -2224,13 +2224,22 @@ def get_user_entitlement(user_id: Optional[str]) -> Dict[str, Any]:
     if not record:
         try:
             conn = get_dev_db()
-            cur = conn.execute(
-                "SELECT plan, expires_at, credits FROM dev_entitlements WHERE user_id = ?",
-                (str(user_id),),
-            )
-            row = cur.fetchone()
-            if row:
-                record = {"plan": row[0], "expires_at": row[1], "credits": row[2] if row[2] is not None else 50}
+            try:
+                cur = conn.execute(
+                    "SELECT plan, expires_at, credits FROM dev_entitlements WHERE user_id = ?",
+                    (str(user_id),),
+                )
+                row = cur.fetchone()
+                if row:
+                    record = {"plan": row[0], "expires_at": row[1], "credits": row[2] if row[2] is not None else 50}
+            except sqlite3.OperationalError:
+                cur = conn.execute(
+                    "SELECT plan, expires_at FROM dev_entitlements WHERE user_id = ?",
+                    (str(user_id),),
+                )
+                row = cur.fetchone()
+                if row:
+                    record = {"plan": row[0], "expires_at": row[1], "credits": 50}
         except Exception as exc:
             print(f"[WARNING] Failed to fetch entitlement from dev DB: {exc}")
 
@@ -6187,6 +6196,24 @@ def get_admin_billing_overview(
 from routes.performance_alerts import build_performance_alerts_router
 app.include_router(
     build_performance_alerts_router(
+        get_current_user=get_current_user,
+        require_super_admin=require_super_admin,
+        get_dev_db=get_dev_db,
+    )
+)
+
+from routes.social_growth import build_social_growth_router
+app.include_router(
+    build_social_growth_router(
+        get_current_user=get_current_user,
+        require_super_admin=require_super_admin,
+        get_dev_db=get_dev_db,
+    )
+)
+
+from routes.platform_modules import build_platform_modules_router
+app.include_router(
+    build_platform_modules_router(
         get_current_user=get_current_user,
         require_super_admin=require_super_admin,
         get_dev_db=get_dev_db,

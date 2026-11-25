@@ -825,6 +825,13 @@ export const api = {
     })
   },
 
+  async updateProjectSettings(projectId: string, settings: Record<string, any>): Promise<any> {
+    return apiRequest(`/api/projects/${projectId}/settings`, {
+      method: "POST",
+      body: JSON.stringify(settings),
+    })
+  },
+
   async investigate(contractAddress: string): Promise<InvestigationReport> {
     return apiRequest<InvestigationReport>("/api/investigate", {
       method: "POST",
@@ -1627,5 +1634,11 @@ export const api = {
   },
   async deleteInvestorPipelineEntry(id: string): Promise<any> {
     return apiRequest(`/api/investor-intelligence/pipeline/${id}`, { method: "DELETE" })
+  },
+  async getOwnerOverview(): Promise<any> {
+    return apiRequest("/api/owner/overview", { method: "GET" })
+  },
+  async getOwnerAnalytics(): Promise<any> {
+    return apiRequest("/api/owner/analytics", { method: "GET" })
   },
 }

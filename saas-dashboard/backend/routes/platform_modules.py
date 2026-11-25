@@ -604,4 +604,79 @@ def build_platform_modules_router(
             conn.commit()
         return {"status": "deleted", "id": entry_id}
 
+    # ── Project Owner: Real Tenant-Scoped Overview & Analytics ────────────────
+    def _safe_count(conn: Any, sql: str, params: tuple = ()) -> int:
+        try:
+            row = conn.execute(sql, params).fetchone()
+            return int(row[0]) if row and row[0] is not None else 0
+        except Exception:
+            return 0
+
+    @router.get("/api/owner/overview")
+    async def get_owner_overview(
+        current_user: Dict[str, Any] = Depends(get_current_user),
+    ) -> Dict[str, Any]:
+        user_id = str(current_user.get("id", ""))
+        with get_dev_db() as conn:
+            ensure_platform_core_schema(conn)
+            total_projects = _safe_count(conn, "SELECT COUNT(*) FROM dev_projects WHERE owner_id = ?", (user_id,))
+            active_projects = _safe_count(conn, "SELECT COUNT(*) FROM dev_projects WHERE owner_id = ? AND status = 'active'", (user_id,))
+            telegram_connected = _safe_count(conn, "SELECT COUNT(*) FROM platform_integrations WHERE owner_id = ? AND platform = 'telegram' AND status IN ('active', 'connected', 'verified')", (user_id,))
+            discord_connected = _safe_count(conn, "SELECT COUNT(*) FROM platform_integrations WHERE owner_id = ? AND platform = 'discord' AND status IN ('active', 'connected', 'verified')", (user_id,))
+            monitored_tokens = _safe_count(conn, "SELECT COUNT(*) FROM monitored_tokens WHERE user_id = ? AND monitoring_status = 'active'", (user_id,))
+            unread_alerts = _safe_count(conn, "SELECT COUNT(*) FROM token_performance_alerts WHERE user_id = ? AND read_status = 0", (user_id,))
+            research_reports = _safe_count(conn, "SELECT COUNT(*) FROM web3_research_reports WHERE user_id = ?", (user_id,))
+            growth_campaigns = _safe_count(conn, "SELECT COUNT(*) FROM social_campaigns WHERE user_id = ?", (user_id,))
+            nft_collections = _safe_count(conn, "SELECT COUNT(*) FROM nft_collections WHERE user_id = ?", (user_id,))
+            investor_entries = _safe_count(conn, "SELECT COUNT(*) FROM investor_pipelines WHERE user_id = ?", (user_id,))
+            team_members = _safe_count(conn, "SELECT COUNT(*) FROM organization_members WHERE owner_user_id = ?", (user_id,))
+            plan = "free"
+            credits = 50
+            try:
+                ent = conn.execute("SELECT plan, credits FROM dev_entitlements WHERE user_id = ?", (user_id,)).fetchone()
+                if ent:
+                    plan = str(ent[0] or "free")
+                    credits = int(ent[1]) if ent[1] is not None else 50
+            except Exception:
+                pass
+
+        return {
+            "organization_id": str(current_user.get("organization_id") or user_id),
+            "projects": {"total": total_projects, "active": active_projects},
+            "integrations": {"telegram_connected": telegram_connected, "discord_connected": discord_connected},
+            "intelligence": {"monitored_tokens": monitored_tokens, "unread_alerts": unread_alerts, "research_reports": research_reports},
+            "growth": {"campaigns": growth_campaigns, "nft_collections": nft_collections, "investor_entries": investor_entries},
+            "team_members": team_members,
+            "billing": {"plan": plan, "credits": credits},
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    @router.get("/api/owner/analytics")
+    async def get_owner_analytics(
+        current_user: Dict[str, Any] = Depends(get_current_user),
+    ) -> Dict[str, Any]:
+        user_id = str(current_user.get("id", ""))
+        with get_dev_db() as conn:
+            ensure_platform_core_schema(conn)
+            overview = await get_owner_overview(current_user=current_user)
+            alerts_positive = _safe_count(conn, "SELECT COUNT(*) FROM token_performance_alerts WHERE user_id = ? AND alert_type = 'positive_milestone'", (user_id,))
+            alerts_negative = _safe_count(conn, "SELECT COUNT(*) FROM token_performance_alerts WHERE user_id = ? AND alert_type IN ('negative_decline', 'drawdown_alert')", (user_id,))
+            published_posts = _safe_count(conn, "SELECT COUNT(*) FROM social_posts WHERE user_id = ? AND status = 'published'", (user_id,))
+            draft_posts = _safe_count(conn, "SELECT COUNT(*) FROM social_posts WHERE user_id = ? AND status IN ('draft', 'pending_approval', 'approved', 'scheduled')", (user_id,))
+            credits_spent = 0
+            try:
+                row = conn.execute("SELECT COALESCE(SUM(ABS(amount)), 0) FROM dev_credit_transactions WHERE user_id = ? AND amount < 0", (user_id,)).fetchone()
+                credits_spent = int(row[0]) if row and row[0] is not None else 0
+            except Exception:
+                credits_spent = 0
+
+        return {
+            "reporting_period": "all_time_tenant_scoped",
+            "source": "zoe_operational_database",
+            "overview": overview,
+            "performance_alerts": {"positive": alerts_positive, "negative": alerts_negative},
+            "social_publishing": {"published": published_posts, "in_pipeline": draft_posts},
+            "credits_consumed": credits_spent,
+        }
+
     return router

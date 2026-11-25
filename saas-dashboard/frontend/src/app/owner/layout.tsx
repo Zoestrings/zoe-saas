@@ -106,36 +106,52 @@ export default function OwnerLayout({
     {
       title: "Overview",
       items: [
-        { label: "Home", href: "/owner/dashboard", icon: LayoutDashboard },
-        { label: "My Project", href: "/owner/project", icon: Bot },
+        { label: "Dashboard", href: "/owner/dashboard", icon: LayoutDashboard },
+        { label: "My Projects", href: "/owner/project", icon: Bot },
+        { label: "Analytics & Reports", href: "/owner/analytics", icon: Sparkles },
+        { label: "Notifications", href: "/owner/notifications", icon: MessageSquare },
       ],
     },
     {
-      title: "Intelligence",
+      title: "Community Management",
       items: [
-        { label: "Scanner", href: "/investigate", icon: Radar, isPremium: true, badge: "PRO" },
-        { label: "Watchlist", href: "/watchlist", icon: Bookmark },
-      ],
-    },
-    {
-      title: "Community",
-      items: [
-        { label: "Logs", href: "/owner/logs", icon: MessageSquare },
-        { label: "Games & Calls", href: "/community", icon: Flame },
-      ],
-    },
-    {
-      title: "Configuration",
-      items: [
+        { label: "Telegram Management", href: "/owner/integrations/telegram", icon: MessageSquare },
+        { label: "Discord Management", href: "/owner/integrations/discord", icon: Users },
         { label: "Knowledge Base", href: "/owner/dashboard/knowledge", icon: BrainCircuit },
-        { label: "Instructions", href: "/owner/dashboard/instructions", icon: FileCode },
+        { label: "AI Personality", href: "/owner/dashboard/instructions", icon: FileCode },
+        { label: "Moderation & Security", href: "/owner/moderation", icon: ShieldCheck },
+        { label: "Activity & Escalations", href: "/owner/logs", icon: Flame },
       ],
     },
     {
-      title: "Settings",
+      title: "Web3 Intelligence",
       items: [
-        { label: "Billing & Invoices", href: "/owner/billing", icon: CreditCard },
-        { label: "Account Settings", href: "/settings", icon: Settings },
+        { label: "Web3 Scanner", href: "/investigate", icon: Radar },
+        { label: "Token & Market Intel", href: "/trading", icon: Sparkles },
+        { label: "Research & Social", href: "/owner/social", icon: BrainCircuit },
+        { label: "Watchlists & Alerts", href: "/watchlist", icon: Bookmark },
+      ],
+    },
+    {
+      title: "Growth & Business",
+      items: [
+        { label: "Growth & Campaigns", href: "/owner/social", icon: Flame },
+        { label: "NFT Growth & Sales", href: "/owner/workspace", icon: Crown },
+        { label: "Investor Intelligence", href: "/owner/workspace", icon: Users },
+      ],
+    },
+    {
+      title: "AI Automation",
+      items: [
+        { label: "AI Agents & Workflows", href: "/dashboard/agents", icon: Bot },
+      ],
+    },
+    {
+      title: "Account & Billing",
+      items: [
+        { label: "Credits & Billing", href: "/owner/billing", icon: CreditCard },
+        { label: "Team & Invoices", href: "/owner/workspace", icon: Users },
+        { label: "Organization Settings", href: "/settings", icon: Settings },
       ],
     },
   ]

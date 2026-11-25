@@ -84,16 +84,6 @@ const adminNav = [
     icon: Code2,
   },
   {
-    name: "Telegram Bots",
-    href: "/owner/integrations/telegram",
-    icon: Activity,
-  },
-  {
-    name: "Discord Servers",
-    href: "/owner/integrations/discord",
-    icon: Layers,
-  },
-  {
     name: "Watchlist",
     href: "/watchlist",
     icon: Bookmark,

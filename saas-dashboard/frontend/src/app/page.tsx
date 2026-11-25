@@ -485,9 +485,6 @@ export default function LandingPage() {
             <Link href="/login" className="hover:text-white transition-colors">
               Client Portal
             </Link>
-            <Link href="/admin/overview" className="hover:text-white transition-colors">
-              Admin
-            </Link>
           </div>
 
           <div className="flex items-center gap-2 text-xs text-neutral-500 font-mono">

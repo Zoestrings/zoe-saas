@@ -27,7 +27,7 @@ import {
   ShieldCheck,
   ChevronRight
 } from "lucide-react"
-import { getToken, getUser, removeToken, User, api, EntitlementResponse } from "@/lib/api"
+import { getToken, getUser, removeToken, isSuperAdmin, User, api, EntitlementResponse } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { ZoeLogo } from "@/components/zoe-logo"
 import {
@@ -69,6 +69,8 @@ export default function OwnerLayout({
     const currentUser = getUser()
     if (!token) {
       router.replace("/login")
+    } else if (isSuperAdmin()) {
+      router.replace("/admin/overview")
     } else {
       setUser(currentUser)
       setIsAuthenticated(true)

@@ -1,11 +1,12 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { 
-  LayoutDashboard, 
-  Bot, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Bot,
+  Settings,
   LogOut,
   Sparkles,
   Activity,
@@ -16,69 +17,131 @@ import {
   Crown,
   DollarSign,
   TrendingUp,
-  Users
+  Users,
+  Image as ImageIcon,
+  Code2,
+  Menu,
+  X
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { logout } from "@/lib/api"
 import { ZoeLogo } from "@/components/zoe-logo"
 
 const adminNav = [
-  { 
-    name: "Overview", 
-    href: "/admin/overview", 
+  {
+    name: "Overview",
+    href: "/admin/overview",
     icon: LayoutDashboard,
   },
-  { 
-    name: "Revenue", 
-    href: "/admin/revenue", 
+  {
+    name: "Revenue",
+    href: "/admin/revenue",
     icon: DollarSign,
   },
-  { 
-    name: "Projects", 
-    href: "/admin/projects", 
+  {
+    name: "Projects",
+    href: "/admin/projects",
     icon: Bot,
   },
-  { 
-    name: "Community", 
-    href: "/community", 
+  {
+    name: "Community",
+    href: "/community",
     icon: Users,
   },
-  { 
-    name: "Intelligence Scanner", 
-    href: "/investigate", 
+  {
+    name: "Intelligence Scanner",
+    href: "/investigate",
     icon: Radar,
   },
-  { 
-    name: "Trading Terminal", 
-    href: "/trading", 
+  {
+    name: "Autonomous Agents",
+    href: "/dashboard/agents",
+    icon: Sparkles,
+  },
+  {
+    name: "Trading Terminal",
+    href: "/trading",
     icon: TrendingUp,
   },
-  { 
-    name: "Watchlist", 
-    href: "/watchlist", 
+  {
+    name: "NFT Studio",
+    href: "/nft-studio",
+    icon: ImageIcon,
+  },
+  {
+    name: "Developer API",
+    href: "/developer",
+    icon: Code2,
+  },
+  {
+    name: "Telegram Bots",
+    href: "/owner/integrations/telegram",
+    icon: Activity,
+  },
+  {
+    name: "Discord Servers",
+    href: "/owner/integrations/discord",
+    icon: Layers,
+  },
+  {
+    name: "Watchlist",
+    href: "/watchlist",
     icon: Bookmark,
   },
-  { 
-    name: "Upgrade Plan", 
-    href: "/admin/billing", 
+  {
+    name: "Upgrade Plan",
+    href: "/admin/billing",
     icon: Crown,
   },
-  { 
-    name: "Settings", 
-    href: "/settings", 
+  {
+    name: "Settings",
+    href: "/settings",
     icon: Settings,
   },
 ]
 
 export function AdminSidebar() {
   const pathname = usePathname()
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
-    <aside className="w-64 flex-shrink-0 flex flex-col border-r border-neutral-800 bg-[#121212] text-white h-screen sticky top-0 z-40 select-none">
-      {/* Brand Header */}
-      <div className="h-20 flex items-center px-6 border-b border-neutral-800 gap-3">
-        <ZoeLogo size={36} glow variant="full" badge="ADMIN" />
-      </div>
+    <>
+      {/* Mobile Hamburger Button */}
+      <button
+        type="button"
+        onClick={() => setMobileOpen(!mobileOpen)}
+        aria-label="Toggle sidebar navigation"
+        className="md:hidden fixed top-4 left-4 z-50 h-10 w-10 rounded-xl bg-[#121212] border border-neutral-800 text-white flex items-center justify-center shadow-xl cursor-pointer hover:border-[#00ff66]/50"
+      >
+        {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+      </button>
+
+      {/* Mobile Backdrop */}
+      {mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          className="md:hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-40"
+        />
+      )}
+
+      <aside
+        className={cn(
+          "w-64 flex-shrink-0 flex flex-col border-r border-neutral-800 bg-[#121212] text-white h-screen fixed md:sticky top-0 left-0 z-50 md:z-40 select-none transition-transform duration-300 ease-in-out",
+          mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        )}
+      >
+        {/* Brand Header */}
+        <div className="h-20 flex items-center justify-between px-6 border-b border-neutral-800 gap-3">
+          <ZoeLogo size={36} glow variant="full" badge="ADMIN" />
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            className="md:hidden text-neutral-400 hover:text-white cursor-pointer"
+            aria-label="Close navigation"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
 
       {/* Navigation Links */}
       <div className="flex-1 py-6 px-4 space-y-2 overflow-y-auto">
@@ -143,5 +206,6 @@ export function AdminSidebar() {
         </div>
       </div>
     </aside>
+    </>
   )
 }

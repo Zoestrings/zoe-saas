@@ -180,6 +180,26 @@ class PTBTelegramAdapter:
             logger.error("Telegram error sending message to chat %s: %s", chat_id, e)
             raise
 
+    async def send_photo(
+        self,
+        chat_id: str,
+        photo_url: str,
+        caption: Optional[str] = None,
+        reply_to_message_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Send an image/photo directly to a Telegram chat."""
+        kwargs: Dict[str, Any] = {}
+        if reply_to_message_id is not None and str(chat_id).startswith("-"):
+            kwargs["reply_to_message_id"] = int(reply_to_message_id)
+            kwargs["allow_sending_without_reply"] = True
+        msg = await self._bot.send_photo(
+            chat_id=chat_id,
+            photo=photo_url,
+            caption=caption or "",
+            **kwargs,
+        )
+        return msg.to_dict()
+
     async def get_chat_member(self, chat_id: str, user_id: str) -> Dict[str, Any]:
         member = await self._bot.get_chat_member(chat_id=chat_id, user_id=int(user_id))
         return member.to_dict()

@@ -571,6 +571,89 @@ async def start_orchestrator(
             bot_manager.tasks[bot.project_id] = t
             tasks.append(t)
 
+        # Spawn 24-hour Autonomous Research Reporter background task (Pillar 3)
+        async def _daily_research_loop() -> None:
+            from zoe.agents.research_agent import generate_daily_report, _get_supabase_client
+            interval_seconds = 86400  # 24 hours
+            # Brief initial delay so bot polling & health API start smoothly
+            for _ in range(12):
+                if shutdown_event.is_set():
+                    return
+                await asyncio.sleep(5.0)
+
+            while not shutdown_event.is_set():
+                try:
+                    active_projects: Dict[str, Dict[str, Optional[str]]] = {}
+                    for b in bot_instances:
+                        active_projects[b.project_id] = {
+                            "name": b.config.get("project_name") or b.project_id,
+                            "token_address": b.config.get("token_address"),
+                        }
+
+                    sb_client = _get_supabase_client()
+                    if sb_client:
+                        try:
+                            res = sb_client.table("projects").select("id, name, token_address, active").eq("active", True).execute()
+                            for row in (res.data or []):
+                                pid = str(row.get("id", "")).strip()
+                                if pid:
+                                    active_projects[pid] = {
+                                        "name": row.get("name"),
+                                        "token_address": row.get("token_address"),
+                                    }
+                        except Exception as exc:
+                            logger.warning("Daily research scheduler could not query Supabase projects: %s", exc)
+
+                    for pid, meta in active_projects.items():
+                        if shutdown_event.is_set():
+                            break
+                        try:
+                            await generate_daily_report(
+                                project_id=pid,
+                                project_name=meta.get("name"),
+                                token_address=meta.get("token_address"),
+                            )
+                        except Exception as exc:
+                            logger.error("Daily research report failed for project '%s': %s", pid, exc)
+                except Exception as exc:
+                    logger.error("Unexpected error in daily research scheduler: %s", exc)
+
+                # Wait 24 hours while respecting shutdown_event
+                elapsed = 0
+                while elapsed < interval_seconds and not shutdown_event.is_set():
+                    await asyncio.sleep(5.0)
+                    elapsed += 5
+
+        research_task = asyncio.create_task(_daily_research_loop())
+        tasks.append(research_task)
+
+        # Stage F: Dynamic Integration Sync Loop (kills disconnected bots from platform_integrations)
+        async def _integration_sync_loop() -> None:
+            import os
+            dev_db = Path(os.getenv("DATA_DIR", "data")) / "saas_dev.db"
+            if not dev_db.exists():
+                dev_db = Path(__file__).resolve().parent.parent / "saas-dashboard" / "backend" / "saas_dev.db"
+            while not shutdown_event.is_set():
+                try:
+                    if dev_db.exists():
+                        conn_i = sqlite3.connect(str(dev_db), timeout=5.0)
+                        rows = conn_i.execute(
+                            "SELECT project_id, status FROM platform_integrations WHERE status = 'disconnected'"
+                        ).fetchall()
+                        conn_i.close()
+                        for pid, _ in rows:
+                            t = bot_manager.tasks.get(str(pid))
+                            if t and not t.done():
+                                logger.info("Integration disconnected for '%s'; stopping polling task.", pid)
+                                t.cancel()
+                                bot_manager.statuses[str(pid)] = "stopped"
+                except Exception as exc:
+                    logger.debug("Integration sync tick error: %s", exc)
+                await asyncio.sleep(15.0)
+
+        sync_task = asyncio.create_task(_integration_sync_loop())
+        tasks.append(sync_task)
+
         # Launch Engine FastAPI on port 8080 concurrently
         uvi_config = uvicorn.Config(engine_app, host="0.0.0.0", port=8080, log_level="warning")
         uvi_server = uvicorn.Server(uvi_config)

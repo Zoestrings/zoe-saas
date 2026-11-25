@@ -115,7 +115,18 @@ def rebuild_faiss_index(
 
     data_root = Path(os.getenv("DATA_DIR", "data"))
     base_dir = Path(index_dir) if index_dir else (data_root / "indexes")
-    index_path = base_dir / project_id / "index.faiss"
+    
+    if not project_id or not re.match(r"^[a-zA-Z0-9_-]+$", str(project_id).strip()):
+        raise ValueError(f"Invalid or unsafe project_id: {project_id!r}")
+    
+    target_dir = (base_dir / str(project_id).strip()).resolve()
+    base_resolved = base_dir.resolve()
+    try:
+        target_dir.relative_to(base_resolved)
+    except ValueError:
+        raise ValueError(f"Path traversal detected: project_id {project_id!r} escapes base directory {base_resolved}")
+        
+    index_path = target_dir / "index.faiss"
     index_path.parent.mkdir(parents=True, exist_ok=True)
 
     cur = conn.execute(

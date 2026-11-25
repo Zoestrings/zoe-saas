@@ -4,6 +4,7 @@ import asyncio
 import os
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Any, List, Optional, Union
 
 import faiss
@@ -25,6 +26,23 @@ class RetrievedChunk:
     score: float
 
 
+def _resolve_safe_index_path(base_dir: Path, project_id: str) -> Optional[Path]:
+    """Validate project_id format and ensure index path cannot escape base_dir."""
+    if not project_id or not re.match(r"^[a-zA-Z0-9_-]+$", str(project_id).strip()):
+        logger.warning("Rejected invalid or unsafe project_id: %r", project_id)
+        return None
+    clean_id = str(project_id).strip()
+    target_dir = (base_dir / clean_id).resolve()
+    base_resolved = base_dir.resolve()
+    try:
+        # Prevent path traversal outside authorized index directory
+        target_dir.relative_to(base_resolved)
+    except ValueError:
+        logger.error("Path traversal attempt detected: project_id %r escapes base_dir %s", project_id, base_resolved)
+        return None
+    return target_dir / "index.faiss"
+
+
 async def search_async(
     project_id: str,
     query: str,
@@ -39,9 +57,8 @@ async def search_async(
 
     data_root = Path(os.getenv("DATA_DIR", "data"))
     base_dir = Path(index_dir) if index_dir else (data_root / "indexes")
-    index_path = base_dir / project_id / "index.faiss"
-
-    if not index_path.exists():
+    index_path = _resolve_safe_index_path(base_dir, project_id)
+    if not index_path or not index_path.exists():
         return []
 
     try:
@@ -120,9 +137,8 @@ def search(
 
     data_root = Path(os.getenv("DATA_DIR", "data"))
     base_dir = Path(index_dir) if index_dir else (data_root / "indexes")
-    index_path = base_dir / project_id / "index.faiss"
-
-    if not index_path.exists():
+    index_path = _resolve_safe_index_path(base_dir, project_id)
+    if not index_path or not index_path.exists():
         return []
 
     try:

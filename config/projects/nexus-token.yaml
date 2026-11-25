@@ -1,0 +1,25 @@
+capabilities:
+  security_audit: false
+  token_scanner: false
+modules:
+  community_intelligence: true
+  community_manager: true
+  crypto_intelligence: false
+personality:
+  name: Nexus Token AI
+  system_prompt: You are Nexus Token AI, an AI assistant for this community.
+project:
+  active: 1
+  id: nexus-token
+  name: Nexus Token AI
+  token_address: F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon
+telegram:
+  environment: live_verification
+  group_id: '-10099887766'
+  live_send_responses_enabled: true
+  poll_interval_seconds: 0.1
+token:
+  address: F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon
+  chain: solana
+  symbol: $TOKEN
+token_address: F1r5AqRj8bJyzM4nUZpVBH1JQT8ToR4Rvjj2YwxHmoon

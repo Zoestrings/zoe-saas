@@ -481,7 +481,7 @@ def test_pipeline_investigate_command_interception(tmp_path):
         simulated=True,
     )
     assert res_missing.responded is True
-    assert "Please provide a Solana contract address" in res_missing.response_text
+    assert "contract address to investigate" in res_missing.response_text.lower()
 
     # 2. Test /investigate with invalid CA
     insert_inbox_msg(2, "/investigate not_a_valid_solana_key")
@@ -503,7 +503,7 @@ def test_pipeline_investigate_command_interception(tmp_path):
         simulated=True,
     )
     assert res_invalid.responded is True
-    assert "Invalid Solana Address" in res_invalid.response_text
+    assert "invalid contract address" in res_invalid.response_text.lower()
 
     # 3. Test /investigate with valid CA (BONK)
     bonk_ca = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"

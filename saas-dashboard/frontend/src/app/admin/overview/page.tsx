@@ -36,6 +36,7 @@ import {
 import "./overview.css"
 import { api, logout, Project } from "@/lib/api"
 import { ZoeLogo } from "@/components/zoe-logo"
+import { AdminPerformanceCard } from "@/components/scanner/admin-performance-card"
 
 interface UIProject {
   id: string
@@ -200,10 +201,24 @@ export default function ZoeDashboard() {
   const [systemUptime, setSystemUptime] = useState("99.9%")
   const [chartData, setChartData] = useState<Array<{ date: string; value: number }>>([])
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [agentLedger, setAgentLedger] = useState<{
+    id: string
+    agent_name: string
+    tool_name: string
+    credit_cost: number
+    status: string
+    message: string
+    created_at: string
+  }[]>([])
 
   // Load real projects from backend
   useEffect(() => {
     async function loadData() {
+      api
+        .getAdminAgentLedger(10)
+        .then((entries) => setAgentLedger(Array.isArray(entries) ? entries : []))
+        .catch(() => {})
+
       try {
         const res = await api.getProjects()
         if (res && res.length > 0) {
@@ -572,6 +587,36 @@ export default function ZoeDashboard() {
             </div>
           </article>
 
+          <article className="panel activity-panel">
+            <div className="panel-heading">
+              <h2>Agent Revenue Ledger</h2>
+              <Link href="/admin/revenue" className="text-link">
+                Revenue <ArrowUpRight size={15} />
+              </Link>
+            </div>
+            <div className="activity-list">
+              {agentLedger.length > 0 ? (
+                agentLedger.map((entry) => (
+                  <div className="activity-row" key={entry.id}>
+                    <span className="activity-icon telegram">
+                      <Zap size={15} />
+                    </span>
+                    <span>{entry.message}</span>
+                    <small>{new Date(entry.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>
+                  </div>
+                ))
+              ) : (
+                <div className="activity-row">
+                  <span className="activity-icon telegram">
+                    <Zap size={15} />
+                  </span>
+                  <span>Waiting for autonomous agent tool calls (/report, /agent)...</span>
+                  <small>Live</small>
+                </div>
+              )}
+            </div>
+          </article>
+
           <article className="panel quick-panel">
             <h2>Quick Actions</h2>
             <div className="quick-actions">
@@ -618,6 +663,8 @@ export default function ZoeDashboard() {
             </div>
           </article>
         </section>
+
+        <AdminPerformanceCard />
 
         <footer className="dashboard-footer">
           Zoe Intelligence Engine <span>·</span> Multi-project community operations

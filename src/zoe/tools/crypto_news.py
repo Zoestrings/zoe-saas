@@ -173,19 +173,34 @@ def _fetch_from_duckduckgo(query: str, timelimit: str = "d", max_results: int = 
 
 
 def fetch_crypto_news_sync(query: str, timelimit: str = "d", max_results: int = 5) -> List[Dict[str, str]]:
-    """Synchronously fetch live crypto news with source attribution and robust fallbacks."""
+    """Synchronously fetch live crypto news with source attribution, caching, and robust fallbacks."""
     if not query or not query.strip():
         return []
 
-    # 1. Try DuckDuckGo
-    results = _fetch_from_duckduckgo(query=query, timelimit=timelimit, max_results=max_results)
-    if results:
-        return results
+    from zoe.tools.search_cache import GLOBAL_SEARCH_CACHE, is_safe_public_url
 
-    # 2. Resilient Fallback: Institutional RSS feeds
-    rss_results = _fetch_from_rss_feeds(query=query, max_results=max_results)
-    if rss_results:
-        return rss_results
+    # 1. Check Cache
+    cached = GLOBAL_SEARCH_CACHE.get(query, context="news")
+    if cached:
+        logger.debug("Cache hit for crypto news query: %r", query)
+        return cached[:max_results]
+
+    results: List[Dict[str, Any]] = []
+
+    # 2. Try DuckDuckGo
+    ddg_res = _fetch_from_duckduckgo(query=query, timelimit=timelimit, max_results=max_results)
+    if ddg_res:
+        results = [r for r in ddg_res if is_safe_public_url(r.get("url"))]
+
+    # 3. Resilient Fallback: Institutional RSS feeds
+    if not results:
+        rss_results = _fetch_from_rss_feeds(query=query, max_results=max_results)
+        if rss_results:
+            results = [r for r in rss_results if is_safe_public_url(r.get("url"))]
+
+    if results:
+        GLOBAL_SEARCH_CACHE.set(query, results, context="news")
+        return results[:max_results]
 
     return []
 

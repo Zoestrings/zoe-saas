@@ -89,6 +89,111 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- User Entitlements & Credit Balances
+CREATE TABLE IF NOT EXISTS public.entitlements (
+    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    plan TEXT DEFAULT 'free',
+    credits INTEGER NOT NULL DEFAULT 50,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.entitlements ADD COLUMN IF NOT EXISTS credits INTEGER NOT NULL DEFAULT 50;
+
+-- Autonomous Daily Research Reports (Pillar 3)
+CREATE TABLE IF NOT EXISTS public.research_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE,
+    report_text TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.research_reports ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Project owners can view own reports" ON public.research_reports;
+CREATE POLICY "Project owners can view own reports" ON public.research_reports FOR SELECT USING (
+    project_id IN (SELECT id FROM public.projects WHERE owner_id = auth.uid())
+);
+
+-- Developer API Keys & Usage Logs (Pillar 4 & 6)
+CREATE TABLE IF NOT EXISTS public.api_keys (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    key_name TEXT NOT NULL,
+    key_hash TEXT NOT NULL,
+    key_prefix TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can manage own API keys" ON public.api_keys;
+CREATE POLICY "Users can manage own API keys" ON public.api_keys FOR ALL USING (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS public.api_usage_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    api_key_id UUID REFERENCES public.api_keys(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL,
+    credits_used INTEGER NOT NULL,
+    status_code INTEGER NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- Multi-Tenant Platform Integrations (Telegram & Discord)
+CREATE TABLE IF NOT EXISTS public.platform_integrations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id TEXT NOT NULL,
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    platform TEXT NOT NULL CHECK (platform IN ('telegram', 'discord')),
+    bot_username TEXT,
+    bot_external_id TEXT,
+    encrypted_token TEXT,
+    token_hash TEXT,
+    encrypted_secret TEXT,
+    status TEXT NOT NULL DEFAULT 'connected' CHECK (status IN ('connected', 'disconnected', 'error')),
+    permissions_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.telegram_communities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id TEXT NOT NULL,
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    integration_id UUID NOT NULL REFERENCES public.platform_integrations(id) ON DELETE CASCADE,
+    chat_id TEXT NOT NULL,
+    chat_title TEXT,
+    chat_type TEXT DEFAULT 'supergroup',
+    is_admin_verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.discord_servers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id TEXT NOT NULL,
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    integration_id UUID NOT NULL REFERENCES public.platform_integrations(id) ON DELETE CASCADE,
+    guild_id TEXT NOT NULL,
+    guild_name TEXT,
+    channel_id TEXT,
+    permissions_bitmask TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.integration_activity_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id TEXT NOT NULL,
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    integration_id UUID NOT NULL REFERENCES public.platform_integrations(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    details TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.platform_integrations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Owners manage own platform integrations" ON public.platform_integrations;
+CREATE POLICY "Owners manage own platform integrations" ON public.platform_integrations FOR ALL USING (auth.uid() = owner_id);
 """
 
 

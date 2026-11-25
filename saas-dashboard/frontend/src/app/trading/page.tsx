@@ -98,6 +98,18 @@ function TradingTerminalContent() {
   const [isResetOpen, setIsResetOpen] = useState(false)
   const [resetting, setResetting] = useState(false)
 
+  // Credits & AI Pre-Trade Research State (Pillar 2)
+  const [credits, setCredits] = useState<number | null>(null)
+  const [researchOpen, setResearchOpen] = useState(false)
+  const [researchLoading, setResearchLoading] = useState(false)
+  const [researchError, setResearchError] = useState<string | null>(null)
+  const [researchResult, setResearchResult] = useState<{
+    token_name?: string
+    token_symbol?: string
+    bullets: string[]
+    disclaimer: string
+  } | null>(null)
+
   // Copied state
   const [copied, setCopied] = useState(false)
 
@@ -107,16 +119,51 @@ function TradingTerminalContent() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Fetch Wallet Data
+  // Fetch Wallet Data & Credit Balance
   const loadWallet = async () => {
     setWalletLoading(true)
     try {
-      const data = await api.getPaperWallet()
-      setWallet(data)
+      const [data, ent] = await Promise.allSettled([
+        api.getPaperWallet(),
+        api.getEntitlement(),
+      ])
+      if (data.status === "fulfilled") {
+        setWallet(data.value)
+      }
+      if (ent.status === "fulfilled" && ent.value) {
+        setCredits(ent.value.credits ?? 0)
+      }
     } catch (err: any) {
       console.error("Failed to load paper wallet:", err)
     } finally {
       setWalletLoading(false)
+    }
+  }
+
+  // Run AI Pre-Trade Research Brief (10 Credits)
+  const handleRunAiResearch = async () => {
+    setResearchOpen(true)
+    setResearchLoading(true)
+    setResearchError(null)
+    setResearchResult(null)
+    try {
+      const res = await api.runTradingResearch(tokenAddress)
+      setResearchResult({
+        token_name: res.token_name,
+        token_symbol: res.token_symbol,
+        bullets: res.bullets || [],
+        disclaimer: res.disclaimer || "This is AI-generated research, not financial advice.",
+      })
+      if (typeof res.credits_remaining === "number") {
+        setCredits(res.credits_remaining)
+      } else {
+        const ent = await api.getEntitlement().catch(() => null)
+        if (ent) setCredits(ent.credits ?? 0)
+      }
+    } catch (err: any) {
+      setResearchError(err?.message || "Failed to run AI research. Please check your credit balance.")
+    } finally {
+      setResearchLoading(false)
     }
   }
 
@@ -331,6 +378,13 @@ function TradingTerminalContent() {
         </div>
 
         <div className="flex items-center gap-3 self-end sm:self-center">
+          {credits !== null && (
+            <div className="px-3 py-1.5 rounded-full bg-[#161b22] border border-[#00ff66]/30 text-xs font-mono text-white flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3 text-[#00ff66]" />
+              <span>{credits.toLocaleString()} Credits</span>
+            </div>
+          )}
+
           <Button
             variant="outline"
             size="sm"
@@ -583,26 +637,38 @@ function TradingTerminalContent() {
                 </span>
               </div>
 
-              {/* Action Button */}
-              <Button
-                type="button"
-                onClick={handleExecuteTrade}
-                disabled={executing || tokenLoading}
-                className={`w-full h-12 rounded-2xl font-black text-sm tracking-wide shadow-xl cursor-pointer transition-all ${
-                  tradeType === "buy"
-                    ? "bg-[#00ff66] hover:bg-[#00e65c] text-black shadow-[#00ff66]/20"
-                    : "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/20"
-                }`}
-              >
-                {executing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Simulating On-Chain Swap...
-                  </>
-                ) : (
-                  `EXECUTE SIMULATED ${tradeType.toUpperCase()} ($${(parseFloat(amountUsdt) || 0).toFixed(2)} USDT)`
-                )}
-              </Button>
+              {/* Action Buttons */}
+              <div className="space-y-2.5">
+                <Button
+                  type="button"
+                  onClick={handleRunAiResearch}
+                  disabled={researchLoading || tokenLoading}
+                  variant="outline"
+                  className="w-full h-11 rounded-2xl border-[#00ff66]/40 bg-[#00ff66]/10 hover:bg-[#00ff66]/20 text-[#00ff66] font-bold text-xs tracking-wide cursor-pointer transition-all"
+                >
+                  🧠 Run AI Research (10 Credits)
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={handleExecuteTrade}
+                  disabled={executing || tokenLoading}
+                  className={`w-full h-12 rounded-2xl font-black text-sm tracking-wide shadow-xl cursor-pointer transition-all ${
+                    tradeType === "buy"
+                      ? "bg-[#00ff66] hover:bg-[#00e65c] text-black shadow-[#00ff66]/20"
+                      : "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/20"
+                  }`}
+                >
+                  {executing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      Simulating On-Chain Swap...
+                    </>
+                  ) : (
+                    `EXECUTE SIMULATED ${tradeType.toUpperCase()} ($${(parseFloat(amountUsdt) || 0).toFixed(2)} USDT)`
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -836,6 +902,68 @@ function TradingTerminalContent() {
               className="bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs h-10 px-5 rounded-xl cursor-pointer"
             >
               {resetting ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : "Confirm Reset"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* AI Pre-Trade Intelligence Brief Modal */}
+      <Dialog open={researchOpen} onOpenChange={setResearchOpen}>
+        <DialogContent className="bg-[#12161c] border-[#212833] text-white rounded-3xl max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-[#00ff66]" />
+              <span>Pre-Trade Intelligence Brief</span>
+              {researchResult?.token_symbol && (
+                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/30">
+                  {researchResult.token_symbol}
+                </span>
+              )}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-[#818c99]">
+              Objective multi-source analysis combining DexScreener liquidity, GoPlus/RugCheck holders, and X sentiment.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-2">
+            {researchLoading ? (
+              <div className="py-10 flex flex-col items-center justify-center gap-3 text-neutral-400">
+                <Loader2 className="h-8 w-8 animate-spin text-[#00ff66]" />
+                <p className="text-xs font-medium text-white">Analyzing liquidity, holder concentration, and X sentiment...</p>
+              </div>
+            ) : researchError ? (
+              <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-400" />
+                <span>{researchError}</span>
+              </div>
+            ) : researchResult ? (
+              <div className="rounded-2xl bg-neutral-950/60 backdrop-blur-xl border border-neutral-800/80 p-5 space-y-4">
+                <ul className="space-y-3">
+                  {researchResult.bullets.map((bullet, idx) => (
+                    <li key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm text-neutral-200 leading-relaxed">
+                      <span className="h-5 w-5 rounded-full bg-[#00ff66]/15 border border-[#00ff66]/30 text-[#00ff66] font-mono text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">
+                        {idx + 1}
+                      </span>
+                      <span>{bullet}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="pt-3 border-t border-neutral-800/80 flex items-center gap-2 text-[11px] text-neutral-400">
+                  <Info className="h-3.5 w-3.5 text-neutral-500 shrink-0" />
+                  <span>{researchResult.disclaimer}</span>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <DialogFooter className="border-t border-[#212833] pt-3">
+            <Button
+              type="button"
+              onClick={() => setResearchOpen(false)}
+              className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-9 px-5 rounded-xl cursor-pointer"
+            >
+              Close Brief
             </Button>
           </DialogFooter>
         </DialogContent>

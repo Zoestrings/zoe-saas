@@ -69,7 +69,19 @@ def _ddg_html_fallback(query: str, max_results: int = 3) -> List[Dict[str, str]]
 
 
 def search_web_sync(query: str, max_results: int = 3) -> List[Dict[str, str]]:
-    """Search DuckDuckGo synchronously and return title, snippet, url, and date for top results."""
+    """Search DuckDuckGo synchronously with TTL caching and SSRF validation."""
+    if not query or not query.strip():
+        return []
+
+    from zoe.tools.search_cache import GLOBAL_SEARCH_CACHE, is_safe_public_url
+
+    # 1. Check Cache
+    cached = GLOBAL_SEARCH_CACHE.get(query)
+    if cached:
+        logger.debug("Cache hit for web search query: %r", query)
+        return cached[:max_results]
+
+    raw_results: List[Dict[str, Any]] = []
     try:
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -80,6 +92,8 @@ def search_web_sync(query: str, max_results: int = 3) -> List[Dict[str, str]]:
                 for r in raw_results:
                     snip = r.get("body", "") or r.get("snippet", "")
                     url = r.get("href", "") or r.get("link", "")
+                    if url and not is_safe_public_url(url):
+                        continue
                     results.append(
                         {
                             "title": r.get("title", ""),
@@ -90,11 +104,20 @@ def search_web_sync(query: str, max_results: int = 3) -> List[Dict[str, str]]:
                             "date": r.get("date", "Recent"),
                         }
                     )
-                return results
+                if results:
+                    GLOBAL_SEARCH_CACHE.set(query, results)
+                    return results
     except Exception as exc:
         logger.debug("DDGS client encountered exception, attempting HTML fallback: %s", exc)
 
-    return _ddg_html_fallback(query, max_results=max_results)
+    fallback_results = _ddg_html_fallback(query, max_results=max_results)
+    if fallback_results:
+        # Filter safe URLs
+        safe_fallback = [r for r in fallback_results if is_safe_public_url(r.get("url"))]
+        if safe_fallback:
+            GLOBAL_SEARCH_CACHE.set(query, safe_fallback)
+            return safe_fallback
+    return fallback_results
 
 
 async def search_web(query: str, max_results: int = 3) -> List[Dict[str, str]]:

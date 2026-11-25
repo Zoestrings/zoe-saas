@@ -117,6 +117,7 @@ class GroqProvider:
                                 if content and content.strip():
                                     GroqProvider._WORKING_MODEL = model_name
                                     self.model = model_name
+                                    self.last_usage = data.get("usage") or {}
                                     return content.strip()
                                 else:
                                     logger.warning("Groq model '%s' returned empty content. Trying next candidate...", model_name)

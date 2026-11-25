@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { PerformanceAlertsPanel } from "@/components/scanner/performance-alerts-panel"
 import {
   Radar,
   Search,
@@ -31,7 +32,12 @@ import {
   Bookmark,
   BookmarkCheck,
   Crown,
-  Calendar
+  Calendar,
+  Flame,
+  BarChart3,
+  Bell,
+  Sparkles,
+  FileText
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -45,8 +51,14 @@ import {
   TableRow
 } from "@/components/ui/table"
 import { api, InvestigationReport, SavedInvestigation } from "@/lib/api"
+import { NarrativeRadar } from "@/components/scanner/narrative-radar"
+import { TrendingDiscovery } from "@/components/scanner/trending-discovery"
+import { MindshareTable } from "@/components/scanner/mindshare-table"
+import { IntelligenceReports } from "@/components/scanner/intelligence-reports"
+import { SmartAlertsHub } from "@/components/scanner/smart-alerts-hub"
 
 export default function InvestigatePage() {
+  const [activeTab, setActiveTab] = useState<"audit" | "narratives" | "trending" | "mindshare" | "reports" | "alerts">("audit")
   const [caInput, setCaInput] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -63,6 +75,12 @@ export default function InvestigatePage() {
   const [addingToWatchlist, setAddingToWatchlist] = useState(false)
   const [inWatchlist, setInWatchlist] = useState(false)
   const [watchlistSuccessMsg, setWatchlistSuccessMsg] = useState<string | null>(null)
+
+  // Token Performance Monitoring state
+  const [monitoringToken, setMonitoringToken] = useState(false)
+  const [isMonitored, setIsMonitored] = useState(false)
+  const [monitorMsg, setMonitorMsg] = useState<string | null>(null)
+  const [monitorRefreshTick, setMonitorRefreshTick] = useState(0)
 
   // Subscription entitlement state (Mega-Module 6)
   const [isProUser, setIsProUser] = useState(false)
@@ -102,6 +120,23 @@ export default function InvestigatePage() {
       setTimeout(() => setWatchlistSuccessMsg(null), 3000)
     } finally {
       setAddingToWatchlist(false)
+    }
+  }
+
+  const handleMonitorToken = async () => {
+    if (!report || !report.ca) return
+    setMonitoringToken(true)
+    setMonitorMsg(null)
+    try {
+      await api.registerTokenMonitoring({ contract_address: report.ca })
+      setIsMonitored(true)
+      setMonitorMsg("Monitoring Active (2x, 4x, 5x, 10x)")
+      setMonitorRefreshTick((t) => t + 1)
+    } catch (err: any) {
+      setMonitorMsg(err.message || "Failed to monitor token")
+      setTimeout(() => setMonitorMsg(null), 4000)
+    } finally {
+      setMonitoringToken(false)
     }
   }
 
@@ -371,10 +406,114 @@ export default function InvestigatePage() {
           Intelligence Scanner
         </h1>
         <p className="text-xs text-neutral-400 max-w-2xl">
-          Deep on-chain security audit, liquidity validation, holder concentration, and honeypot risk assessment for Solana and EVM tokens.
+          Deep on-chain security audit, narrative momentum tracking, social mindshare analysis, and automated intelligence research.
         </p>
       </div>
 
+      {/* Phase 3 Sub-Navigation Tabs */}
+      <div className="flex items-center gap-1.5 p-1 bg-[#121212] border border-neutral-800 rounded-2xl overflow-x-auto no-scrollbar no-print">
+        <button
+          onClick={() => setActiveTab("audit")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === "audit"
+              ? "bg-[#00ff66] text-black shadow-lg shadow-[#00ff66]/20"
+              : "text-neutral-400 hover:text-white hover:bg-neutral-900"
+          }`}
+        >
+          <Radar className="h-4 w-4" />
+          <span>Token Security Audit</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("narratives")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === "narratives"
+              ? "bg-[#00ff66] text-black shadow-lg shadow-[#00ff66]/20"
+              : "text-neutral-400 hover:text-white hover:bg-neutral-900"
+          }`}
+        >
+          <Flame className="h-4 w-4" />
+          <span>Narrative Radar</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("trending")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === "trending"
+              ? "bg-[#00ff66] text-black shadow-lg shadow-[#00ff66]/20"
+              : "text-neutral-400 hover:text-white hover:bg-neutral-900"
+          }`}
+        >
+          <Sparkles className="h-4 w-4" />
+          <span>Trending Discovery</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("mindshare")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === "mindshare"
+              ? "bg-[#00ff66] text-black shadow-lg shadow-[#00ff66]/20"
+              : "text-neutral-400 hover:text-white hover:bg-neutral-900"
+          }`}
+        >
+          <BarChart3 className="h-4 w-4" />
+          <span>Mindshare Engine</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("reports")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === "reports"
+              ? "bg-[#00ff66] text-black shadow-lg shadow-[#00ff66]/20"
+              : "text-neutral-400 hover:text-white hover:bg-neutral-900"
+          }`}
+        >
+          <FileText className="h-4 w-4" />
+          <span>Research Briefs</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("alerts")}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+            activeTab === "alerts"
+              ? "bg-[#00ff66] text-black shadow-lg shadow-[#00ff66]/20"
+              : "text-neutral-400 hover:text-white hover:bg-neutral-900"
+          }`}
+        >
+          <Bell className="h-4 w-4" />
+          <span>Smart Alerts</span>
+        </button>
+      </div>
+
+      {/* Render Modules conditionally based on activeTab */}
+      {activeTab === "narratives" && (
+        <NarrativeRadar
+          onScanToken={(tok) => {
+            setCaInput(tok)
+            setActiveTab("audit")
+          }}
+          onGenerateReport={() => setActiveTab("reports")}
+        />
+      )}
+
+      {activeTab === "trending" && (
+        <TrendingDiscovery
+          onScanToken={(tok) => {
+            setCaInput(tok)
+            setActiveTab("audit")
+          }}
+        />
+      )}
+
+      {activeTab === "mindshare" && <MindshareTable />}
+
+      {activeTab === "reports" && <IntelligenceReports />}
+
+      {activeTab === "alerts" && <SmartAlertsHub />}
+
+      {/* Audit View (Existing Scan Engine) */}
+      {activeTab === "audit" && (
+        <>
       {/* Hero Search Section */}
       <div className="bg-[#121212] border border-neutral-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-4 no-print">
         <form
@@ -761,6 +900,21 @@ export default function InvestigatePage() {
                     <span>Trade this Token</span>
                   </Button>
                 </Link>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleMonitorToken}
+                  disabled={monitoringToken || isMonitored}
+                  className="h-11 px-4 rounded-2xl border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500 hover:text-black text-cyan-300 text-xs font-bold cursor-pointer transition-all flex items-center gap-2 no-print shadow-lg"
+                >
+                  {monitoringToken ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Radar className="h-4 w-4" />
+                  )}
+                  <span>{isMonitored ? "Monitoring Active" : monitorMsg || "Monitor Token"}</span>
+                </Button>
 
                 <Button
                   type="button"
@@ -1739,6 +1893,13 @@ export default function InvestigatePage() {
           </div>
         </div>
       )}
+        </>
+      )}
+
+      {/* Token Performance Monitoring & Real-Time Alerts */}
+      <div className="pt-4">
+        <PerformanceAlertsPanel refreshTrigger={monitorRefreshTick} />
+      </div>
     </div>
   )
 }

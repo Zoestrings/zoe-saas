@@ -965,6 +965,8 @@ async def run_monitoring_loop(interval_seconds: int = 60) -> None:
             await check_custom_alerts()
             await check_wallet_follows()
             await check_prediction_markets()
+            from zoe.scanner.performance_monitor import run_performance_monitoring_cycle
+            await run_performance_monitoring_cycle()
         except asyncio.CancelledError:
             logger.info("Watchlist monitor loop cancelled.")
             break

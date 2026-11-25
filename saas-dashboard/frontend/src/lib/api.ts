@@ -369,6 +369,167 @@ export interface SecurityAlert {
   is_read?: boolean
 }
 
+export interface NarrativeRecord {
+  id: string
+  name: string
+  category: string
+  description: string
+  keywords: string[]
+  status: string
+  current_frequency: number
+  historical_frequency: number
+  momentum_pct: number
+  mindshare_pct: number
+  sentiment_score: number
+  sentiment_label: string
+  associated_projects: string[]
+  sample_size: number
+  updated_at: string
+}
+
+export interface TrendingProject {
+  name: string
+  symbol: string
+  contract_address?: string | null
+  chain: string
+  narrative: string
+  news_count: number
+  social_volume: number
+  unique_authors: number
+  mindshare_pct: number
+  momentum_pct: number
+  sentiment_label: string
+  sentiment_score: number
+  price_usd?: number | null
+  liquidity_usd?: number | null
+  volume_24h_usd?: number | null
+  discovery_reason: string
+  flags: string[]
+}
+
+export interface MindshareResult {
+  category: string
+  timeframe: string
+  total_mentions_in_category: number
+  total_unique_authors: number
+  projects: Array<{
+    name: string
+    symbol: string
+    posts_count: number
+    unique_authors: number
+    mindshare_pct: number
+    previous_mindshare_pct: number
+    change_pct: number
+    author_diversity_ratio: number
+  }>
+  methodology: string
+}
+
+export interface ScannerAlertRule {
+  rule_id: string
+  user_id: string
+  project_id?: string | null
+  rule_type: string
+  target_entity: string
+  threshold: number
+  cooldown_minutes: number
+  enabled: boolean
+  created_at: string
+}
+
+export interface ScannerAlertEvent {
+  event_id: string
+  rule_id?: string | null
+  severity: "low" | "medium" | "high" | "critical"
+  title: string
+  message: string
+  trigger_explanation: string
+  supporting_sources: Array<{ title: string; url: string; domain?: string }>
+  is_read: boolean
+  timestamp_utc: string
+}
+
+export interface IntelligenceReport {
+  report_id: string
+  title: string
+  topic: string
+  entity_type: string
+  executive_summary: string
+  narrative_overview: string
+  market_and_mindshare: string
+  sentiment_analysis: string
+  social_and_news_evidence: string
+  important_sources: Array<{ title: string; url: string; domain?: string }>
+  missing_information: string
+  limitations_and_confidence: string
+  created_at_utc: string
+}
+
+export interface AgentConfig {
+  agent_id: string
+  name: string
+  description: string
+  category: string
+  capabilities: string[]
+  approved_tools: string[]
+  security_level: string
+  system_prompt?: string
+  max_steps: number
+  timeout_seconds: number
+  is_custom?: boolean
+  is_active: boolean
+  credit_cost_per_call: number
+}
+
+export interface OrchestrationResult {
+  workflow_id: string
+  execution_id: string
+  status: string
+  step_results: Record<string, any>
+  final_output: Record<string, any>
+  final_synthesis?: string
+  total_time_ms: number
+  total_execution_time_ms?: number
+  agents_involved: string[]
+  audit_trail: Array<{
+    step: string
+    agent: string
+    status: string
+    latency_ms: number
+    tools?: string[]
+  }>
+}
+
+export interface AgentTaskRecord {
+  task_id: string
+  correlation_id: string
+  agent_id: string
+  action: string
+  status: string
+  payload: Record<string, any>
+  result_data: any
+  latency_ms: number
+  tools_called: string[]
+  created_at: string
+}
+
+export interface WorkflowTemplate {
+  workflow_id: string
+  name: string
+  description: string
+  trigger_type?: string
+  schedule_cron?: string
+  steps: Array<{
+    step_id: string
+    name: string
+    agent_id: string
+    action: string
+    depends_on?: string[]
+  }>
+  is_active?: boolean
+  created_at?: string
+}
+
 export interface BillingHistoryItem {
   id: string
   user_id?: string
@@ -644,6 +805,20 @@ export const api = {
     })
   },
 
+  async getProjectResearchReports(projectId: string, limit: number = 5): Promise<{ id: string; project_id: string; report_text: string; created_at: string }[]> {
+    return apiRequest<{ id: string; project_id: string; report_text: string; created_at: string }[]>(
+      `/api/projects/${projectId}/research-reports?limit=${limit}`,
+      { method: "GET" }
+    )
+  },
+
+  async generateProjectResearchReport(projectId: string): Promise<{ id: string; project_id: string; report_text: string; created_at: string }> {
+    return apiRequest<{ id: string; project_id: string; report_text: string; created_at: string }>(
+      `/api/projects/${projectId}/research-reports/generate`,
+      { method: "POST" }
+    )
+  },
+
   async getProjectSettings(projectId: string): Promise<{ custom_instructions?: string; model?: string }> {
     return apiRequest<{ custom_instructions?: string; model?: string }>(`/api/projects/${projectId}/settings`, {
       method: "GET",
@@ -908,6 +1083,415 @@ export const api = {
   async getAdminSystemHealth(): Promise<AdminSystemHealthResponse> {
     return apiRequest<AdminSystemHealthResponse>("/api/admin/system-health", {
       method: "GET",
+    })
+  },
+
+  // --- Phase 3: Advanced Scanner, Narrative Detection & Social Intelligence ---
+  async getNarratives(): Promise<NarrativeRecord[]> {
+    return apiRequest<NarrativeRecord[]>("/api/scanner/narratives", { method: "GET" })
+  },
+
+  async getNarrativeDetail(id: string): Promise<any> {
+    return apiRequest<any>(`/api/scanner/narratives/${id}`, { method: "GET" })
+  },
+
+  async getTrendingProjects(): Promise<TrendingProject[]> {
+    return apiRequest<TrendingProject[]>("/api/scanner/trending-projects", { method: "GET" })
+  },
+
+  async getMindshare(category?: string, timeframe?: string): Promise<MindshareResult> {
+    const q = new URLSearchParams()
+    if (category) q.append("category", category)
+    if (timeframe) q.append("timeframe", timeframe)
+    return apiRequest<MindshareResult>(`/api/scanner/mindshare?${q.toString()}`, { method: "GET" })
+  },
+
+  async getScannerSentiment(query: string): Promise<any> {
+    return apiRequest<any>(`/api/scanner/sentiment?query=${encodeURIComponent(query)}`, { method: "GET" })
+  },
+
+  async getSocialIntel(query: string): Promise<any> {
+    return apiRequest<any>(`/api/scanner/social?query=${encodeURIComponent(query)}`, { method: "GET" })
+  },
+
+  async getIntelligenceReports(): Promise<IntelligenceReport[]> {
+    return apiRequest<IntelligenceReport[]>("/api/scanner/reports", { method: "GET" })
+  },
+
+  async generateIntelligenceReport(topic: string, entityType: string = "narrative"): Promise<IntelligenceReport> {
+    return apiRequest<IntelligenceReport>("/api/scanner/reports/generate", {
+      method: "POST",
+      body: JSON.stringify({ topic, entity_type: entityType }),
+    })
+  },
+
+  async getScannerAlertRules(): Promise<ScannerAlertRule[]> {
+    return apiRequest<ScannerAlertRule[]>("/api/scanner/alerts/rules", { method: "GET" })
+  },
+
+  async createScannerAlertRule(payload: {
+    rule_type: string
+    target_entity: string
+    threshold: number
+    cooldown_minutes?: number
+  }): Promise<any> {
+    return apiRequest<any>("/api/scanner/alerts/rules", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async deleteScannerAlertRule(ruleId: string): Promise<any> {
+    return apiRequest<any>(`/api/scanner/alerts/rules/${ruleId}`, { method: "DELETE" })
+  },
+
+  async getScannerAlertEvents(): Promise<ScannerAlertEvent[]> {
+    return apiRequest<ScannerAlertEvent[]>("/api/scanner/alerts/events", { method: "GET" })
+  },
+
+  async markScannerAlertRead(eventId: string): Promise<any> {
+    return apiRequest<any>(`/api/scanner/alerts/events/${eventId}/read`, { method: "POST" })
+  },
+
+  // --- Phase 4: Autonomous Agents & Multi-Agent Orchestration ---
+  async getAgents(category?: string): Promise<AgentConfig[]> {
+    const q = category ? `?category=${encodeURIComponent(category)}` : ""
+    return apiRequest<AgentConfig[]>(`/api/agents${q}`, { method: "GET" })
+  },
+
+  async createAgent(payload: {
+    name: string
+    description: string
+    category?: string
+    capabilities?: string[]
+    approved_tools?: string[]
+    security_level?: string
+    system_prompt?: string
+    credit_cost_per_call?: number
+  }): Promise<any> {
+    return apiRequest<any>("/api/agents", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async orchestrateGoal(goal: string, target_entity?: string): Promise<OrchestrationResult> {
+    return apiRequest<OrchestrationResult>("/api/agents/orchestrate", {
+      method: "POST",
+      body: JSON.stringify({ goal, target_entity: target_entity || goal }),
+    })
+  },
+
+  async getAgentTasks(limit: number = 25): Promise<AgentTaskRecord[]> {
+    return apiRequest<AgentTaskRecord[]>(`/api/agents/tasks?limit=${limit}`, { method: "GET" })
+  },
+
+  async getAgentMarketplace(category?: string): Promise<any> {
+    const q = category ? `?category=${encodeURIComponent(category)}` : ""
+    return apiRequest<any>(`/api/agents/marketplace${q}`, { method: "GET" })
+  },
+
+  async getWorkflows(): Promise<WorkflowTemplate[]> {
+    return apiRequest<WorkflowTemplate[]>("/api/agents/workflows", { method: "GET" })
+  },
+
+  async createWorkflow(payload: {
+    name: string
+    description: string
+    trigger_type?: string
+    schedule_cron?: string
+    steps: any[]
+  }): Promise<any> {
+    return apiRequest<any>("/api/agents/workflows", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async runWorkflow(workflowId: string, target_entity: string = "Ethereum"): Promise<any> {
+    return apiRequest<any>(`/api/agents/workflows/${workflowId}/run?target_entity=${encodeURIComponent(target_entity)}`, {
+      method: "POST",
+    })
+  },
+
+  async getAgentAnalytics(): Promise<any> {
+    return apiRequest<any>("/api/agents/analytics", { method: "GET" })
+  },
+
+  async runTradingResearch(contractAddress: string): Promise<{
+    contract_address: string
+    token_name?: string
+    token_symbol?: string
+    price_usd?: number | null
+    liquidity_usd?: number | null
+    top_10_holders_percent?: number | null
+    sentiment?: string
+    bullets: string[]
+    brief_text: string
+    disclaimer: string
+    credits_remaining?: number | null
+    credits_charged?: number
+  }> {
+    return apiRequest("/api/trading/research", {
+      method: "POST",
+      body: JSON.stringify({ contract_address: contractAddress }),
+    })
+  },
+
+  async generateNftArtwork(prompt: string): Promise<{
+    prompt: string
+    image_url: string
+    credits_remaining?: number | null
+    credits_charged?: number
+  }> {
+    return apiRequest("/api/nft/generate", {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
+    })
+  },
+
+  async getAgentPersonas(): Promise<{
+    id: string
+    name: string
+    description: string
+    system_prompt: string
+    welcome_message?: string
+  }[]> {
+    return apiRequest("/api/agents/personas", { method: "GET" })
+  },
+
+  async createAgentPersona(payload: {
+    id: string
+    name: string
+    description: string
+    system_prompt: string
+  }): Promise<{
+    id: string
+    name: string
+    description: string
+    system_prompt: string
+    welcome_message?: string
+  }> {
+    return apiRequest("/api/agents/personas", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async getAdminAgentLedger(limit: number = 25): Promise<{
+    id: string
+    project_id: string
+    user_id: string
+    agent_name: string
+    tool_name: string
+    credit_cost: number
+    status: string
+    message: string
+    created_at: string
+  }[]> {
+    return apiRequest(`/api/admin/agent-ledger?limit=${limit}`, { method: "GET" })
+  },
+
+  async getDeveloperApiKeys(): Promise<{
+    id: string
+    key_name: string
+    key_prefix: string
+    is_active: boolean
+    created_at: string
+  }[]> {
+    return apiRequest("/api/developer/keys", { method: "GET" })
+  },
+
+  async createDeveloperApiKey(keyName: string): Promise<{
+    id: string
+    key_name: string
+    key_prefix: string
+    api_key: string
+    is_active: boolean
+    created_at: string
+  }> {
+    return apiRequest("/api/developer/keys", {
+      method: "POST",
+      body: JSON.stringify({ key_name: keyName }),
+    })
+  },
+
+  async revokeDeveloperApiKey(id: string): Promise<{ status: string; id: string }> {
+    return apiRequest(`/api/developer/keys/${id}`, { method: "DELETE" })
+  },
+
+  async getDeveloperApiUsage(): Promise<{
+    total_requests: number
+    total_credits_used: number
+    daily: { date: string; requests: number; credits: number }[]
+  }> {
+    return apiRequest("/api/developer/usage", { method: "GET" })
+  },
+
+  // Platform Integrations (Telegram & Discord)
+  async addTelegramIntegration(payload: {
+    project_id: string
+    bot_token: string
+    chat_id?: string
+    chat_title?: string
+    permissions?: Record<string, boolean>
+  }): Promise<any> {
+    return apiRequest("/api/integrations/telegram/add", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async listTelegramIntegrations(projectId?: string): Promise<any[]> {
+    const q = projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""
+    return apiRequest(`/api/integrations/telegram/list${q}`, { method: "GET" })
+  },
+
+  async disconnectTelegramIntegration(integrationId: string): Promise<{ status: string; id: string }> {
+    return apiRequest(`/api/integrations/telegram/${integrationId}/disconnect`, { method: "POST" })
+  },
+
+  async startDiscordOAuth(projectId: string): Promise<{ oauth_url: string; state: string }> {
+    return apiRequest(`/api/integrations/discord/oauth/start?project_id=${encodeURIComponent(projectId)}`, {
+      method: "GET",
+    })
+  },
+
+  async completeDiscordOAuth(code: string, state: string): Promise<any> {
+    return apiRequest(
+      `/api/integrations/discord/oauth/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+      { method: "GET" }
+    )
+  },
+
+  async listDiscordIntegrations(projectId?: string): Promise<any[]> {
+    const q = projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""
+    return apiRequest(`/api/integrations/discord/list${q}`, { method: "GET" })
+  },
+
+  async disconnectDiscordIntegration(integrationId: string): Promise<{ status: string; id: string }> {
+    return apiRequest(`/api/integrations/discord/${integrationId}/disconnect`, { method: "POST" })
+  },
+
+  // Unified Billing & Admin Controls
+  async getBillingUsage(limit: number = 30): Promise<any[]> {
+    return apiRequest(`/api/billing/usage?limit=${limit}`, { method: "GET" })
+  },
+
+  async getAdminBillingOverview(): Promise<{
+    total_revenue_usdt: number
+    active_subscriptions: number
+    failed_payments: any[]
+    recent_credit_transactions: any[]
+  }> {
+    return apiRequest("/api/admin/billing/overview", { method: "GET" })
+  },
+
+  async adminAdjustCredits(targetUserId: string, amount: number, reason: string): Promise<any> {
+    return apiRequest("/api/admin/billing/adjust-credits", {
+      method: "POST",
+      body: JSON.stringify({ target_user_id: targetUserId, amount, reason }),
+    })
+  },
+
+  async getSubscriptionPlans(): Promise<any[]> {
+    return apiRequest("/api/admin/billing/plans", { method: "GET" })
+  },
+
+  // Token Performance Monitoring & Real-Time Dashboard Alerts
+  async registerTokenMonitoring(payload: {
+    contract_address: string
+    project_id?: string
+    scan_id?: string
+    positive_thresholds?: number[]
+    negative_thresholds?: number[]
+    drawdown_threshold_pct?: number
+  }): Promise<{ status: string; monitored_token: any }> {
+    return apiRequest("/api/scanner/monitor", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async getMonitoredTokens(params?: { all_tenants?: boolean; status_filter?: string }): Promise<{ items: any[]; count: number }> {
+    const qs = new URLSearchParams()
+    if (params?.all_tenants) qs.set("all_tenants", "true")
+    if (params?.status_filter) qs.set("status_filter", params.status_filter)
+    const suffix = qs.toString() ? `?${qs.toString()}` : ""
+    return apiRequest(`/api/scanner/monitored${suffix}`, { method: "GET" })
+  },
+
+  async updateMonitoredToken(
+    monitoringId: string,
+    payload: {
+      monitoring_status?: "active" | "paused" | "stopped"
+      positive_thresholds?: number[]
+      negative_thresholds?: number[]
+      drawdown_threshold_pct?: number
+    }
+  ): Promise<{ status: string; monitored_token: any }> {
+    return apiRequest(`/api/scanner/monitored/${monitoringId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    })
+  },
+
+  async deleteMonitoredToken(monitoringId: string): Promise<{ status: string; monitoring_id: string }> {
+    return apiRequest(`/api/scanner/monitored/${monitoringId}`, { method: "DELETE" })
+  },
+
+  async checkMonitoredTokensNow(): Promise<{ status: string; new_alerts_count: number; new_alerts: any[] }> {
+    return apiRequest("/api/scanner/monitored/check-now", { method: "POST" })
+  },
+
+  async getPerformanceAlerts(params?: {
+    unread_only?: boolean
+    blockchain?: string
+    alert_type?: string
+    token?: string
+    all_tenants?: boolean
+    limit?: number
+  }): Promise<{ alerts: any[]; unread_count: number }> {
+    const qs = new URLSearchParams()
+    if (params?.unread_only) qs.set("unread_only", "true")
+    if (params?.blockchain) qs.set("blockchain", params.blockchain)
+    if (params?.alert_type) qs.set("alert_type", params.alert_type)
+    if (params?.token) qs.set("token", params.token)
+    if (params?.all_tenants) qs.set("all_tenants", "true")
+    if (params?.limit) qs.set("limit", String(params.limit))
+    const suffix = qs.toString() ? `?${qs.toString()}` : ""
+    return apiRequest(`/api/scanner/performance-alerts${suffix}`, { method: "GET" })
+  },
+
+  async markPerformanceAlertRead(alertId: string): Promise<{ status: string; alert_id: string }> {
+    return apiRequest(`/api/scanner/performance-alerts/${alertId}/read`, { method: "POST" })
+  },
+
+  async markAllPerformanceAlertsRead(): Promise<{ status: string }> {
+    return apiRequest("/api/scanner/performance-alerts/read-all", { method: "POST" })
+  },
+
+  async getAdminPerformanceOverview(): Promise<{
+    summary: any
+    top_milestones: any[]
+    recent_alerts: any[]
+    monitored_tokens: any[]
+    settings: any
+    audited_by?: string
+  }> {
+    return apiRequest("/api/admin/performance-monitoring", { method: "GET" })
+  },
+
+  async updateAdminPerformanceSettings(payload: {
+    default_positive_thresholds?: number[]
+    default_negative_thresholds?: number[]
+    max_monitored_free?: number
+    max_monitored_pro?: number
+    polling_interval_seconds?: number
+  }): Promise<{ status: string; settings: any }> {
+    return apiRequest("/api/admin/performance-monitoring/settings", {
+      method: "POST",
+      body: JSON.stringify(payload),
     })
   },
 }

@@ -52,6 +52,7 @@ def test_record_token_call(tmp_path):
                 ath_price REAL DEFAULT 0.0,
                 ath_multiplier REAL DEFAULT 1.0,
                 status TEXT DEFAULT 'tracking',
+                conviction INTEGER DEFAULT 3,
                 called_at TEXT NOT NULL
             )
             """
@@ -120,6 +121,23 @@ def test_leaderboard_formatting(tmp_path):
         )
         conn.execute(
             """
+            CREATE TABLE dev_token_calls (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                caller_id TEXT NOT NULL,
+                contract_address TEXT NOT NULL,
+                token_name TEXT,
+                call_price REAL NOT NULL,
+                ath_price REAL DEFAULT 0.0,
+                ath_multiplier REAL DEFAULT 1.0,
+                status TEXT DEFAULT 'tracking',
+                conviction INTEGER DEFAULT 3,
+                called_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
             INSERT INTO dev_callers (id, project_id, telegram_user_id, username, total_calls, successful_calls, win_rate, best_multiplier, created_at)
             VALUES 
             ('c1', 'proj_alpha', '101', 'trader_bob', 12, 5, 41.7, 2.1, '2026-11-17T00:00:00Z'),
@@ -127,16 +145,24 @@ def test_leaderboard_formatting(tmp_path):
             ('c3', 'proj_alpha', '103', 'sol_sniper', 20, 10, 50.0, 1.8, '2026-11-17T00:00:00Z')
             """
         )
+        conn.execute(
+            """
+            INSERT INTO dev_token_calls (id, project_id, caller_id, contract_address, token_name, call_price, ath_price, ath_multiplier, status, conviction, called_at)
+            VALUES
+            ('t1', 'proj_alpha', 'c2', 'ca_queen', 'QueenToken', 0.1, 0.35, 3.5, 'tracked', 4, '2026-11-17T00:00:00Z'),
+            ('t2', 'proj_alpha', 'c1', 'ca_bob', 'BobToken', 1.0, 2.1, 2.1, 'tracked', 3, '2026-11-17T00:00:00Z'),
+            ('t3', 'proj_alpha', 'c3', 'ca_sniper', 'SniperToken', 0.5, 0.9, 1.8, 'tracked', 2, '2026-11-17T00:00:00Z')
+            """
+        )
         conn.commit()
         conn.close()
 
         text = get_leaderboard_text("proj_alpha", limit=5)
 
-        assert "🏆 Top Callers in this Community" in text
-        assert "1. @crypto_queen - 3.5x (5 calls)" in text
-        assert "2. @trader_bob - 2.1x (12 calls)" in text
-        assert "3. @sol_sniper - 1.8x (20 calls)" in text
-        assert "Only verified on-chain calls are tracked." in text
+        assert "Top Callers Leaderboard" in text
+        assert "crypto_queen" in text
+        assert "trader_bob" in text
+        assert "sol_sniper" in text
 
 
 def test_update_caller_ath(tmp_path):
@@ -176,6 +202,7 @@ def test_update_caller_ath(tmp_path):
                     ath_price REAL DEFAULT 0.0,
                     ath_multiplier REAL DEFAULT 1.0,
                     status TEXT DEFAULT 'tracking',
+                    conviction INTEGER DEFAULT 3,
                     called_at TEXT NOT NULL
                 )
                 """

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { PerformanceAlertsPanel } from "@/components/scanner/performance-alerts-panel"
 import {
   Bot,
   BrainCircuit,
@@ -25,6 +26,16 @@ import {
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { api, Project, ProjectAnalytics, EntitlementResponse } from "@/lib/api"
 
 export default function OwnerDashboardPage() {
@@ -32,8 +43,49 @@ export default function OwnerDashboardPage() {
   const [analytics, setAnalytics] = useState<ProjectAnalytics | null>(null)
   const [entitlement, setEntitlement] = useState<EntitlementResponse | null>(null)
   const [docCount, setDocCount] = useState<number>(0)
+  const [researchReport, setResearchReport] = useState<{ id: string; report_text: string; created_at: string } | null>(null)
+  const [generatingReport, setGeneratingReport] = useState(false)
+  const [reportError, setReportError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [copiedCA, setCopiedCA] = useState<string | null>(null)
+
+  // Deploy New Bot Modal State (Self-Serve Owner Deployment)
+  const [deployOpen, setDeployOpen] = useState(false)
+  const [deployName, setDeployName] = useState("")
+  const [deployToken, setDeployToken] = useState("")
+  const [deployGroupId, setDeployGroupId] = useState("")
+  const [deployCA, setDeployCA] = useState("")
+  const [deploying, setDeploying] = useState(false)
+  const [deployError, setDeployError] = useState<string | null>(null)
+
+  const handleDeployBot = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!deployName.trim() || !deployToken.trim()) {
+      setDeployError("Project name and Telegram Bot Token are required.")
+      return
+    }
+    setDeploying(true)
+    setDeployError(null)
+    try {
+      await api.createProject({
+        name: deployName.trim(),
+        platform: "telegram",
+        telegram_bot_token: deployToken.trim(),
+        telegram_group_id: deployGroupId.trim() || undefined,
+        token_address: deployCA.trim() || undefined,
+      })
+      setDeployOpen(false)
+      setDeployName("")
+      setDeployToken("")
+      setDeployGroupId("")
+      setDeployCA("")
+      await loadDashboardData()
+    } catch (err: any) {
+      setDeployError(err?.message || "Failed to deploy bot.")
+    } finally {
+      setDeploying(false)
+    }
+  }
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -77,6 +129,15 @@ export default function OwnerDashboardPage() {
         } catch (err) {
           console.warn("Could not load docs for project:", err)
         }
+
+        try {
+          const reports = await api.getProjectResearchReports(primaryProject.id, 1)
+          if (Array.isArray(reports) && reports.length > 0) {
+            setResearchReport(reports[0])
+          }
+        } catch (err) {
+          console.warn("Could not load automated research reports:", err)
+        }
       }
     } catch (err) {
       console.warn("Failed to load owner dashboard data:", err)
@@ -90,6 +151,26 @@ export default function OwnerDashboardPage() {
     loadDashboardData()
   }, [])
 
+  const handleGenerateReport = async (projectId: string) => {
+    setGeneratingReport(true)
+    setReportError(null)
+    try {
+      const report = await api.generateProjectResearchReport(projectId)
+      setResearchReport(report)
+      // Refresh entitlement balance after 20-credit deduction
+      try {
+        const updatedEnt = await api.getEntitlement()
+        setEntitlement(updatedEnt)
+      } catch {
+        // Ignore non-critical refresh error
+      }
+    } catch (err: any) {
+      setReportError(err?.message || "Failed to generate research report. Please check your credit balance.")
+    } finally {
+      setGeneratingReport(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="py-24 flex flex-col items-center justify-center text-neutral-400 gap-3">
@@ -100,7 +181,99 @@ export default function OwnerDashboardPage() {
   }
 
   const isPro = Boolean(entitlement?.is_pro || entitlement?.plan === "pro")
+  const creditBalance = entitlement?.credits ?? 0
   const primaryProject = projects.length > 0 ? projects[0] : null
+
+  const deployBotModal = (
+    <Dialog open={deployOpen} onOpenChange={setDeployOpen}>
+      <DialogContent className="w-[92vw] sm:max-w-[460px] bg-[#121212] border border-neutral-800 text-white rounded-3xl p-6">
+        <DialogHeader>
+          <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
+            <Bot className="h-5 w-5 text-[#00ff66]" />
+            Deploy New Bot
+          </DialogTitle>
+          <DialogDescription className="text-xs text-neutral-400">
+            Connect your Telegram Bot Token to launch your autonomous Zoe community agent.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleDeployBot} className="space-y-4 pt-2">
+          {deployError && (
+            <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-rose-300 text-xs">
+              {deployError}
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label htmlFor="owner-bot-name" className="text-xs font-semibold text-white">
+              Project Name *
+            </Label>
+            <Input
+              id="owner-bot-name"
+              placeholder="e.g. One Love AI"
+              value={deployName}
+              onChange={(e) => setDeployName(e.target.value)}
+              required
+              className="bg-neutral-950 border-neutral-800 text-white text-xs h-10 rounded-xl focus:border-[#00ff66]"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="owner-bot-token" className="text-xs font-semibold text-white">
+              Telegram Bot Token *
+            </Label>
+            <Input
+              id="owner-bot-token"
+              type="password"
+              placeholder="1234567890:ABCdef..."
+              value={deployToken}
+              onChange={(e) => setDeployToken(e.target.value)}
+              required
+              className="bg-neutral-950 border-neutral-800 text-white font-mono text-xs h-10 rounded-xl focus:border-[#00ff66]"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="owner-group-id" className="text-xs font-semibold text-white">
+              Telegram Group ID (Optional)
+            </Label>
+            <Input
+              id="owner-group-id"
+              placeholder="-1001234567890"
+              value={deployGroupId}
+              onChange={(e) => setDeployGroupId(e.target.value)}
+              className="bg-neutral-950 border-neutral-800 text-white font-mono text-xs h-10 rounded-xl focus:border-[#00ff66]"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="owner-ca" className="text-xs font-semibold text-white">
+              Token Contract Address (Optional)
+            </Label>
+            <Input
+              id="owner-ca"
+              placeholder="Solana Mint or 0x..."
+              value={deployCA}
+              onChange={(e) => setDeployCA(e.target.value)}
+              className="bg-neutral-950 border-neutral-800 text-white font-mono text-xs h-10 rounded-xl focus:border-[#00ff66]"
+            />
+          </div>
+          <DialogFooter className="pt-3 border-t border-neutral-800">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setDeployOpen(false)}
+              className="text-xs text-neutral-400 hover:text-white"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={deploying}
+              className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-10 px-5 rounded-xl cursor-pointer"
+            >
+              {deploying ? "Deploying..." : "Deploy Bot"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
 
   // Empty State: Intentional, centered, elegant card
   if (!primaryProject) {
@@ -113,17 +286,24 @@ export default function OwnerDashboardPage() {
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-xs font-mono text-neutral-400 mb-2">
             <span>Status: Account Active</span>
+            <span className="text-[#00ff66]">• 💳 {creditBalance.toLocaleString()} Credits</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             No Assigned Bot
           </h1>
           <p className="text-xs sm:text-sm text-neutral-400 leading-relaxed max-w-md mx-auto">
-            Your client profile is verified, but no autonomous community bot has been assigned to your workspace yet. 
-            Please contact the Zoe platform administrator to provision and link your bot.
+            Your client profile is verified. Deploy your own Telegram community bot now or view subscription plans.
           </p>
         </div>
 
         <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <Button
+            onClick={() => setDeployOpen(true)}
+            className="w-full sm:w-auto bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-10 px-6 rounded-full cursor-pointer shadow-lg shadow-[#00ff66]/20"
+          >
+            <Bot className="h-3.5 w-3.5 mr-2" />
+            Deploy New Bot
+          </Button>
           <Button
             variant="outline"
             onClick={loadDashboardData}
@@ -132,14 +312,16 @@ export default function OwnerDashboardPage() {
             <RefreshCw className="h-3.5 w-3.5 mr-2" />
             Check Again
           </Button>
-          <Link href="/owner/billing" className="w-full sm:w-auto">
+          <Link href="/billing" className="w-full sm:w-auto">
             <Button
-              className="w-full sm:w-auto bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-10 px-6 rounded-full cursor-pointer shadow-lg shadow-[#00ff66]/20"
+              variant="outline"
+              className="w-full sm:w-auto border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs h-10 px-6 rounded-full cursor-pointer"
             >
-              View Subscription Plans
+              View Plans
             </Button>
           </Link>
         </div>
+        {deployBotModal}
       </div>
     )
   }
@@ -167,7 +349,12 @@ export default function OwnerDashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/billing">
+            <div className="px-3.5 py-1.5 rounded-full bg-neutral-900 border border-[#00ff66]/40 text-xs font-mono text-white flex items-center gap-1.5 cursor-pointer hover:border-[#00ff66]">
+              <span>💳 {creditBalance.toLocaleString()} Credits</span>
+            </div>
+          </Link>
           <Button
             variant="outline"
             size="sm"
@@ -177,12 +364,20 @@ export default function OwnerDashboardPage() {
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
             Refresh
           </Button>
+          <Button
+            size="sm"
+            onClick={() => setDeployOpen(true)}
+            className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-9 px-4 rounded-full cursor-pointer shadow-md shadow-[#00ff66]/20"
+          >
+            <Bot className="h-3.5 w-3.5 mr-1.5" />
+            Deploy New Bot
+          </Button>
           <Link href="/owner/project">
             <Button
+              variant="outline"
               size="sm"
-              className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-9 px-4 rounded-full cursor-pointer shadow-md shadow-[#00ff66]/20"
+              className="border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs h-9 px-4 rounded-full cursor-pointer"
             >
-              <Bot className="h-3.5 w-3.5 mr-1.5" />
               Bot Config
             </Button>
           </Link>
@@ -208,7 +403,7 @@ export default function OwnerDashboardPage() {
               </p>
             </div>
           </div>
-          <Link href="/owner/billing">
+          <Link href="/billing">
             <Button className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-extrabold text-xs h-9 px-5 rounded-full shadow-lg shadow-[#00ff66]/20 cursor-pointer shrink-0">
               Upgrade to Pro ($20)
             </Button>
@@ -288,9 +483,8 @@ export default function OwnerDashboardPage() {
                 {isPro ? "Unlimited intelligence" : "Standard quota"}
               </p>
             </div>
-            <div className={`h-11 w-11 rounded-2xl border flex items-center justify-center shrink-0 ${
-              isPro ? "bg-[#00ff66]/10 border-[#00ff66]/20 text-[#00ff66]" : "bg-amber-500/10 border-amber-500/20 text-amber-400"
-            }`}>
+            <div className={`h-11 w-11 rounded-2xl border flex items-center justify-center shrink-0 ${isPro ? "bg-[#00ff66]/10 border-[#00ff66]/20 text-[#00ff66]" : "bg-amber-500/10 border-amber-500/20 text-amber-400"
+              }`}>
               <Crown className="h-5 w-5" />
             </div>
           </CardContent>
@@ -372,6 +566,84 @@ export default function OwnerDashboardPage() {
         </div>
       </div>
 
+      {/* Automated Research Reports (Pillar 3: Autonomous Agent) */}
+      <Card className="bg-[#121212] border-neutral-800 rounded-3xl shadow-2xl overflow-hidden">
+        <CardHeader className="pb-4 border-b border-neutral-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-2xl bg-[#00ff66]/10 border border-[#00ff66]/20 flex items-center justify-center text-[#00ff66]">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+                <span>Automated Research Reports</span>
+                <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#00ff66]/10 text-[#00ff66] border border-[#00ff66]/20">
+                  Daily Brief
+                </span>
+              </CardTitle>
+              <CardDescription className="text-xs text-neutral-400">
+                Proactive Morning Brief combining DexScreener liquidity, live Web3 news, and X sentiment.
+              </CardDescription>
+            </div>
+          </div>
+
+          <Button
+            onClick={() => handleGenerateReport(primaryProject.id)}
+            disabled={generatingReport}
+            size="sm"
+            className="bg-[#00ff66] hover:bg-[#00e65c] text-black font-bold text-xs h-9 px-4 rounded-full cursor-pointer shadow-lg shadow-[#00ff66]/10 shrink-0"
+          >
+            {generatingReport ? (
+              <>
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                <span>Generating Brief...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                <span>Generate Report Now (20 Credits)</span>
+              </>
+            )}
+          </Button>
+        </CardHeader>
+
+        <CardContent className="p-6">
+          {reportError && (
+            <div className="mb-4 p-3 rounded-2xl bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+              {reportError}
+            </div>
+          )}
+
+          <div className="rounded-2xl bg-neutral-950/60 backdrop-blur-xl border border-neutral-800/80 p-5 space-y-3">
+            {researchReport ? (
+              <>
+                <div className="flex items-center justify-between text-[11px] text-neutral-400 font-mono pb-2 border-b border-neutral-800/70">
+                  <span className="flex items-center gap-1.5 text-[#00ff66]">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span>Latest Autonomous Intelligence Brief</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    <span>{new Date(researchReport.created_at).toLocaleString()}</span>
+                  </span>
+                </div>
+                <div className="text-xs sm:text-sm text-neutral-200 leading-relaxed whitespace-pre-line">
+                  {researchReport.report_text}
+                </div>
+              </>
+            ) : (
+              <div className="py-6 text-center space-y-2">
+                <p className="text-xs text-neutral-300 font-medium">
+                  No automated Morning Brief has been generated for {primaryProject.name} yet.
+                </p>
+                <p className="text-[11px] text-neutral-500">
+                  Zoe automatically generates a fresh report every 24 hours, or click &quot;Generate Report Now&quot; to run one immediately.
+                </p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Active Bot Workspace Summary */}
       <div className="bg-[#121212] border border-neutral-800 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-neutral-800/80">
@@ -442,6 +714,10 @@ export default function OwnerDashboardPage() {
           </div>
         </div>
       </div>
+      <div className="pt-2">
+        <PerformanceAlertsPanel />
+      </div>
+      {deployBotModal}
     </div>
   )
 }

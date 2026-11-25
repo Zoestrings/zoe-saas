@@ -1513,6 +1513,7 @@ def format_scan_report(report_data: Dict[str, Any]) -> str:
     liq_val = market.get("liquidity_usd")
     liq_str = format_currency(liq_val)
 
+    security = report_data.get("security", {})
     is_sol = chain.lower() == "solana"
     if is_sol:
         mint_status = "Revoked" if security.get("mint_revoked") is True else ("Active" if security.get("mint_revoked") is False else "Unknown")
